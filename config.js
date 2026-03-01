@@ -10,10 +10,11 @@ const path = require("path");
 // ── PARSER .env ───────────────────────────────────────────────────────────────
 function loadEnv() {
   var envPath = path.join(__dirname, ".env");
+
+  // Sur Render/cloud : pas de .env, les vars sont dans process.env directement
   if (!fs.existsSync(envPath)) {
-    console.error("[CONFIG] Fichier .env introuvable dans " + __dirname);
-    console.error("[CONFIG] Copie le fichier .env dans le dossier agent-local-safe/");
-    process.exit(1);
+    console.log("[CONFIG] Pas de fichier .env — lecture depuis process.env (mode cloud)");
+    return process.env;
   }
 
   var lines = fs.readFileSync(envPath, "utf8").split("\n");
