@@ -2733,7 +2733,7 @@ var server = http.createServer(function(req, res) {
   res.writeHead(404); res.end("Not found");
 });
 
-server.listen(PORT, "127.0.0.1", function() {
+server.listen(PORT, "0.0.0.0", function() {
   console.log("==================================================");
   console.log("  ABY QA V2 - SERVEUR LOCAL v2");
   console.log("==================================================");
