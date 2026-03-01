@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ticket>
+  <type>US</type>
+  <epic>API Drupal</epic>
+  <title>Validation des paramètres de dates</title>
+  <persona>testeur QA</persona>
+  <want>valider les paramètres de dates envoyés à l'API</want>
+  <goal>éviter les erreurs 500 dues à des dates mal formatées</goal>
+  <description>L'API doit valider le format des dates avant traitement</description>
+  <criteria>
+    <criterion>Les dates doivent être au format ISO 8601</criterion>
+    <criterion>Une date invalide retourne 400 avec message explicite</criterion>
+    <criterion>Les dates futures sont rejetées si l'endpoint ne les accepte pas</criterion>
+  </criteria>
+</ticket>

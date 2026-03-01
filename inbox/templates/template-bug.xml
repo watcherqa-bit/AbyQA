@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ticket>
+  <type>BUG</type>
+  <epic>API Drupal</epic>
+  <title>Erreur 500 sur l'endpoint /companies</title>
+  <description>L'API retourne une erreur 500 lors de l'appel à /companies avec un paramètre vide</description>
+  <severity>Majeur</severity>
+  <env>Sophie</env>
+  <steps>
+    <step>Appeler GET /api/companies avec paramètre vide</step>
+    <step>Observer la réponse HTTP</step>
+  </steps>
+  <expected>Retourner 400 Bad Request avec message d'erreur</expected>
+  <actual>Retourner 500 Internal Server Error</actual>
+</ticket>

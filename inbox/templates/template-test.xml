@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ticket>
+  <type>TEST</type>
+  <epic>API Drupal</epic>
+  <title>Test validation dates invalides</title>
+  <description>Vérifier que l'API rejette les dates mal formatées</description>
+  <steps>
+    <step>Envoyer une requête avec date au format DD/MM/YYYY</step>
+    <step>Envoyer une requête avec date texte "hier"</step>
+    <step>Envoyer une requête sans date</step>
+  </steps>
+  <expected>Chaque requête retourne 400 Bad Request avec message d'erreur clair</expected>
+</ticket>

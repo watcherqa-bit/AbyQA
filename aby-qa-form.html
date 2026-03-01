@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aby QA V2 - Créer un ticket</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e1e4e8; min-height: 100vh; }
+
+  header {
+    background: linear-gradient(135deg, #1a1f2e, #252d3d);
+    padding: 20px 40px;
+    border-bottom: 2px solid #2d3748;
+    display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 22px; color: #fff; }
+  header span { font-size: 13px; color: #7c8db5; background: #1e2a40; padding: 4px 10px; border-radius: 20px; }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 30px 20px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 30px; }
+  .tab {
+    padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    border: 2px solid transparent; background: #1a1f2e; color: #7c8db5;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: #e1e4e8; border-color: #2d3748; }
+  .tab.active { color: #fff; border-color: #4f6ef7; background: #1e2a50; }
+  .tab.bug.active    { border-color: #e53e3e; background: #2d1515; }
+  .tab.test.active   { border-color: #38a169; background: #142d1e; }
+  .tab.csv.active    { border-color: #d69e2e; background: #2d2210; }
+
+  /* Form */
+  .form-panel { display: none; }
+  .form-panel.active { display: block; }
+
+  .card {
+    background: #1a1f2e; border: 1px solid #2d3748;
+    border-radius: 12px; padding: 24px; margin-bottom: 20px;
+  }
+  .card h3 { font-size: 14px; color: #7c8db5; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 13px; color: #a0aec0; margin-bottom: 6px; }
+  .field label span.required { color: #e53e3e; margin-left: 3px; }
+
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 10px 14px; border-radius: 8px;
+    border: 1px solid #2d3748; background: #0f1117; color: #e1e4e8;
+    font-size: 14px; font-family: inherit; outline: none; transition: border-color 0.2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: #4f6ef7; }
+  .field textarea { min-height: 90px; resize: vertical; }
+  .field select option { background: #1a1f2e; }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* Steps */
+  .steps-container { }
+  .step-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+  .step-num { color: #4f6ef7; font-size: 13px; min-width: 20px; }
+  .step-row input { flex: 1; }
+  .btn-remove { background: none; border: none; color: #e53e3e; cursor: pointer; font-size: 18px; padding: 0 6px; }
+  .btn-add { background: none; border: 1px dashed #2d3748; color: #7c8db5; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; width: 100%; margin-top: 4px; transition: all 0.2s; }
+  .btn-add:hover { border-color: #4f6ef7; color: #4f6ef7; }
+
+  /* AC */
+  .ac-block { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+  .ac-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+  .ac-header span { color: #4f6ef7; font-size: 13px; font-weight: 600; }
+  .ac-block .field { margin-bottom: 8px; }
+  .ac-block .field:last-child { margin-bottom: 0; }
+
+  /* Severity badges */
+  .severity-group { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sev-btn {
+    padding: 6px 16px; border-radius: 6px; border: 2px solid transparent;
+    cursor: pointer; font-size: 13px; background: #0f1117; color: #7c8db5; transition: all 0.2s;
+  }
+  .sev-btn:hover { color: #e1e4e8; }
+  .sev-btn.active[data-val="Critique"]  { border-color: #e53e3e; color: #e53e3e; background: #2d1515; }
+  .sev-btn.active[data-val="Majeure"]   { border-color: #ed8936; color: #ed8936; background: #2d1a0a; }
+  .sev-btn.active[data-val="Mineure"]   { border-color: #d69e2e; color: #d69e2e; background: #2d2210; }
+  .sev-btn.active[data-val="Triviale"]  { border-color: #38a169; color: #38a169; background: #142d1e; }
+
+  /* Submit */
+  .submit-bar { display: flex; gap: 12px; margin-top: 24px; }
+  .btn-preview {
+    flex: 1; padding: 14px; border-radius: 8px; border: 2px solid #2d3748;
+    background: transparent; color: #a0aec0; cursor: pointer; font-size: 15px; transition: all 0.2s;
+  }
+  .btn-preview:hover { border-color: #4f6ef7; color: #4f6ef7; }
+  .btn-submit {
+    flex: 2; padding: 14px; border-radius: 8px; border: none;
+    background: linear-gradient(135deg, #4f6ef7, #7c3aed); color: #fff;
+    cursor: pointer; font-size: 15px; font-weight: 600; transition: opacity 0.2s;
+  }
+  .btn-submit:hover { opacity: 0.9; }
+  .btn-submit.bug    { background: linear-gradient(135deg, #e53e3e, #c53030); }
+  .btn-submit.test   { background: linear-gradient(135deg, #38a169, #276749); }
+  .btn-submit.csv    { background: linear-gradient(135deg, #d69e2e, #b7791f); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 30px; right: 30px; padding: 16px 24px;
+    border-radius: 10px; font-size: 14px; z-index: 999;
+    animation: slideIn 0.3s ease; box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  .toast.success { background: #1a3a2a; border: 1px solid #38a169; color: #68d391; }
+  .toast.error   { background: #3a1a1a; border: 1px solid #e53e3e; color: #fc8181; }
+  @keyframes slideIn { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* Modal preview */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #1a1f2e; border: 1px solid #2d3748; border-radius: 12px;
+    width: 90%; max-width: 700px; max-height: 80vh; overflow-y: auto;
+  }
+  .modal-header { padding: 20px 24px; border-bottom: 1px solid #2d3748; display: flex; justify-content: space-between; align-items: center; }
+  .modal-header h3 { color: #fff; }
+  .btn-close { background: none; border: none; color: #7c8db5; cursor: pointer; font-size: 20px; }
+  .modal-body { padding: 24px; }
+  .preview-content { background: #0f1117; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 12px; white-space: pre-wrap; color: #a0aec0; max-height: 400px; overflow-y: auto; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid #2d3748; display: flex; gap: 12px; justify-content: flex-end; }
+  .btn-confirm { padding: 10px 24px; border-radius: 8px; border: none; background: #4f6ef7; color: #fff; cursor: pointer; font-size: 14px; font-weight: 600; }
+  .btn-cancel  { padding: 10px 24px; border-radius: 8px; border: 1px solid #2d3748; background: transparent; color: #a0aec0; cursor: pointer; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🤖 Aby QA V2</h1>
+  </div>
+  <span>Safran - Website (SAFWBST)</span>
+</header>
+
+<div class="container">
+
+  <!-- TABS -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('us')">📋 User Story</div>
+    <div class="tab bug" onclick="switchTab('bug')">🐛 Bug</div>
+    <div class="tab test" onclick="switchTab('test')">🧪 Test</div>
+    <div class="tab csv" onclick="switchTab('csv')">📊 CSV</div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- USER STORY -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="panel-us" class="form-panel active">
+
+    <div class="card">
+      <h3>📋 Informations générales</h3>
+      <div class="row">
+        <div class="field">
+          <label>Epic <span style="color:#7c8db5;font-size:11px">(optionnel)</span></label>
+          <input id="us-epic" type="text" placeholder="ex: API Drupal, Homepage...">
+        </div>
+        <div class="field">
+          <label>Priorité</label>
+          <select id="us-priority">
+            <option>Haute</option><option>Critique</option><option selected>Moyenne</option><option>Basse</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Titre de la User Story <span class="required">*</span></label>
+        <input id="us-title" type="text" placeholder="ex: Validation des paramètres de dates">
+      </div>
+      <div class="row3">
+        <div class="field">
+          <label>En tant que <span class="required">*</span></label>
+          <input id="us-persona" type="text" placeholder="ex: consommateur de l'API">
+        </div>
+        <div class="field">
+          <label>Je veux <span class="required">*</span></label>
+          <input id="us-want" type="text" placeholder="ex: valider les dates envoyées">
+        </div>
+        <div class="field">
+          <label>Afin de <span class="required">*</span></label>
+          <input id="us-goal" type="text" placeholder="ex: éviter les erreurs 500">
+        </div>
+      </div>
+      <div class="field">
+        <label>Type de test</label>
+        <select id="us-testtype">
+          <option>Validation</option><option>Smoke Test</option><option>Sécurité</option>
+          <option>Performance</option><option>Régression</option><option>Intégration</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>✅ Critères d'acceptation</h3>
+      <div id="us-ac-list"></div>
+      <button class="btn-add" onclick="addAC()">+ Ajouter un critère d'acceptation</button>
+    </div>
+
+    <div class="card">
+      <h3>📊 Couverture des tests</h3>
+      <div class="row">
+        <div class="field">
+          <label>Endpoints couverts</label>
+          <input id="us-endpoints" type="text" placeholder="ex: /api/companies, /api/events">
+        </div>
+        <div class="field">
+          <label>Nombre de tests estimés</label>
+          <input id="us-testcount" type="number" placeholder="ex: 12" min="1">
+        </div>
+      </div>
+      <div class="field">
+        <label>Périmètre</label>
+        <textarea id="us-scope" placeholder="Description du périmètre de test..."></textarea>
+      </div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn-preview" onclick="previewTicket('us')">👁 Prévisualiser</button>
+      <button class="btn-submit" onclick="submitTicket('us')">✅ Créer la User Story dans Jira</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- BUG -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="panel-bug" class="form-panel">
+
+    <div class="card">
+      <h3>🐛 Informations du bug</h3>
+      <div class="row">
+        <div class="field">
+          <label>Epic <span style="color:#7c8db5;font-size:11px">(optionnel)</span></label>
+          <input id="bug-epic" type="text" placeholder="ex: API Drupal">
+        </div>
+        <div class="field">
+          <label>Environnement <span class="required">*</span></label>
+          <select id="bug-env">
+            <option>Sophie</option><option>Paulo</option><option>Prod</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Titre du bug <span class="required">*</span></label>
+        <input id="bug-title" type="text" placeholder="ex: Validation des dates absente">
+      </div>
+      <div class="field">
+        <label>Sévérité <span class="required">*</span></label>
+        <div class="severity-group" id="bug-severity-group">
+          <button class="sev-btn" data-val="Critique" onclick="setSeverity(this)">🔴 Critique</button>
+          <button class="sev-btn active" data-val="Majeure" onclick="setSeverity(this)">🟠 Majeure</button>
+          <button class="sev-btn" data-val="Mineure" onclick="setSeverity(this)">🟡 Mineure</button>
+          <button class="sev-btn" data-val="Triviale" onclick="setSeverity(this)">🟢 Triviale</button>
+        </div>
+        <input type="hidden" id="bug-severity" value="Majeure">
+      </div>
+      <div class="field">
+        <label>Priorité</label>
+        <select id="bug-priority">
+          <option>P0 - Critique (&lt;24h)</option>
+          <option selected>P1 - Haute (&lt;1 semaine)</option>
+          <option>P2 - Moyenne (&lt;2 semaines)</option>
+          <option>P3 - Basse (backlog)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📖 Reproduction du bug</h3>
+      <div class="field">
+        <label>Endpoint / URL concerné</label>
+        <input id="bug-endpoint" type="text" placeholder="ex: GET /api/companies?date=">
+      </div>
+      <div class="field">
+        <label>Étapes de reproduction <span class="required">*</span></label>
+        <div id="bug-steps-list" class="steps-container"></div>
+        <button class="btn-add" onclick="addStep('bug')">+ Ajouter une étape</button>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label>Résultat attendu <span class="required">*</span></label>
+          <textarea id="bug-expected" placeholder="Ce qui devrait se passer..."></textarea>
+        </div>
+        <div class="field">
+          <label>Résultat obtenu <span class="required">*</span></label>
+          <textarea id="bug-actual" placeholder="Ce qui se passe réellement..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🔍 Analyse (optionnel)</h3>
+      <div class="field">
+        <label>Cause racine probable</label>
+        <textarea id="bug-cause" placeholder="Hypothèse sur la cause du bug..."></textarea>
+      </div>
+      <div class="field">
+        <label>US liée</label>
+        <input id="bug-us" type="text" placeholder="ex: US-123">
+      </div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn-preview" onclick="previewTicket('bug')">👁 Prévisualiser</button>
+      <button class="btn-submit bug" onclick="submitTicket('bug')">🐛 Créer le Bug dans Jira</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- TEST -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="panel-test" class="form-panel">
+
+    <div class="card">
+      <h3>🧪 Informations du test</h3>
+      <div class="row">
+        <div class="field">
+          <label>Epic <span style="color:#7c8db5;font-size:11px">(optionnel)</span></label>
+          <input id="test-epic" type="text" placeholder="ex: API Drupal">
+        </div>
+        <div class="field">
+          <label>US liée</label>
+          <input id="test-us" type="text" placeholder="ex: US-123">
+        </div>
+      </div>
+      <div class="field">
+        <label>Titre du test <span class="required">*</span></label>
+        <input id="test-title" type="text" placeholder="ex: Dates invalides rejetées">
+      </div>
+      <div class="field">
+        <label>Objectif du test <span class="required">*</span></label>
+        <textarea id="test-objective" placeholder="Vérifier que..."></textarea>
+      </div>
+      <div class="field">
+        <label>Environnement</label>
+        <select id="test-env">
+          <option>Sophie</option><option>Paulo</option><option>Prod</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📝 Cas de test</h3>
+      <div class="field">
+        <label>Données de test</label>
+        <textarea id="test-data" placeholder="• Endpoint : /api/companies&#10;• Paramètre : date=DD/MM/YYYY&#10;• Header : x-api-key: invalid"></textarea>
+      </div>
+      <div class="field">
+        <label>Étapes de test <span class="required">*</span></label>
+        <div id="test-steps-list" class="steps-container"></div>
+        <button class="btn-add" onclick="addStep('test')">+ Ajouter une étape</button>
+      </div>
+      <div class="field">
+        <label>Résultat attendu <span class="required">*</span></label>
+        <textarea id="test-expected" placeholder="• Retourne 400 Bad Request&#10;• Message d'erreur explicite&#10;• Pas d'erreur serveur 5xx"></textarea>
+      </div>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn-preview" onclick="previewTicket('test')">👁 Prévisualiser</button>
+      <button class="btn-submit test" onclick="submitTicket('test')">🧪 Créer le Test dans Jira</button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <!-- CSV -->
+  <!-- ═══════════════════════════════════════════════════════ -->
+  <div id="panel-csv" class="form-panel">
+    <div style="background:#1a2540;border:1px solid #4f6ef7;border-radius:10px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#93c5fd;display:flex;align-items:center;gap:12px;">
+      <span style="font-size:22px;">⚡</span>
+      <div>
+        <strong style="color:#fff;font-size:14px;">Import direct dans Xray</strong><br>
+        Le CSV Xray est téléchargé <strong>et</strong> l'Importateur Xray s'ouvre automatiquement.<br>
+        <span style="color:#6ee7b7;">Glisse simplement le fichier dans la page Xray qui s'ouvre.</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📊 Génération CSV</h3>
+      <div class="row">
+        <div class="field">
+          <label>Fonctionnalité <span class="required">*</span></label>
+          <input id="csv-feature" type="text" placeholder="ex: Sécurité API, Validation dates">
+        </div>
+        <div class="field">
+          <label>Nombre de cas</label>
+          <select id="csv-count">
+            <option>3</option><option selected>5</option><option>8</option><option>10</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="csv-description" placeholder="Contexte et objectif des tests..."></textarea>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📋 Cas de test</h3>
+      <div id="csv-cases-list"></div>
+      <button class="btn-add" onclick="addCSVCase()">+ Ajouter un cas de test</button>
+    </div>
+
+    <div class="submit-bar">
+      <button class="btn-preview" onclick="previewTicket('csv')">👁 Prévisualiser CSV</button>
+      <button class="btn-submit csv" onclick="submitTicket('csv')">📊 Générer CSV → Importer dans Xray</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- MODAL PREVIEW -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Prévisualisation</h3>
+      <button class="btn-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <pre class="preview-content" id="modal-content"></pre>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+      <button class="btn-confirm" id="modal-confirm" onclick="confirmSubmit()">✅ Confirmer et créer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── État global ───────────────────────────────────────────────────────────────
+let currentTab = 'us';
+let pendingType = null;
+let acCount = 0;
+let stepCounts = { bug: 0, test: 0 };
+let csvCaseCount = 0;
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  addAC(); addAC(); // 2 AC par défaut
+  addStep('bug'); addStep('bug'); addStep('bug'); // 3 étapes par défaut
+  addStep('test'); addStep('test');
+  addCSVCase(); addCSVCase(); addCSVCase(); // 3 cas CSV par défaut
+};
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t, i) => {
+    t.classList.toggle('active', ['us','bug','test','csv'][i] === tab);
+  });
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+// ── Sévérité ──────────────────────────────────────────────────────────────────
+function setSeverity(btn) {
+  document.querySelectorAll('.sev-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('bug-severity').value = btn.dataset.val;
+}
+
+// ── Critères d'acceptation ────────────────────────────────────────────────────
+function addAC() {
+  acCount++;
+  const id = acCount;
+  const list = document.getElementById('us-ac-list');
+  const div = document.createElement('div');
+  div.className = 'ac-block';
+  div.id = 'ac-' + id;
+  div.innerHTML = `
+    <div class="ac-header">
+      <span>AC${id}</span>
+      <button class="btn-remove" onclick="removeAC(${id})">✕</button>
+    </div>
+    <div class="field"><label>Étant donné</label><input type="text" id="ac-given-${id}" placeholder="le contexte initial..."></div>
+    <div class="field"><label>Quand</label><input type="text" id="ac-when-${id}" placeholder="l'action effectuée..."></div>
+    <div class="field"><label>Alors</label><input type="text" id="ac-then-${id}" placeholder="le résultat attendu..."></div>
+  `;
+  list.appendChild(div);
+}
+function removeAC(id) {
+  document.getElementById('ac-' + id)?.remove();
+}
+
+// ── Étapes ────────────────────────────────────────────────────────────────────
+function addStep(type) {
+  stepCounts[type]++;
+  const num = stepCounts[type];
+  const list = document.getElementById(type + '-steps-list');
+  const div = document.createElement('div');
+  div.className = 'step-row';
+  div.id = type + '-step-' + num;
+  div.innerHTML = `
+    <span class="step-num">${num}.</span>
+    <input type="text" id="${type}-step-input-${num}" placeholder="Étape ${num}...">
+    <button class="btn-remove" onclick="removeStep('${type}', ${num})">✕</button>
+  `;
+  list.appendChild(div);
+}
+function removeStep(type, num) {
+  document.getElementById(type + '-step-' + num)?.remove();
+}
+
+// ── Cas CSV ───────────────────────────────────────────────────────────────────
+function addCSVCase() {
+  csvCaseCount++;
+  const n = csvCaseCount;
+  const list = document.getElementById('csv-cases-list');
+  const div = document.createElement('div');
+  div.className = 'ac-block';
+  div.id = 'csv-case-' + n;
+  div.innerHTML = `
+    <div class="ac-header">
+      <span>Cas ${n}</span>
+      <button class="btn-remove" onclick="document.getElementById('csv-case-${n}').remove()">✕</button>
+    </div>
+    <div class="row3">
+      <div class="field"><label>Action <span style="background:#1e3a8a;color:#93c5fd;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;">Xray : Action</span></label><textarea id="csv-action-${n}" placeholder="Étant donné [contexte]&#10;Lorsque [action]&#10;Alors [résultat]" style="min-height:80px"></textarea></div>
+      <div class="field"><label>Données <span style="background:#1e3a8a;color:#93c5fd;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;">Xray : Data</span></label><textarea id="csv-data-${n}" placeholder="• Endpoint : ...&#10;• Paramètre : ...&#10;• Header : ..." style="min-height:80px"></textarea></div>
+      <div class="field"><label>Résultat Attendu <span style="background:#1e3a8a;color:#93c5fd;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:6px;">Xray : Expected Result</span></label><textarea id="csv-expected-${n}" placeholder="• Critère 1&#10;• Critère 2&#10;• Pas d'erreur serveur 5xx" style="min-height:80px"></textarea></div>
+    </div>
+  `;
+  list.appendChild(div);
+}
+
+// ── Collecte des données ──────────────────────────────────────────────────────
+function collectUS() {
+  const acs = [];
+  document.querySelectorAll('.ac-block').forEach((block, i) => {
+    const id = block.id.replace('ac-', '');
+    const given = document.getElementById('ac-given-' + id)?.value || '';
+    const when  = document.getElementById('ac-when-' + id)?.value || '';
+    const then  = document.getElementById('ac-then-' + id)?.value || '';
+    if (given || when || then) acs.push({ num: i + 1, given, when, then });
+  });
+  return {
+    epic:      document.getElementById('us-epic').value.trim(),
+    title:     document.getElementById('us-title').value.trim(),
+    priority:  document.getElementById('us-priority').value,
+    persona:   document.getElementById('us-persona').value.trim(),
+    want:      document.getElementById('us-want').value.trim(),
+    goal:      document.getElementById('us-goal').value.trim(),
+    testtype:  document.getElementById('us-testtype').value,
+    endpoints: document.getElementById('us-endpoints').value.trim(),
+    testcount: document.getElementById('us-testcount').value.trim(),
+    scope:     document.getElementById('us-scope').value.trim(),
+    acs
+  };
+}
+
+function collectBug() {
+  const steps = [];
+  document.querySelectorAll('#bug-steps-list .step-row').forEach((row, i) => {
+    const input = row.querySelector('input');
+    if (input?.value.trim()) steps.push(input.value.trim());
+  });
+  return {
+    epic:     document.getElementById('bug-epic').value.trim(),
+    title:    document.getElementById('bug-title').value.trim(),
+    env:      document.getElementById('bug-env').value,
+    severity: document.getElementById('bug-severity').value,
+    priority: document.getElementById('bug-priority').value,
+    endpoint: document.getElementById('bug-endpoint').value.trim(),
+    expected: document.getElementById('bug-expected').value.trim(),
+    actual:   document.getElementById('bug-actual').value.trim(),
+    cause:    document.getElementById('bug-cause').value.trim(),
+    us:       document.getElementById('bug-us').value.trim(),
+    steps
+  };
+}
+
+function collectTest() {
+  const steps = [];
+  document.querySelectorAll('#test-steps-list .step-row').forEach(row => {
+    const input = row.querySelector('input');
+    if (input?.value.trim()) steps.push(input.value.trim());
+  });
+  return {
+    epic:      document.getElementById('test-epic').value.trim(),
+    title:     document.getElementById('test-title').value.trim(),
+    us:        document.getElementById('test-us').value.trim(),
+    objective: document.getElementById('test-objective').value.trim(),
+    env:       document.getElementById('test-env').value,
+    data:      document.getElementById('test-data').value.trim(),
+    expected:  document.getElementById('test-expected').value.trim(),
+    steps
+  };
+}
+
+function collectCSV() {
+  const cases = [];
+  document.querySelectorAll('[id^="csv-case-"]').forEach(block => {
+    const n = block.id.replace('csv-case-', '');
+    const action   = document.getElementById('csv-action-' + n)?.value.trim() || '';
+    const data     = document.getElementById('csv-data-' + n)?.value.trim() || '';
+    const expected = document.getElementById('csv-expected-' + n)?.value.trim() || '';
+    if (action || data || expected) cases.push({ action, data, expected });
+  });
+  return {
+    feature:     document.getElementById('csv-feature').value.trim(),
+    description: document.getElementById('csv-description').value.trim(),
+    cases
+  };
+}
+
+// ── Génération Markdown ───────────────────────────────────────────────────────
+function generateUSMarkdown(d) {
+  const today = new Date().toLocaleDateString('fr-FR');
+  const acText = d.acs.map(ac => `
+### AC${ac.num}
+Étant donné ${ac.given}
+Quand ${ac.when}
+Alors ${ac.then}`).join('\n');
+
+  const epicPart = d.epic ? ` - [${d.epic}]` : '';
+  return `# User Story${epicPart} - ${d.title}
+
+---
+
+## 📋 RÉSUMÉ
+User Story - [${d.epic}] - ${d.title}
+
+---
+
+## 📖 DESCRIPTION
+En tant que ${d.persona}, je veux ${d.want}, afin de ${d.goal}
+
+---
+
+## 🧪 TYPE DE TEST
+${d.testtype}
+
+---
+
+## ✅ CRITÈRES D'ACCEPTATION
+${acText}
+
+---
+
+## 📊 COUVERTURE DES TESTS
+### Endpoints couverts :
+${d.endpoints || 'À définir'}
+
+### Nombre de tests : ${d.testcount || 'À définir'}
+
+### Périmètre
+${d.scope || 'À définir'}
+
+---
+
+## 📎 INFORMATIONS JIRA
+**Espace :** Safran - Website (SAFWBST)
+**Type de ticket :** Story
+**État initial :** Backlog
+**Epic :** ${d.epic}
+**Priorité :** ${d.priority}
+
+---
+
+**Créé le :** ${today}
+**Version :** 1.0`;
+}
+
+function generateBugMarkdown(d) {
+  const today = new Date().toLocaleDateString('fr-FR');
+  const epicPartB = d.epic ? ` - [${d.epic}]` : '';
+  return `# BUG${epicPartB} - ${d.title}
+
+---
+
+## 📋 RÉSUMÉ
+BUG - [${d.epic}] - ${d.title}
+
+---
+
+## 📖 DESCRIPTION
+
+### Étapes de reproduction
+${d.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+**Données de test :**
+${d.endpoint ? `Endpoint : ${d.endpoint}` : ''}
+
+### Résultat attendu
+${d.expected}
+
+### Résultat obtenu
+${d.actual}
+
+---
+
+## 🔥 IMPACT
+
+### Sévérité : ${d.severity}
+
+### Environnement affecté
+${d.env}
+
+---
+
+## 🔍 ANALYSE TECHNIQUE
+### Cause racine probable
+${d.cause || 'À investiguer'}
+
+---
+
+## 🧪 TESTS DE VALIDATION
+- [ ] Le bug est corrigé (résultat attendu obtenu)
+- [ ] Aucune régression introduite
+- [ ] Tests passent
+- [ ] Validation QA OK
+
+---
+
+## 📅 PLANNING
+**Priorité :** ${d.priority}
+
+---
+
+## 📎 INFORMATIONS JIRA
+**Espace :** Safran - Website (SAFWBST)
+**Type de ticket :** Bug
+**État initial :** Backlog
+**Epic :** ${d.epic}
+**User Story liée :** ${d.us || 'N/A'}
+**Sévérité :** ${d.severity}
+
+---
+
+**Créé le :** ${today}
+**Version :** 1.0`;
+}
+
+function generateTestMarkdown(d) {
+  const today = new Date().toLocaleDateString('fr-FR');
+  const epicPartT = d.epic ? ` - [${d.epic}]` : '';
+  return `# TEST${epicPartT} - ${d.us || 'US'} - ${d.title}
+
+---
+
+## 📋 RÉSUMÉ
+TEST - [${d.epic}] - ${d.title}
+
+---
+
+## 📖 DESCRIPTION
+### Objectif du test
+${d.objective}
+
+---
+
+## 📝 CAS DE TEST
+### Données
+${d.data || 'À définir'}
+
+### Résultat Attendu
+${d.expected}
+
+---
+
+## 🧪 PROCÉDURE DE TEST
+### Étape 1 : Préparation
+1. Accéder à l'environnement ${d.env}
+
+### Étape 2 : Exécution
+${d.steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+
+### Étape 3 : Validation
+1. Vérifier le résultat obtenu
+2. Comparer avec le résultat attendu
+
+---
+
+## ✅ CRITÈRES DE SUCCÈS
+- [ ] ${d.expected.split('\n').join('\n- [ ] ')}
+- [ ] Aucune erreur console
+- [ ] Aucune erreur serveur 5xx
+
+---
+
+## 🐛 EN CAS D'ÉCHEC
+1. Capturer screenshots/logs
+2. Créer un ticket BUG : BUG - [${d.epic}] - [Fonction à corriger]
+3. Lier le ticket BUG à l'US ${d.us || 'XXX'}
+
+---
+
+## 📊 RÉSULTAT DU TEST
+**Statut :** À exécuter
+**Environnement :** ${d.env}
+**Date d'exécution :** À remplir
+
+---
+
+## 📎 INFORMATIONS JIRA
+**Espace :** Safran - Website (SAFWBST)
+**Type de ticket :** Test
+**Epic :** ${d.epic}
+**User Story liée :** ${d.us || 'N/A'}
+
+---
+
+**Créé le :** ${today}
+**Version :** 1.0`;
+}
+
+function generateCSV(d) {
+  const escape = s => '"' + (s || '').replace(/"/g, '""') + '"';
+  const rows = d.cases.map(c => `${escape(c.action)},${escape(c.data)},${escape(c.expected)}`);
+  // Format Xray natif
+  const header = 'Test Type,Summary,Action,Data,Expected Result';
+  const xrayRows = rows.map((r, i) => {
+    const parts = r.split('",');
+    return '"Manual","' + (feature + ' - Cas ' + (i+1)).replace(/"/g,'""') + '",' + r;
+  });
+  return '\uFEFF' + header + '\n' + xrayRows.join('\n');
+}
+
+// ── Validation ────────────────────────────────────────────────────────────────
+function validate(type) {
+  const required = {
+    us:   ['us-title', 'us-persona', 'us-want', 'us-goal'],
+    bug:  ['bug-title', 'bug-expected', 'bug-actual'],
+    test: ['test-title', 'test-objective'],
+    csv:  ['csv-feature']
+  };
+  for (const id of required[type] || []) {
+    const el = document.getElementById(id);
+    if (!el?.value.trim()) {
+      el?.focus();
+      showToast('Champ obligatoire manquant', 'error');
+      return false;
+    }
+  }
+  return true;
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────────
+function previewTicket(type) {
+  if (!validate(type)) return;
+  pendingType = type;
+  let content = '';
+  let title = '';
+  if (type === 'us')   { const d = collectUS();   content = generateUSMarkdown(d);   title = `User Story - [${d.epic}] - ${d.title}`; }
+  if (type === 'bug')  { const d = collectBug();  content = generateBugMarkdown(d);  title = `BUG - [${d.epic}] - ${d.title}`; }
+  if (type === 'test') { const d = collectTest();  content = generateTestMarkdown(d); title = `TEST - [${d.epic}] - ${d.title}`; }
+  if (type === 'csv')  { const d = collectCSV();  content = generateCSV(d);           title = `CSV - ${d.feature}`; }
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-content').textContent = content;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  pendingType = null;
+}
+
+function confirmSubmit() {
+  closeModal();
+  if (pendingType) submitTicket(pendingType, true);
+}
+
+// ── Submit ────────────────────────────────────────────────────────────────────
+async function submitTicket(type, confirmed = false) {
+  if (!validate(type)) return;
+  if (!confirmed) { previewTicket(type); return; }
+
+  let content = '', filename = '', jiraType = '';
+  if (type === 'us') {
+    const d = collectUS();
+    content  = generateUSMarkdown(d);
+    filename = `US-${d.epic}-${d.title}.md`.replace(/[<>:"/\\|?*]/g, '-');
+    jiraType = 'us';
+  } else if (type === 'bug') {
+    const d = collectBug();
+    content  = generateBugMarkdown(d);
+    filename = `BUG-${d.epic}-${d.title}.md`.replace(/[<>:"/\\|?*]/g, '-');
+    jiraType = 'bug';
+  } else if (type === 'test') {
+    const d = collectTest();
+    content  = generateTestMarkdown(d);
+    filename = `TEST-${d.epic}-${d.title}.md`.replace(/[<>:"/\\|?*]/g, '-');
+    jiraType = 'test';
+  } else if (type === 'csv') {
+    const d = collectCSV();
+    content  = generateCSV(d);
+    filename = `CAS_TEST-${d.feature}.csv`.replace(/[<>:"/\\|?*]/g, '-');
+
+    // 1. Télécharger le CSV
+    downloadFile(filename, content, 'text/csv');
+
+    // 2. Ouvrir automatiquement l'Importateur Xray dans Jira
+    const xrayImportUrl = 'https://eurelis.atlassian.net/plugins/servlet/ac/com.xpandit.plugins.xray/import-csv-page';
+    setTimeout(() => {
+      window.open(xrayImportUrl, '_blank');
+      showToast(`✅ CSV téléchargé ! L'importateur Xray s'ouvre → glisse le fichier`, 'success');
+    }, 800);
+    return;
+  }
+
+  // Télécharger le fichier
+  downloadFile(filename, content, 'text/markdown');
+
+  // Envoyer au watcher local
+  try {
+    await fetch('http://localhost:3210/ticket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: jiraType, content, filename })
+    });
+    showToast(`✅ ${filename} créé et envoyé à Jira !`, 'success');
+  } catch (e) {
+    showToast(`✅ ${filename} téléchargé (watcher non actif)`, 'success');
+  }
+}
+
+function downloadFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+
+function showToast(msg, type = 'success') {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.className = `toast ${type}`;
+  toast.textContent = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+</script>
+</body>
+</html>

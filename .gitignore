@@ -1,0 +1,37 @@
+# ── Secrets ──────────────────────────────────────
+.env
+env.txt
+
+# ── Dépendances ───────────────────────────────────
+node_modules/
+package/
+
+# ── Données générées (rapports, captures) ─────────
+reports/
+screenshots/
+css-audit-screenshots/
+audit-screenshots/
+uploads/
+outbox/
+errors/
+
+# ── Sessions / auth Playwright ────────────────────
+auth/
+
+# ── JSON de données (state, inbox, settings…) ─────
+# sauf package.json et package-lock.json
+*.json
+!package.json
+!package-lock.json
+
+# ── Fichiers de sauvegarde ────────────────────────
+*.bak
+*.bak-*
+*.manual.bak
+
+# ── Logs & divers ─────────────────────────────────
+*.log
+
+# ── Binaire Node embarqué ─────────────────────────
+node
+node/
