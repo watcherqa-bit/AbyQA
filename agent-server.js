@@ -2432,24 +2432,17 @@ var server = http.createServer(function(req, res) {
     var jql8 = syncMine
       ? "project = " + CFG.jira.project + " AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
       : "project = " + CFG.jira.project + " AND issuetype in (Story, Bug, \"Test Case\", Task) AND status in (" + qaStatuses8.map(function(s) { return '"' + s + '"'; }).join(",") + ") ORDER BY updated DESC";
-    var sp8 = "/rest/api/3/search?jql=" + encodeURIComponent(jql8) +
-      "&fields=summary,status,issuetype,priority,updated,assignee&maxResults=50";
+    var sp8Body = JSON.stringify({ jql: jql8, fields: ["summary","status","issuetype","priority","updated","assignee"], maxResults: 50 });
 
     var sr8 = https8.request({
-      hostname: CFG.jira.host, path: sp8, method: "GET",
-      headers: { "Authorization": auth8, "Accept": "application/json" }
+      hostname: CFG.jira.host, path: "/rest/api/3/search/jql", method: "POST",
+      headers: { "Authorization": auth8, "Accept": "application/json", "Content-Type": "application/json", "Content-Length": Buffer.byteLength(sp8Body) }
     }, function(jr8) {
       var d8 = ""; jr8.on("data", function(c) { d8 += c; });
       jr8.on("end", function() {
         try {
           var parsed8  = JSON.parse(d8);
           var issues8  = parsed8.issues || [];
-          // Debug temporaire : retourner la réponse brute Jira + JQL
-          if (issues8.length === 0) {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ ok: false, total: 0, added: 0, jql: jql8, jiraRaw: parsed8 }));
-            return;
-          }
           var pending8 = readBacklog(BACKLOG_PENDING);
           var added8   = 0;
           issues8.forEach(function(i) {
@@ -2498,6 +2491,7 @@ var server = http.createServer(function(req, res) {
     });
     sr8.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); });
     sr8.setTimeout(10000, function() { sr8.destroy(); res.writeHead(504); res.end("{}"); });
+    sr8.write(sp8Body);
     sr8.end();
     return;
   }
