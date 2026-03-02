@@ -2444,6 +2444,12 @@ var server = http.createServer(function(req, res) {
         try {
           var parsed8  = JSON.parse(d8);
           var issues8  = parsed8.issues || [];
+          // Debug : retourner la réponse brute Jira si aucun ticket
+          if (issues8.length === 0 && (parsed8.errorMessages || parsed8.errors)) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, total: 0, added: 0, jiraError: parsed8 }));
+            return;
+          }
           var pending8 = readBacklog(BACKLOG_PENDING);
           var added8   = 0;
           issues8.forEach(function(i) {
