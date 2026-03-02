@@ -105,7 +105,7 @@ module.exports = {
 
   // Serveur
   server: {
-    port: parseInt(get("SERVER_PORT", "3210"))
+    port: parseInt(process.env.PORT || get("SERVER_PORT", "3210"))
   },
 
   // Anthropic Claude API

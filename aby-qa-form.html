@@ -910,7 +910,7 @@ async function submitTicket(type, confirmed = false) {
 
   // Envoyer au watcher local
   try {
-    await fetch('http://localhost:3210/ticket', {
+    await fetch('/ticket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: jiraType, content, filename })
