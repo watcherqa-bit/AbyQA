@@ -2432,7 +2432,7 @@ var server = http.createServer(function(req, res) {
     var jql8 = syncMine
       ? "project = " + CFG.jira.project + " AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
       : "project = " + CFG.jira.project + " AND issuetype in (Story, Bug, \"Test Case\", Task) AND status in (" + qaStatuses8.map(function(s) { return '"' + s + '"'; }).join(",") + ") ORDER BY updated DESC";
-    var sp8 = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql8) +
+    var sp8 = "/rest/api/3/search?jql=" + encodeURIComponent(jql8) +
       "&fields=summary,status,issuetype,priority,updated,assignee&maxResults=50";
 
     var sr8 = https8.request({
