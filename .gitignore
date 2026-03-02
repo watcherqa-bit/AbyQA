@@ -23,6 +23,7 @@ auth/
 *.json
 !package.json
 !package-lock.json
+!settings.json
 
 # ── Fichiers de sauvegarde ────────────────────────
 *.bak

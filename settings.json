@@ -1,0 +1,73 @@
+{
+  "browsers": [
+    "chromium",
+    "firefox",
+    "webkit"
+  ],
+  "devices": [
+    {
+      "name": "desktop-hd",
+      "w": 1920,
+      "h": 1080
+    },
+    {
+      "name": "tablet-ipad",
+      "w": 768,
+      "h": 1024
+    },
+    {
+      "name": "mobile-iphone",
+      "w": 375,
+      "h": 812
+    },
+    {
+      "name": "mobile-samsung",
+      "w": 360,
+      "h": 800
+    }
+  ],
+  "envs": [
+    "sophie",
+    "prod"
+  ],
+  "tnr": {
+    "enabled": true,
+    "hour": "22:00",
+    "browsers": [
+      "chromium",
+      "firefox",
+      "webkit"
+    ],
+    "devices": [
+      {
+        "name": "desktop-hd",
+        "w": 1920,
+        "h": 1080
+      },
+      {
+        "name": "tablet-ipad",
+        "w": 768,
+        "h": 1024
+      },
+      {
+        "name": "mobile-iphone",
+        "w": 375,
+        "h": 812
+      },
+      {
+        "name": "mobile-samsung",
+        "w": 360,
+        "h": 800
+      }
+    ],
+    "envs": [
+      "sophie",
+      "prod"
+    ]
+  },
+  "polling": {
+    "enabled": true,
+    "intervalMin": 60
+  },
+  "latestRelease": "v1.25.0"
+}
