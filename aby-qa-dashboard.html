@@ -3534,7 +3534,7 @@
           </div>
           <div style="padding:14px 16px">
             <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-              <select id="inspect-env" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer">
+              <select id="inspect-env" onchange="inspectEnvChanged(this.value)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer">
                 <option value="sophie">🌐 Sophie (staging 1)</option>
                 <option value="paulo">🌐 Paulo (staging 2)</option>
                 <option value="prod">🌐 Prod</option>
@@ -5563,6 +5563,18 @@ var _lastInspectData = null;
 function openInspectPanel() {
   var block = document.getElementById('ops-inspect-block');
   if (block) block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+
+function inspectEnvChanged(val) {
+  var urlInput = document.getElementById('inspect-url');
+  if (!urlInput) return;
+  if (val === 'drupal-sophie' || val === 'drupal-paulo') {
+    urlInput.value = '/fr/user/login';
+    urlInput.placeholder = '/fr/user/login';
+  } else {
+    urlInput.value = '/fr';
+    urlInput.placeholder = '/fr ou /en/group/about';
+  }
 }
 
 function runInspect(force) {

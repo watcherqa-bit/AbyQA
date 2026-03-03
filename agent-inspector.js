@@ -35,9 +35,15 @@ function resolveBaseUrl(envName) {
   if (envName === "sophie")        return envs.sophie || process.env.ENV_SOPHIE || "";
   if (envName === "paulo")         return envs.paulo  || process.env.ENV_PAULO  || "";
   if (envName === "prod")          return envs.prod   || process.env.ENV_PROD   || "";
-  if (envName === "drupal-sophie") return (envs.sophie || process.env.ENV_SOPHIE || "") + "/fr/user/login";
-  if (envName === "drupal-paulo")  return (envs.paulo  || process.env.ENV_PAULO  || "") + "/fr/user/login";
+  // drupal-* : retourne seulement le domaine (chemin géré via URL_PATH)
+  if (envName === "drupal-sophie") return envs.sophie || process.env.ENV_SOPHIE || "";
+  if (envName === "drupal-paulo")  return envs.paulo  || process.env.ENV_PAULO  || "";
   return envs.sophie || "";
+}
+
+// Pour drupal-*, le chemin par défaut est la page de login Drupal
+if ((ENV_NAME === "drupal-sophie" || ENV_NAME === "drupal-paulo") && URL_PATH === "/fr") {
+  URL_PATH = "/fr/user/login";
 }
 
 var BASE_URL = resolveBaseUrl(ENV_NAME);
@@ -65,8 +71,8 @@ async function inspect() {
 
   var ctxOpts = { viewport: { width: 1280, height: 800 } };
 
-  // Basic auth pour envs staging (sophie / paulo)
-  if (ENV_NAME === "sophie" || ENV_NAME === "paulo") {
+  // Basic auth pour envs staging (sophie / paulo / drupal-*)
+  if (ENV_NAME === "sophie" || ENV_NAME === "paulo" || ENV_NAME.startsWith("drupal-")) {
     var drupalUser = (cfg.drupal && cfg.drupal.user) || process.env.DRUPAL_USER || "";
     var drupalPass = (cfg.drupal && cfg.drupal.pass) || process.env.DRUPAL_PASS || "";
     if (drupalUser) ctxOpts.httpCredentials = { username: drupalUser, password: drupalPass };
