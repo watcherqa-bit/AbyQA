@@ -1232,10 +1232,6 @@
           <div class="icon">🧪</div>
           <span class="nav-text">Données de test</span>
         </div>
-        <div class="nav-item" onclick="showPanel('operations')" title="Opérations QA — Centre de commande">
-          <div class="icon">🛠️</div>
-          <span class="nav-text">Opérations QA</span>
-        </div>
       </div>
 
       <div class="sidebar-divider nav-text"></div>
@@ -9064,74 +9060,8 @@ document.addEventListener("paste", function(e) {
         }
       }
     }
-    return;
-  }
-
-  // ── Fallback générique : tout textarea focalisé ───────────────────────────
-  var ta = document.activeElement;
-  if (ta && ta.tagName === 'TEXTAREA') {
-    for (var gi = 0; gi < items.length; gi++) {
-      if (items[gi].type.startsWith('image/')) {
-        var gFile = items[gi].getAsFile();
-        if (gFile) {
-          e.preventDefault();
-          var reader = new FileReader();
-          reader.onload = (function(textarea, file) {
-            return function(ev) {
-              taAttachScreenshot(textarea, ev.target.result, file.name || ('screenshot-' + Date.now() + '.png'));
-            };
-          })(ta, gFile);
-          reader.readAsDataURL(gFile);
-          showToast('Screenshot collé dans le champ', '📸');
-          break;
-        }
-      }
-    }
   }
 });
-
-// ── Screenshots attachés aux textareas (map id → [{name, dataUrl}]) ─────────
-var _taScreenshots = {};
-
-function taAttachScreenshot(ta, dataUrl, fname) {
-  var id = ta.id || (ta.id = 'ta-auto-' + Date.now());
-  if (!_taScreenshots[id]) _taScreenshots[id] = [];
-  _taScreenshots[id].push({ name: fname, dataUrl: dataUrl });
-  taRenderChips(ta);
-}
-
-function taGetScreenshots(taId) {
-  return _taScreenshots[taId] || [];
-}
-
-function taRemoveScreenshot(taId, idx) {
-  if (_taScreenshots[taId]) {
-    _taScreenshots[taId].splice(idx, 1);
-    var ta = document.getElementById(taId);
-    if (ta) taRenderChips(ta);
-  }
-}
-
-function taRenderChips(ta) {
-  var id = ta.id;
-  var shots = _taScreenshots[id] || [];
-  var zoneId = 'ta-chips-' + id;
-  var zone = document.getElementById(zoneId);
-  if (!zone) {
-    zone = document.createElement('div');
-    zone.id = zoneId;
-    zone.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px';
-    ta.parentNode.insertBefore(zone, ta.nextSibling);
-  }
-  if (!shots.length) { zone.innerHTML = ''; return; }
-  zone.innerHTML = shots.map(function(s, i) {
-    return '<div style="display:flex;align-items:center;gap:5px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text2)">' +
-      '<img src="' + s.dataUrl + '" style="height:28px;width:auto;border-radius:3px;object-fit:cover">' +
-      '<span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.name + '</span>' +
-      '<button onclick="taRemoveScreenshot(\'' + id + '\',' + i + ')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button>' +
-    '</div>';
-  }).join('');
-}
 
 // ── CHAT ABY ────────────────────────────────────────────────────────────────
 var chatHistory      = [];
@@ -10093,8 +10023,6 @@ function pushXraySteps() {
     showToast("Erreur : " + err.message, "❌");
     if (btn) { btn.disabled = false; btn.textContent = "📋 Envoyer vers Xray"; }
   });
-}
-
 }
 </script>
 </body>
