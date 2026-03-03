@@ -2,8 +2,10 @@ services:
   - type: web
     name: abyqa
     runtime: node
-    buildCommand: npm install && npx playwright install chromium
+    buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright npx playwright install chromium
     startCommand: node agent-server.js
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.playwright
