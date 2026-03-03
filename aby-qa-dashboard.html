@@ -3353,89 +3353,119 @@
       <div class="panel-header" style="flex-shrink:0">
         <div>
           <div class="panel-title">Opérations <span>QA</span></div>
-          <div class="panel-desc">Centre de commande — décris ta demande, l'app route et exécute</div>
+          <div class="panel-desc">Centre de commande unifié — saisie libre, tickets, config</div>
         </div>
         <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
       </div>
 
+      <!-- Sous-menu onglets -->
+      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;flex-shrink:0">
+        <button class="ops-tab active" id="ops-tab-commande" onclick="switchOpsTab('commande')"
+          style="background:none;border:none;border-bottom:2px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em;font-weight:600">
+          ✏️ Commande
+        </button>
+        <button class="ops-tab" id="ops-tab-config" onclick="switchOpsTab('config')"
+          style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em">
+          ⚙️ Configuration
+        </button>
+        <button class="ops-tab" id="ops-tab-tickets" onclick="switchOpsTab('tickets')"
+          style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em">
+          🎫 Tickets
+        </button>
+      </div>
+
       <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
 
-        <!-- Zone saisie centrale -->
-        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
-          <textarea id="ops-input" rows="4"
-            placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;"
-            style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
-            onkeydown="opsInputKeydown(event)"></textarea>
-
-          <!-- Pills contexte -->
-          <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
-
-          <!-- Toolbar -->
-          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
-            <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Joindre fichier XML, PDF, spec">📎 Fichier</button>
-            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira existant">🎫 Ticket</button>
-            <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Joindre un screenshot">🖼 Screenshot</button>
-            
-            <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
-            <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
-            <div style="flex:1"></div>
-            <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 20px;font-size:13px">🔍 Analyser</button>
-          </div>
-        </div>
-
-        <!-- Options avancées -->
-        <div id="ops-options-panel" style="display:block;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">ENVIRONNEMENTS</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-sophie" checked> Sophie</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-paulo"> Paulo</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-env-prod"> Prod</label>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">NAVIGATEURS</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-chromium" checked> Chromium</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-firefox"> Firefox</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-br-webkit"> WebKit</label>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">DEVICES</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-desktop" checked> Desktop</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-tablet"> iPad</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-iphone"> iPhone</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung</label>
-            </div>
-          </div>
-          <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-end">
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
-              <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px">
-                <option value="auto">Automatique (détection)</option>
-                <option value="ui">UI Playwright</option>
-                <option value="api">API REST</option>
-                <option value="fix">Correctif</option>
-                <option value="tnr">TNR Complet</option>
-                <option value="manual">Manuel</option>
-              </select>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">RELEASE</div>
-              <input type="text" id="ops-release" placeholder="v1.25.0" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:120px">
+        <!-- ─── ONGLET COMMANDE ─── -->
+        <div id="ops-pane-commande">
+          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
+            <textarea id="ops-input" rows="5"
+              placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;&#10;&#10;Ctrl+Entrée pour analyser"
+              style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
+              onkeydown="opsInputKeydown(event)"></textarea>
+            <!-- Pills contexte -->
+            <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
+            <!-- Toolbar -->
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
+              <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
+              <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
+              <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
+              <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
+              <div style="flex:1"></div>
+              <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 22px;font-size:13px">🔍 Analyser</button>
             </div>
           </div>
         </div>
 
-        <!-- Ticket picker -->
-        <div id="ops-ticket-picker" style="display:block;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">RÉFÉRENCER UN TICKET JIRA</div>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
-              style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:var(--mono)">
-            <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:12px">Charger</button>
-            <button class="btn" onclick="document.getElementById('ops-ticket-picker').style.display='none'" style="font-size:12px">✕</button>
+        <!-- ─── ONGLET CONFIGURATION ─── -->
+        <div id="ops-pane-config" style="display:none">
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:20px">
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">ENVIRONNEMENTS</div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-env-sophie" checked> Sophie (staging 1)</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-env-paulo"> Paulo (staging 2)</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-env-prod"> Prod (safran-group.com)</label>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">NAVIGATEURS</div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-br-chromium" checked> Chromium</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-br-firefox"> Firefox</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-br-webkit"> WebKit</label>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">DEVICES</div>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-dev-desktop" checked> Desktop (1920×1080)</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-dev-tablet"> iPad (768×1024)</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="ops-dev-iphone"> iPhone (375×812)</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung (360×800)</label>
+              </div>
+            </div>
+            <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;gap:16px;align-items:flex-end">
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
+                <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:13px">
+                  <option value="auto">Automatique (détection)</option>
+                  <option value="ui">UI Playwright</option>
+                  <option value="api">API REST</option>
+                  <option value="fix">Correctif</option>
+                  <option value="tnr">TNR Complet</option>
+                  <option value="manual">Manuel</option>
+                </select>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">RELEASE</div>
+                <input type="text" id="ops-release" placeholder="v1.25.0"
+                  style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:13px;width:130px">
+              </div>
+              <button class="btn btn-primary" onclick="switchOpsTab('commande');opsAnalyze()" style="margin-left:auto;font-size:13px">
+                ✅ Confirmer &amp; Analyser
+              </button>
+            </div>
           </div>
-          <div id="ops-ticket-preview" style="margin-top:10px;font-size:12px;color:var(--text2);font-family:var(--mono)"></div>
         </div>
+
+        <!-- ─── ONGLET TICKETS ─── -->
+        <div id="ops-pane-tickets" style="display:none">
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉFÉRENCER UN TICKET JIRA (US · BUG · TEST)</div>
+            <div style="display:flex;gap:8px;margin-bottom:12px">
+              <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
+                style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)">
+              <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:13px">Charger</button>
+            </div>
+            <div id="ops-ticket-preview" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:14px"></div>
+            <!-- Tickets chargés -->
+            <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:6px">
+              <button class="btn btn-primary" onclick="switchOpsTab('commande');opsAnalyze()" style="font-size:13px">
+                ✅ Utiliser ces tickets &amp; Analyser
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── BLOCS COMMUNS (sous les onglets) ─── -->
 
         <!-- Bloc confirmation intention -->
         <div id="ops-confirm-block" style="display:none;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
@@ -3482,8 +3512,6 @@
         <div id="ops-results-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
           <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
-
-          <!-- Cas de test auto générés -->
           <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">CAS DE TEST GÉNÉRÉS</div>
             <div id="ops-test-cases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
@@ -3492,164 +3520,6 @@
               <button class="btn" onclick="opsExportTestCases()" style="font-size:12px">💾 Exporter</button>
             </div>
           </div>
-
-          <!-- Tickets avec workflow -->
-          <div id="ops-tickets-block" style="display:none">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">TICKETS</div>
-            <div id="ops-tickets-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-
-    <!-- ══ OPÉRATIONS ══ -->
-    <div class="panel" id="panel-operations">
-      <div class="panel-header" style="flex-shrink:0">
-        <div>
-          <div class="panel-title">Opérations <span>QA</span></div>
-          <div class="panel-desc">Centre de commande — décris ta demande, l'app route et exécute</div>
-        </div>
-        <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
-
-        <!-- Zone saisie centrale -->
-        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
-          <textarea id="ops-input" rows="4"
-            placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;"
-            style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
-            onkeydown="opsInputKeydown(event)"></textarea>
-
-          <!-- Pills contexte -->
-          <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
-
-          <!-- Toolbar -->
-          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
-            <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Joindre fichier XML, PDF, spec">📎 Fichier</button>
-            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira existant">🎫 Ticket</button>
-            <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Joindre un screenshot">🖼 Screenshot</button>
-            <button class="chat-tool-btn" onclick="toggleOpsOptions()" id="ops-options-btn" title="Options avancées">⚙️ Options</button>
-            <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
-            <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
-            <div style="flex:1"></div>
-            <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 20px;font-size:13px">🔍 Analyser</button>
-          </div>
-        </div>
-
-        <!-- Options avancées -->
-        <div id="ops-options-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">ENVIRONNEMENTS</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-sophie" checked> Sophie</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-paulo"> Paulo</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-env-prod"> Prod</label>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">NAVIGATEURS</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-chromium" checked> Chromium</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-firefox"> Firefox</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-br-webkit"> WebKit</label>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">DEVICES</div>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-desktop" checked> Desktop</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-tablet"> iPad</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-iphone"> iPhone</label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung</label>
-            </div>
-          </div>
-          <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-end">
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
-              <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px">
-                <option value="auto">Automatique (détection)</option>
-                <option value="ui">UI Playwright</option>
-                <option value="api">API REST</option>
-                <option value="fix">Correctif</option>
-                <option value="tnr">TNR Complet</option>
-                <option value="manual">Manuel</option>
-              </select>
-            </div>
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">RELEASE</div>
-              <input type="text" id="ops-release" placeholder="v1.25.0" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:120px">
-            </div>
-          </div>
-        </div>
-
-        <!-- Ticket picker -->
-        <div id="ops-ticket-picker" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">RÉFÉRENCER UN TICKET JIRA</div>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
-              style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:var(--mono)">
-            <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:12px">Charger</button>
-            <button class="btn" onclick="document.getElementById('ops-ticket-picker').style.display='none'" style="font-size:12px">✕</button>
-          </div>
-          <div id="ops-ticket-preview" style="margin-top:10px;font-size:12px;color:var(--text2);font-family:var(--mono)"></div>
-        </div>
-
-        <!-- Bloc confirmation intention -->
-        <div id="ops-confirm-block" style="display:none;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
-            <div>
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
-              <div id="ops-intent-label" style="font-size:15px;font-weight:600;color:var(--text)"></div>
-              <div id="ops-intent-detail" style="font-size:12px;color:var(--text2);margin-top:4px;font-family:var(--mono)"></div>
-            </div>
-            <div style="display:flex;gap:8px;flex-shrink:0">
-              <button class="btn" onclick="opsReset()" style="font-size:12px;padding:6px 14px">✏️ Modifier</button>
-              <button class="btn btn-primary" onclick="opsExecute()" id="ops-execute-btn" style="font-size:12px;padding:6px 18px">🚀 Lancer</button>
-            </div>
-          </div>
-          <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        </div>
-
-        <!-- Steps manuels -->
-        <div id="ops-steps-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
-            <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
-          </div>
-          <div id="ops-steps-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="opsSendToXray()" style="font-size:12px">📋 Envoyer vers Xray</button>
-            <button class="btn" onclick="opsSaveStepsDraft()" style="font-size:12px">💾 Brouillon</button>
-          </div>
-        </div>
-
-        <!-- Terminal -->
-        <div id="ops-terminal-wrap" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL</div>
-            <div style="display:flex;gap:8px">
-              <button onclick="stopAgent()" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">⏹ Stop</button>
-              <button onclick="clearLog('ops-log')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Vider</button>
-            </div>
-          </div>
-          <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
-        </div>
-
-        <!-- Résultats -->
-        <div id="ops-results-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
-          <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
-
-          <!-- Cas de test auto générés -->
-          <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">CAS DE TEST GÉNÉRÉS</div>
-            <div id="ops-test-cases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary" onclick="opsCreateTestTicket()" style="font-size:12px">📋 Créer ticket Test Xray</button>
-              <button class="btn" onclick="opsExportTestCases()" style="font-size:12px">💾 Exporter</button>
-            </div>
-          </div>
-
-          <!-- Tickets avec workflow -->
           <div id="ops-tickets-block" style="display:none">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">TICKETS</div>
             <div id="ops-tickets-list" style="display:flex;flex-direction:column;gap:8px"></div>
@@ -5252,7 +5122,342 @@ var pwdStepCounter = 0;
 var pwdTestResults = []; // stats globales
 var pwdFullResults  = []; // résultats complets par test (étapes + issues + screenshot)
 
-// ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+/
+function switchOpsTab(tab) {
+  ['commande','config','tickets'].forEach(function(t) {
+    var pane = document.getElementById('ops-pane-' + t);
+    var btn  = document.getElementById('ops-tab-' + t);
+    var active = (t === tab);
+    if (pane) pane.style.display = active ? 'block' : 'none';
+    if (btn) {
+      btn.style.borderBottomColor = active ? 'var(--cyan)' : 'transparent';
+      btn.style.color = active ? 'var(--cyan)' : 'var(--text2)';
+      btn.style.fontWeight = active ? '600' : '400';
+    }
+  });
+}
+
+function opsRenderLoadedTickets() {
+  var c = document.getElementById('ops-tickets-loaded');
+  if (!c) return;
+  if (!opsTickets.length) { c.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:12px">Aucun ticket chargé</div>'; return; }
+  c.innerHTML = opsTickets.map(function(t,i){
+    return '<div style="display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">'+
+      '<span style="font-family:var(--mono);font-size:11px;color:var(--blue)">'+escHtml(t.key)+'</span>'+
+      '<span style="font-size:12px;color:var(--text);flex:1">'+escHtml(t.summary)+'</span>'+
+      '<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">'+escHtml(t.type)+'</span>'+
+      '<button onclick="opsRemoveTicket('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:0">🗑</button>'+
+    '</div>';
+  }).join('');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// PANNEAU OPÉRATIONS
+// ════════════════════════════════════════════════════════════════════════════
+
+var opsContext    = [];
+var opsTickets    = [];
+var opsStepCount  = 0;
+var opsLastIntent = null;
+
+function opsInputKeydown(e) {
+  if (e.key === 'Enter' && e.ctrlKey) { e.preventDefault(); opsAnalyze(); }
+}
+
+function toggleOpsOptions() {
+  var panel = document.getElementById('ops-options-panel');
+  var btn   = document.getElementById('ops-options-btn');
+  if (!panel) return;
+  var visible = panel.style.display !== 'none';
+  panel.style.display = visible ? 'none' : 'block';
+  if (btn) btn.style.borderColor = visible ? '' : 'var(--blue)';
+}
+
+function opsPickTicket() {
+  var picker = document.getElementById('ops-ticket-picker');
+  if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+}
+
+function opsLoadTicket() {
+  var key = (document.getElementById('ops-ticket-key') || {}).value || '';
+  key = key.trim().toUpperCase();
+  if (!key) { showToast('Saisis une clé Jira', '⚠️'); return; }
+  var preview = document.getElementById('ops-ticket-preview');
+  if (preview) preview.textContent = 'Chargement…';
+  fetch(SERVER + '/api/jira-ticket?key=' + encodeURIComponent(key))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var summary = (d.ticket && d.ticket.summary) ? d.ticket.summary : key;
+      var type    = (d.ticket && d.ticket.type)    ? d.ticket.type    : 'ticket';
+      opsTickets.push({ key: key, summary: summary, type: type });
+      if (preview) preview.textContent = type + ' — ' + summary;
+      opsRenderPills();
+      document.getElementById('ops-ticket-picker').style.display = 'none';
+      showToast(key + ' ajouté au contexte', '🎫');
+    })
+    .catch(function() {
+      opsTickets.push({ key: key, summary: key, type: 'ticket' });
+      opsRenderPills();
+      document.getElementById('ops-ticket-picker').style.display = 'none';
+    });
+}
+
+function opsAttachFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    opsContext.push({ kind: 'file', name: file.name, content: e.target.result });
+    opsRenderPills();
+    showToast(file.name + ' joint', '📎');
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+function opsAttachScreenshot(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    opsContext.push({ kind: 'image', name: file.name, data: e.target.result });
+    opsRenderPills();
+    showToast(file.name + ' joint', '🖼');
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+function opsRenderPills() {
+  var container = document.getElementById('ops-context-pills');
+  if (!container) return;
+  var pills = [];
+  opsContext.forEach(function(item, i) {
+    var icon = item.kind === 'image' ? '🖼' : '📎';
+    pills.push('<span style="display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border2);border-radius:20px;padding:3px 10px;font-size:11px;font-family:var(--mono)">' +
+      icon + ' ' + escHtml(item.name) +
+      '<button onclick="opsRemoveContext(' + i + ')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0;line-height:1">✕</button></span>');
+  });
+  opsTickets.forEach(function(t, i) {
+    pills.push('<span style="display:inline-flex;align-items:center;gap:5px;background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);border-radius:20px;padding:3px 10px;font-size:11px;font-family:var(--mono);color:var(--blue)">' +
+      '🎫 ' + escHtml(t.key) +
+      '<button onclick="opsRemoveTicket(' + i + ')" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;line-height:1">✕</button></span>');
+  });
+  container.innerHTML = pills.join('');
+}
+
+function opsRemoveContext(i) { opsContext.splice(i, 1); opsRenderPills(); }
+function opsRemoveTicket(i)  { opsTickets.splice(i, 1); opsRenderPills(); opsRenderLoadedTickets(); }
+
+function opsGetConfig() {
+  var envs = [], browsers = [], devices = [];
+  if ((document.getElementById('ops-env-sophie')  || {}).checked) envs.push('sophie');
+  if ((document.getElementById('ops-env-paulo')   || {}).checked) envs.push('paulo');
+  if ((document.getElementById('ops-env-prod')    || {}).checked) envs.push('prod');
+  if ((document.getElementById('ops-br-chromium') || {}).checked) browsers.push('chromium');
+  if ((document.getElementById('ops-br-firefox')  || {}).checked) browsers.push('firefox');
+  if ((document.getElementById('ops-br-webkit')   || {}).checked) browsers.push('webkit');
+  if ((document.getElementById('ops-dev-desktop') || {}).checked) devices.push({name:'desktop-hd',    w:1920, h:1080});
+  if ((document.getElementById('ops-dev-tablet')  || {}).checked) devices.push({name:'tablet-ipad',   w:768,  h:1024});
+  if ((document.getElementById('ops-dev-iphone')  || {}).checked) devices.push({name:'mobile-iphone', w:375,  h:812});
+  if ((document.getElementById('ops-dev-samsung') || {}).checked) devices.push({name:'mobile-samsung', w:360, h:800});
+  return {
+    envs:     envs,
+    browsers: browsers,
+    devices:  devices,
+    mode:     (document.getElementById('ops-mode')    || {}).value || 'auto',
+    release:  (document.getElementById('ops-release') || {}).value || 'v1.25.0'
+  };
+}
+
+function opsAnalyze() {
+  var text = ((document.getElementById('ops-input') || {}).value || '').trim();
+  if (!text && !opsContext.length && !opsTickets.length) {
+    showToast('Décris ta demande ou joint un fichier', '⚠️'); return;
+  }
+  var cfg = opsGetConfig();
+  if (!cfg.envs.length)    { showToast('Sélectionne au moins un environnement dans ⚙️ Options', '⚠️'); return; }
+  if (!cfg.browsers.length){ showToast('Sélectionne au moins un navigateur dans ⚙️ Options', '⚠️'); return; }
+
+  ['ops-confirm-block','ops-steps-block','ops-terminal-wrap','ops-results-block'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+
+  var btn = document.getElementById('ops-send-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyse…'; }
+
+  var routingText = text;
+  if (opsTickets.length) routingText += ' Tickets: ' + opsTickets.map(function(t){return t.key;}).join(', ');
+  if (opsContext.length) routingText += ' Fichiers: ' + opsContext.map(function(c){return c.name;}).join(', ');
+  if (cfg.mode !== 'auto') routingText += ' Mode: ' + cfg.mode;
+
+  fetch(SERVER + '/api/route', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: routingText })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Analyser'; }
+    opsShowConfirm(d.ok ? d : opsLocalRoute(routingText), cfg, text);
+  })
+  .catch(function() {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Analyser'; }
+    opsShowConfirm(opsLocalRoute(routingText), cfg, text);
+  });
+}
+
+function opsLocalRoute(text) {
+  var t = text.toLowerCase();
+  if (t.includes('audit css') || t.includes('css'))  return { agent:'css-audit',  label:'🎨 Audit CSS',       detail:'Analyse visuelle cross-browser' };
+  if (t.includes('drupal') || t.includes('contenu')) return { agent:'drupal',     label:'🧪 Données de test', detail:'Création contenu Drupal BO' };
+  if (t.includes('matrice') || t.includes('excel'))  return { agent:'matrix',     label:'📐 Matrice QA',      detail:'Génération Excel traceabilité' };
+  if (t.includes('rapport') || t.includes('report')) return { agent:'reporter',   label:'📄 Rapport',         detail:'Génération rapport QA' };
+  if (t.includes('tnr') || t.includes('régression')) return { agent:'playwright', label:'🔁 TNR Complet',     detail:'Campagne de régression complète', mode:'tnr' };
+  if (t.includes('bug') || t.includes('correctif'))  return { agent:'playwright', label:'🔧 Correctif',       detail:'Test de correction de bug', mode:'fix' };
+  if (t.includes('api') || t.includes('rest'))       return { agent:'playwright', label:'⚡ Test API',         detail:'Test API REST', mode:'api' };
+  if (t.includes('manuel') || t.includes('manual'))  return { agent:'manual',     label:'📋 Test manuel',     detail:'Définition des étapes manuelles' };
+  if (t.includes('ticket') || t.includes('jira') || t.includes('créer')) return { agent:'pipeline', label:'⚡ Pipeline Jira', detail:'Création / enrichissement ticket' };
+  return { agent:'playwright', label:'🖥️ Test UI', detail:'Test Playwright automatisé', mode:'ui' };
+}
+
+function opsShowConfirm(route, cfg, originalText) {
+  opsLastIntent = { route: route, cfg: cfg, text: originalText };
+
+  var label   = document.getElementById('ops-intent-label');
+  var detail  = document.getElementById('ops-intent-detail');
+  var badge   = document.getElementById('ops-intent-badge');
+  var summary = document.getElementById('ops-config-summary');
+
+  if (label)  label.textContent  = route.label  || route.agent || 'Action détectée';
+  if (detail) detail.textContent = route.detail || '';
+  if (badge)  { badge.textContent = route.label || route.agent; badge.style.display = 'inline-block'; }
+
+  if (summary) {
+    var pills = '';
+    cfg.envs.forEach(function(e)    { pills += '<span style="background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:20px;padding:2px 10px;font-size:11px;font-family:var(--mono)">🌐 ' + e + '</span> '; });
+    cfg.browsers.forEach(function(b){ pills += '<span style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:20px;padding:2px 10px;font-size:11px;font-family:var(--mono)">🔵 ' + b + '</span> '; });
+    cfg.devices.forEach(function(d) { pills += '<span style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:20px;padding:2px 10px;font-size:11px;font-family:var(--mono)">📱 ' + d.name + '</span> '; });
+    summary.innerHTML = pills;
+  }
+
+  var isManual = cfg.mode === 'manual' || route.agent === 'manual';
+  var stepsBlock = document.getElementById('ops-steps-block');
+  if (stepsBlock) stepsBlock.style.display = isManual ? 'block' : 'none';
+  if (isManual && !(document.getElementById('ops-steps-list') || {}).children.length) opsAddStep();
+
+  document.getElementById('ops-confirm-block').style.display = 'block';
+}
+
+function opsReset() {
+  ['ops-confirm-block','ops-steps-block','ops-terminal-wrap','ops-results-block'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  var badge = document.getElementById('ops-intent-badge');
+  if (badge) badge.style.display = 'none';
+  opsLastIntent = null;
+  var input = document.getElementById('ops-input');
+  if (input) input.focus();
+}
+
+function opsExecute() {
+  if (!opsLastIntent) return;
+  var route = opsLastIntent.route;
+  var cfg   = opsLastIntent.cfg;
+  var text  = opsLastIntent.text;
+
+  document.getElementById('ops-confirm-block').style.display = 'none';
+  document.getElementById('ops-terminal-wrap').style.display = 'block';
+  document.getElementById('ops-results-block').style.display = 'none';
+  clearLog('ops-log');
+  log('ops-log', '🚀 Lancement — ' + (route.label || route.agent), 'log-info');
+  log('ops-log', '  Env: ' + cfg.envs.join(', ') + ' | Browsers: ' + cfg.browsers.join(', '), 'log-dim');
+  if (opsTickets.length) log('ops-log', '  Tickets: ' + opsTickets.map(function(t){return t.key;}).join(', '), 'log-dim');
+
+  var fd = new FormData();
+  fd.append('agent',   opsAgentId(route.agent));
+  fd.append('mode',    cfg.mode !== 'auto' ? cfg.mode : (route.mode || 'ui'));
+  fd.append('source',  opsTickets.length ? 'jira-key' : (opsContext.filter(function(c){return c.kind==='file';}).length ? 'xml' : 'text'));
+  fd.append('envs',    JSON.stringify(cfg.envs));
+  fd.append('browsers',JSON.stringify(cfg.browsers));
+  fd.append('devices', JSON.stringify(cfg.devices));
+  fd.append('release', cfg.release);
+  if (text)              fd.append('instructions', text);
+  if (opsTickets.length) fd.append('jiraKey', opsTickets.map(function(t){return t.key;}).join(','));
+  opsContext.forEach(function(item) {
+    if (item.kind === 'file') {
+      fd.append('xmlFile', new Blob([item.content], {type:'text/plain'}), item.name);
+    }
+  });
+
+  callAgent({}, fd);
+  showToast('Opération lancée', '🚀');
+}
+
+function opsAgentId(agent) {
+  var map = { playwright:'playwright-direct', pipeline:'pipeline', 'css-audit':'css-audit', drupal:'drupal', matrix:'matrix', reporter:'reporter' };
+  return map[agent] || 'playwright-direct';
+}
+
+// ── Steps manuels ─────────────────────────────────────────────────────────────
+function opsAddStep() {
+  opsStepCount++;
+  var id  = 'ops-step-' + opsStepCount;
+  var div = document.createElement('div');
+  div.id  = id;
+  div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+  div.innerHTML =
+    '<input placeholder="Label" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-label">' +
+    '<select style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-action">' +
+      '<option value="expect-visible">Vérifier visible</option>' +
+      '<option value="expect-text">Vérifier texte</option>' +
+      '<option value="click">Cliquer</option>' +
+      '<option value="fill">Remplir</option>' +
+      '<option value="navigate">Naviguer</option>' +
+    '</select>' +
+    '<input placeholder="Sélecteur ou valeur" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-target">' +
+    '<button onclick="opsRemoveStep(\'' + id + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0">🗑</button>';
+  document.getElementById('ops-steps-list').appendChild(div);
+}
+
+function opsRemoveStep(id) { var el = document.getElementById(id); if (el) el.remove(); }
+
+function opsCollectSteps() {
+  var steps = [];
+  document.querySelectorAll('[id^="ops-step-"]').forEach(function(row) {
+    var base   = row.id;
+    var label  = (document.getElementById(base + '-label')  || {}).value || '';
+    var action = (document.getElementById(base + '-action') || {}).value || 'expect-visible';
+    var target = (document.getElementById(base + '-target') || {}).value || '';
+    if (label || target) steps.push({ label: label || action, action: action, selector: target, value: target, expected: target });
+  });
+  return steps;
+}
+
+function opsSendToXray() {
+  var steps = opsCollectSteps();
+  if (!steps.length)     { showToast('Ajoute au moins une étape', '⚠️'); return; }
+  if (!opsTickets.length){ showToast('Ajoute d\'abord un ticket Jira', '⚠️'); return; }
+  document.getElementById('ops-terminal-wrap').style.display = 'block';
+  clearLog('ops-log');
+  log('ops-log', '📋 Envoi ' + steps.length + ' étape(s) vers Xray — ' + opsTickets[0].key, 'log-info');
+  var fd = new FormData();
+  fd.append('agent',   'xray-steps');
+  fd.append('jiraKey', opsTickets[0].key);
+  fd.append('steps',   JSON.stringify(steps));
+  callAgent({}, fd);
+}
+
+function opsSaveStepsDraft() {
+  localStorage.setItem('ops-steps-draft', JSON.stringify(opsCollectSteps()));
+  showToast('Brouillon sauvegardé', '💾');
+}
+
+function opsCreateTestTicket() { showToast('Création ticket Test Xray en cours…', '📋'); }
+function opsExportTestCases()  { showToast('Export des cas de test en cours…', '💾'); }
+
+
+/ ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
 function toggleSidebar() {
   var main      = document.querySelector(".main");
   var collapsed = main.classList.toggle("sidebar-collapsed");
