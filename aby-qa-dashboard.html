@@ -310,21 +310,11 @@
     flex-direction: column;
   }
 
-  /* Opérations panel : content sans padding pour que le panel prenne toute la hauteur */
-  .content:has(#panel-operations.active) {
-    padding: 16px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
   .panel { display: none; }
   .panel.active { display: block; animation: fadeIn .25s ease; }
 
   /* Le panneau chat doit rester flex (override display:block) */
   #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
-  /* Le panneau opérations : flex-column avec hauteur contrainte pour que les onglets soient visibles */
-  #panel-operations.active { display: flex; flex-direction: column; flex: 1; min-height: 0; animation: fadeIn .25s ease; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
@@ -3360,31 +3350,37 @@
     
     <!-- ══ OPÉRATIONS ══ -->
     <div class="panel" id="panel-operations">
-      <div class="panel-header" style="flex-shrink:0">
+
+      <!-- ── EN-TÊTE ── -->
+      <div class="panel-header" style="margin-bottom:0;padding-bottom:16px;flex-shrink:0">
         <div>
           <div class="panel-title">Opérations <span>QA</span></div>
-          <div class="panel-desc">Centre de commande unifié — saisie libre, tickets, config</div>
+          <div class="panel-desc">Centre de commande — saisie libre, tickets, config</div>
         </div>
         <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
       </div>
 
-      <!-- Sous-menu onglets -->
-      <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:16px;flex-shrink:0">
-        <button class="ops-tab active" id="ops-tab-commande" onclick="switchOpsTab('commande')"
-          style="background:none;border:none;border-bottom:2px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em;font-weight:600">
+      <!-- ── ONGLETS ── -->
+      <div id="ops-tab-bar" style="display:flex;border-bottom:2px solid var(--border);margin-bottom:20px">
+        <button id="ops-tab-commande"
+          onclick="switchOpsTab('commande')"
+          style="background:none;border:none;border-bottom:3px solid var(--cyan);color:var(--cyan);font-family:var(--mono);font-size:12px;padding:10px 22px;cursor:pointer;letter-spacing:.06em;font-weight:700;margin-bottom:-2px">
           ✏️ Commande
         </button>
-        <button class="ops-tab" id="ops-tab-config" onclick="switchOpsTab('config')"
-          style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em">
+        <button id="ops-tab-config"
+          onclick="switchOpsTab('config')"
+          style="background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 22px;cursor:pointer;letter-spacing:.06em;margin-bottom:-2px">
           ⚙️ Configuration
         </button>
-        <button class="ops-tab" id="ops-tab-tickets" onclick="switchOpsTab('tickets')"
-          style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 20px;cursor:pointer;letter-spacing:.05em">
+        <button id="ops-tab-tickets"
+          onclick="switchOpsTab('tickets')"
+          style="background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);font-family:var(--mono);font-size:12px;padding:10px 22px;cursor:pointer;letter-spacing:.06em;margin-bottom:-2px">
           🎫 Tickets
         </button>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
+      <!-- ── CONTENU ONGLETS + BLOCS COMMUNS ── -->
+      <div style="overflow-y:auto;padding-bottom:20px">
 
         <!-- ─── ONGLET COMMANDE ─── -->
         <div id="ops-pane-commande">
@@ -3393,12 +3389,11 @@
               placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;&#10;&#10;Ctrl+Entrée pour analyser"
               style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
               onkeydown="opsInputKeydown(event)"></textarea>
-            <!-- Pills contexte -->
             <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
-            <!-- Toolbar -->
             <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
               <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
               <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
+              <button class="chat-tool-btn" onclick="switchOpsTab('tickets')" title="Référencer un ticket Jira">🎫 Ticket</button>
               <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
               <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
               <div style="flex:1"></div>
@@ -3431,7 +3426,7 @@
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung (360×800)</label>
               </div>
             </div>
-            <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;gap:16px;align-items:flex-end">
+            <div style="border-top:1px solid var(--border);padding-top:16px;display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
               <div>
                 <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
                 <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:13px">
@@ -3448,8 +3443,8 @@
                 <input type="text" id="ops-release" placeholder="v1.25.0"
                   style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:7px 12px;font-size:13px;width:130px">
               </div>
-              <button class="btn btn-primary" onclick="switchOpsTab('commande');opsAnalyze()" style="margin-left:auto;font-size:13px">
-                ✅ Confirmer &amp; Analyser
+              <button class="btn btn-primary" onclick="switchOpsTab('commande')" style="margin-left:auto;font-size:13px">
+                ✅ Confirmer
               </button>
             </div>
           </div>
@@ -3465,20 +3460,17 @@
               <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:13px">Charger</button>
             </div>
             <div id="ops-ticket-preview" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:14px"></div>
-            <!-- Tickets chargés -->
             <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px"></div>
-            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:6px">
-              <button class="btn btn-primary" onclick="switchOpsTab('commande');opsAnalyze()" style="font-size:13px">
-                ✅ Utiliser ces tickets &amp; Analyser
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:10px">
+              <button class="btn btn-primary" onclick="switchOpsTab('commande')" style="font-size:13px">
+                ✅ Utiliser ces tickets
               </button>
             </div>
           </div>
         </div>
 
-        <!-- ─── BLOCS COMMUNS (sous les onglets) ─── -->
-
-        <!-- Bloc confirmation intention -->
-        <div id="ops-confirm-block" style="display:none;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
+        <!-- ─── BLOC CONFIRMATION INTENTION ─── -->
+        <div id="ops-confirm-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
             <div>
               <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
@@ -3493,8 +3485,8 @@
           <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
 
-        <!-- Steps manuels -->
-        <div id="ops-steps-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <!-- ─── STEPS MANUELS ─── -->
+        <div id="ops-steps-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
             <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
@@ -3506,8 +3498,8 @@
           </div>
         </div>
 
-        <!-- Terminal -->
-        <div id="ops-terminal-wrap" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <!-- ─── TERMINAL ─── -->
+        <div id="ops-terminal-wrap" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL</div>
             <div style="display:flex;gap:8px">
@@ -3518,8 +3510,8 @@
           <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
         </div>
 
-        <!-- Résultats -->
-        <div id="ops-results-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <!-- ─── RÉSULTATS ─── -->
+        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
           <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
           <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
