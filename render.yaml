@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: abyqa
+    runtime: node
+    buildCommand: npm install && npx playwright install chromium --with-deps
+    startCommand: node agent-server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
