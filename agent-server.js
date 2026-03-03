@@ -411,6 +411,51 @@ var server = http.createServer(function(req, res) {
   }
 
   // â”€â”€ API : Suggestion donnÃ©es de test Drupal par IA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── API : Inspecteur DOM Playwright ───────────────────────────────────────
+  if (method === "POST" && url === "/api/inspect") {
+    var inspChunks = [];
+    req.on("data", function(c) { inspChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var inspParams = JSON.parse(Buffer.concat(inspChunks).toString());
+        var inspEnv    = inspParams.env   || "sophie";
+        var inspUrl    = inspParams.url   || "/fr";
+        var inspForce  = inspParams.force ? "true" : "false";
+        var inspArgs   = ["agent-inspector.js", "--env=" + inspEnv, "--url=" + inspUrl, "--force=" + inspForce];
+        var inspProc   = spawn("node", inspArgs, {
+          cwd: BASE_DIR, shell: true,
+          env: Object.assign({}, process.env, { FORCE_COLOR: "0" })
+        });
+        var inspOut = "";
+        inspProc.stdout.on("data", function(d) { inspOut += d.toString(); });
+        inspProc.stderr.on("data", function(d) { inspOut += d.toString(); });
+        inspProc.on("close", function() {
+          try {
+            var resLine = inspOut.split("\n").find(function(l) { return l.startsWith("INSPECTOR_RESULT:"); });
+            if (resLine) {
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(resLine.replace("INSPECTOR_RESULT:", ""));
+            } else {
+              res.writeHead(500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: false, error: "Pas de résultat", log: inspOut.slice(0, 400) }));
+            }
+          } catch(e2) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: e2.message }));
+          }
+        });
+        inspProc.on("error", function(e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        });
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (method === "POST" && url === "/api/drupal-suggest") {
     var dsChunks = [];
     req.on("data", function(c) { dsChunks.push(c); });

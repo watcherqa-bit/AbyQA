@@ -3395,6 +3395,7 @@
               <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
               <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
               <button class="chat-tool-btn" onclick="switchOpsTab('tickets')" title="Référencer un ticket Jira">🎫 Ticket</button>
+              <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement en direct" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
               <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
               <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
               <div style="flex:1"></div>
@@ -3521,6 +3522,45 @@
               <button class="btn btn-primary" onclick="switchOpsTab('commande')" style="font-size:13px">
                 ✅ Utiliser ces tickets
               </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── BLOC INSPECTEUR ─── -->
+        <div id="ops-inspect-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border)">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">🔍 INSPECTEUR DOM</div>
+            <button onclick="document.getElementById('ops-inspect-block').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">✕</button>
+          </div>
+          <div style="padding:14px 16px">
+            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <select id="inspect-env" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer">
+                <option value="sophie">🌐 Sophie (staging 1)</option>
+                <option value="paulo">🌐 Paulo (staging 2)</option>
+                <option value="prod">🌐 Prod</option>
+                <option value="drupal-sophie">🧪 Drupal — Sophie</option>
+                <option value="drupal-paulo">🧪 Drupal — Paulo</option>
+              </select>
+              <input type="text" id="inspect-url" placeholder="/fr ou /en/group/about" value="/fr"
+                style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;font-family:var(--mono)"
+                onkeydown="if(event.key==='Enter') runInspect()">
+              <button class="btn btn-primary" onclick="runInspect()" id="inspect-btn" style="white-space:nowrap">🔍 Inspecter</button>
+              <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Forcer re-inspection (ignorer cache)">↺ Forcer</button>
+            </div>
+            <div id="inspect-status" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;min-height:16px"></div>
+            <div id="inspect-result" style="display:none">
+              <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start">
+                <img id="inspect-shot" src="" style="width:200px;border-radius:8px;border:1px solid var(--border2)" onerror="this.style.display='none'">
+                <div>
+                  <div id="inspect-title" style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px"></div>
+                  <div id="inspect-summary" style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8"></div>
+                </div>
+              </div>
+              <div id="inspect-selectors" style="margin-top:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--text2);max-height:180px;overflow-y:auto;line-height:1.8"></div>
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <button class="btn btn-primary" onclick="injectInspectContext()" style="font-size:12px">➕ Injecter dans la commande</button>
+                <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↺ Actualiser</button>
+              </div>
             </div>
           </div>
         </div>
@@ -5516,6 +5556,102 @@ function opsSaveStepsDraft() {
 
 function opsCreateTestTicket() { showToast('Création ticket Test Xray en cours…', '📋'); }
 function opsExportTestCases()  { showToast('Export des cas de test en cours…', '💾'); }
+
+// ── INSPECTEUR DOM ────────────────────────────────────────────────────────────
+var _lastInspectData = null;
+
+function openInspectPanel() {
+  var block = document.getElementById('ops-inspect-block');
+  if (block) block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+
+function runInspect(force) {
+  var env    = (document.getElementById('inspect-env') || {}).value || 'sophie';
+  var url    = (document.getElementById('inspect-url') || {}).value || '/fr';
+  var status = document.getElementById('inspect-status');
+  var result = document.getElementById('inspect-result');
+  var btn    = document.getElementById('inspect-btn');
+
+  if (status) status.textContent = '⏳ Inspection en cours…';
+  if (result) result.style.display = 'none';
+  if (btn)    { btn.disabled = true; btn.textContent = '⏳…'; }
+
+  fetch(SERVER + '/api/inspect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ env: env, url: url, force: !!force })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Inspecter'; }
+    if (!d.ok) { if (status) status.textContent = '❌ ' + (d.error || 'Erreur'); return; }
+
+    _lastInspectData = d;
+    if (status) status.textContent = (d.cached ? '⚡ Cache · ' : '✅ Inspecté · ') + d.url;
+
+    // Screenshot
+    var shot = document.getElementById('inspect-shot');
+    if (shot && d.screenshot) {
+      shot.src = SERVER + '/screenshots/' + d.screenshot;
+      shot.style.display = 'block';
+    }
+
+    // Titre
+    var titleEl = document.getElementById('inspect-title');
+    if (titleEl) titleEl.textContent = d.title || d.url;
+
+    // Résumé
+    var s = d.snapshot || {};
+    var sumEl = document.getElementById('inspect-summary');
+    if (sumEl) sumEl.innerHTML =
+      '<span style="color:var(--cyan)">' + (s.inputs  || []).length + '</span> inputs · ' +
+      '<span style="color:var(--green)">' + (s.buttons || []).length + '</span> boutons · ' +
+      '<span style="color:var(--orange)">' + (s.links  || []).length + '</span> liens · ' +
+      '<span style="color:var(--blue)">' + (s.forms   || []).length + '</span> formulaires · ' +
+      '<span style="color:var(--text3)">' + (s.headings|| []).length + '</span> titres';
+
+    // Sélecteurs
+    var selEl = document.getElementById('inspect-selectors');
+    if (selEl) {
+      var lines = [];
+      (s.inputs || []).forEach(function(inp) {
+        lines.push('<span style="color:var(--cyan)">' + escHtml(inp.type) + '</span> ' +
+          '<span style="color:var(--green)">' + escHtml(inp.selector) + '</span>' +
+          (inp.label ? ' <span style="color:var(--text3)">// ' + escHtml(inp.label) + '</span>' : ''));
+      });
+      (s.buttons || []).forEach(function(btn) {
+        lines.push('<span style="color:var(--orange)">button</span> ' +
+          '<span style="color:var(--green)">' + escHtml(btn.selector) + '</span>' +
+          ' <span style="color:var(--text3)">// ' + escHtml(btn.text) + '</span>');
+      });
+      selEl.innerHTML = lines.join('<br>') || '<span style="color:var(--text3)">Aucun sélecteur trouvé</span>';
+    }
+
+    if (result) result.style.display = 'block';
+  })
+  .catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Inspecter'; }
+    if (status) status.textContent = '❌ ' + e.message;
+  });
+}
+
+function injectInspectContext() {
+  if (!_lastInspectData) return;
+  var s    = _lastInspectData.snapshot || {};
+  var env  = _lastInspectData.env;
+  var url  = _lastInspectData.url;
+  var lines = ['[Contexte DOM — ' + env + ' · ' + url + ']'];
+  if (_lastInspectData.title) lines.push('Titre: ' + _lastInspectData.title);
+  (s.inputs  || []).slice(0, 8).forEach(function(i)  { lines.push('input ' + i.type + ' → ' + i.selector + (i.label ? ' (' + i.label + ')' : '')); });
+  (s.buttons || []).slice(0, 6).forEach(function(b)  { lines.push('button → ' + b.selector + ' "' + b.text + '"'); });
+  (s.forms   || []).slice(0, 3).forEach(function(f)  { lines.push('form → ' + f.selector + (f.action ? ' action=' + f.action : '')); });
+  var ta = document.getElementById('ops-input');
+  if (ta) {
+    ta.value = (ta.value ? ta.value + '\n\n' : '') + lines.join('\n');
+    ta.focus();
+  }
+  showToast('Contexte DOM injecté dans la commande', '🔍');
+}
 
 
 // ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────────────────────────
