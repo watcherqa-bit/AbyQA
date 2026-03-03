@@ -3375,7 +3375,7 @@
             <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Joindre fichier XML, PDF, spec">📎 Fichier</button>
             <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira existant">🎫 Ticket</button>
             <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Joindre un screenshot">🖼 Screenshot</button>
-            <button class="chat-tool-btn" onclick="toggleOpsOptions()" id="ops-options-btn" title="Options avancées">⚙️ Options</button>
+            
             <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
             <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
             <div style="flex:1"></div>
@@ -3384,7 +3384,7 @@
         </div>
 
         <!-- Options avancées -->
-        <div id="ops-options-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div id="ops-options-panel" style="display:block;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
             <div>
               <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">ENVIRONNEMENTS</div>
@@ -3426,7 +3426,7 @@
         </div>
 
         <!-- Ticket picker -->
-        <div id="ops-ticket-picker" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div id="ops-ticket-picker" style="display:block;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">RÉFÉRENCER UN TICKET JIRA</div>
           <div style="display:flex;gap:8px">
             <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
