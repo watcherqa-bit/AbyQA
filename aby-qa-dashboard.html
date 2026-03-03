@@ -3813,9 +3813,15 @@ function loadReports() {
 function showPanel(id) {
   var panel = document.getElementById("panel-" + id);
   if (!panel) return;
-  document.querySelectorAll(".panel").forEach(function(p) { p.classList.remove("active"); });
+  // Forcer display:none sur tous les panels + retirer la classe active
+  document.querySelectorAll(".panel").forEach(function(p) {
+    p.classList.remove("active");
+    p.style.display = "none";
+  });
   document.querySelectorAll(".nav-item").forEach(function(n) { n.classList.remove("active"); });
+  // Afficher le panel cible
   panel.classList.add("active");
+  panel.style.display = (id === "chat") ? "flex" : "block";
   if (typeof event !== "undefined" && event && event.currentTarget) event.currentTarget.classList.add("active");
   if (id === "backup")            loadReports();
   if (id === "playwright-direct") loadTestQueue();
