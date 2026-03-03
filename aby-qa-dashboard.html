@@ -5122,7 +5122,6 @@ var pwdStepCounter = 0;
 var pwdTestResults = []; // stats globales
 var pwdFullResults  = []; // résultats complets par test (étapes + issues + screenshot)
 
-/
 function switchOpsTab(tab) {
   ['commande','config','tickets'].forEach(function(t) {
     var pane = document.getElementById('ops-pane-' + t);
@@ -5457,7 +5456,7 @@ function opsCreateTestTicket() { showToast('Création ticket Test Xray en cours�
 function opsExportTestCases()  { showToast('Export des cas de test en cours…', '💾'); }
 
 
-/ ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────
+// ── SIDEBAR TOGGLE ────────────────────────────────────────────────────────────────────────────────
 function toggleSidebar() {
   var main      = document.querySelector(".main");
   var collapsed = main.classList.toggle("sidebar-collapsed");
