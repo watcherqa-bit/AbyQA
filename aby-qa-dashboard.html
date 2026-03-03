@@ -3152,80 +3152,6 @@
       </div>
     </div>
 
-    <!-- ── OPÉRATIONS QA ── -->
-    <div class="panel" id="panel-operations">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Opérations <span>QA</span></div>
-          <div class="panel-desc">Centre de commande — saisie libre, tickets, config</div>
-        </div>
-      </div>
-
-      <!-- Barre d'onglets -->
-      <div style="display:flex;gap:6px;margin-bottom:20px">
-        <button id="ops-tab-commande" onclick="opsShowTab('commande')"
-          style="padding:7px 16px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:12px;cursor:pointer">
-          ✏ Commande
-        </button>
-        <button id="ops-tab-config" onclick="opsShowTab('config')"
-          style="padding:7px 16px;border-radius:7px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:12px;cursor:pointer">
-          ⚙ Config
-        </button>
-        <button id="ops-tab-tickets" onclick="opsShowTab('tickets')"
-          style="padding:7px 16px;border-radius:7px;border:1px solid var(--blue);background:var(--blue);color:#fff;font-family:var(--mono);font-size:12px;cursor:pointer">
-          🎫 Tickets
-        </button>
-      </div>
-
-      <!-- Onglet Commande -->
-      <div id="ops-pane-commande" style="display:none">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:10px">SAISIE LIBRE</div>
-        <textarea id="ops-commande-input" placeholder="Décris une action QA en langage naturel…"
-          style="width:100%;height:120px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text);font-family:var(--mono);font-size:13px;resize:vertical"></textarea>
-        <div style="margin-top:10px">
-          <button class="btn btn-primary" onclick="opsRunCommande()">▶ Exécuter</button>
-        </div>
-        <div id="ops-commande-result" style="margin-top:14px;font-size:12px;color:var(--text2);font-family:var(--mono)"></div>
-      </div>
-
-      <!-- Onglet Config -->
-      <div id="ops-pane-config" style="display:none">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:14px">CONFIGURATION RAPIDE</div>
-        <div style="display:grid;gap:10px;max-width:480px">
-          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
-            <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">Polling Jira</span>
-            <button onclick="fetch('/api/polling/toggle',{method:'POST'}).then(function(){loadOpsConfig()})"
-              style="padding:4px 14px;border-radius:5px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:11px;font-family:var(--mono)">Toggle</button>
-          </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
-            <span style="font-size:12px;color:var(--text2);font-family:var(--mono)">Paramètres avancés</span>
-            <button onclick="showPanel('settings')"
-              style="padding:4px 14px;border-radius:5px;border:1px solid var(--blue);background:transparent;color:var(--blue);cursor:pointer;font-size:11px;font-family:var(--mono)">→ Ouvrir</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Onglet Tickets (actif par défaut) -->
-      <div id="ops-pane-tickets" style="display:block">
-        <div style="font-size:11px;font-weight:700;color:var(--text3);font-family:var(--mono);letter-spacing:.08em;margin-bottom:12px">
-          RÉFÉRENCER UN TICKET JIRA (US · BUG · TEST)
-        </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <input type="text" id="ops-jira-key" placeholder="SAFWBST-2605"
-            style="flex:1;font-family:var(--mono);font-size:13px;text-transform:uppercase"
-            oninput="this.value=this.value.toUpperCase()"
-            onkeydown="if(event.key==='Enter') opsLoadTicket()">
-          <button class="btn btn-primary" onclick="opsLoadTicket()" id="ops-btn-charger">Charger</button>
-        </div>
-        <div id="ops-ticket-status" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:12px;min-height:18px"></div>
-        <div id="ops-ticket-result" style="margin-bottom:16px"></div>
-        <button class="btn btn-primary" onclick="opsUseTicket()"
-          style="background:rgba(0,232,122,.15);border:1px solid rgba(0,232,122,.4);color:var(--green)">
-          ✅ Utiliser ces tickets
-        </button>
-      </div>
-    </div>
-
     <!-- ── CHAT IA (Aby) ── -->
     <div class="panel" id="panel-chat">
       <!-- Header -->
@@ -9138,8 +9064,74 @@ document.addEventListener("paste", function(e) {
         }
       }
     }
+    return;
+  }
+
+  // ── Fallback générique : tout textarea focalisé ───────────────────────────
+  var ta = document.activeElement;
+  if (ta && ta.tagName === 'TEXTAREA') {
+    for (var gi = 0; gi < items.length; gi++) {
+      if (items[gi].type.startsWith('image/')) {
+        var gFile = items[gi].getAsFile();
+        if (gFile) {
+          e.preventDefault();
+          var reader = new FileReader();
+          reader.onload = (function(textarea, file) {
+            return function(ev) {
+              taAttachScreenshot(textarea, ev.target.result, file.name || ('screenshot-' + Date.now() + '.png'));
+            };
+          })(ta, gFile);
+          reader.readAsDataURL(gFile);
+          showToast('Screenshot collé dans le champ', '📸');
+          break;
+        }
+      }
+    }
   }
 });
+
+// ── Screenshots attachés aux textareas (map id → [{name, dataUrl}]) ─────────
+var _taScreenshots = {};
+
+function taAttachScreenshot(ta, dataUrl, fname) {
+  var id = ta.id || (ta.id = 'ta-auto-' + Date.now());
+  if (!_taScreenshots[id]) _taScreenshots[id] = [];
+  _taScreenshots[id].push({ name: fname, dataUrl: dataUrl });
+  taRenderChips(ta);
+}
+
+function taGetScreenshots(taId) {
+  return _taScreenshots[taId] || [];
+}
+
+function taRemoveScreenshot(taId, idx) {
+  if (_taScreenshots[taId]) {
+    _taScreenshots[taId].splice(idx, 1);
+    var ta = document.getElementById(taId);
+    if (ta) taRenderChips(ta);
+  }
+}
+
+function taRenderChips(ta) {
+  var id = ta.id;
+  var shots = _taScreenshots[id] || [];
+  var zoneId = 'ta-chips-' + id;
+  var zone = document.getElementById(zoneId);
+  if (!zone) {
+    zone = document.createElement('div');
+    zone.id = zoneId;
+    zone.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px';
+    ta.parentNode.insertBefore(zone, ta.nextSibling);
+  }
+  if (!shots.length) { zone.innerHTML = ''; return; }
+  zone.innerHTML = shots.map(function(s, i) {
+    return '<div style="display:flex;align-items:center;gap:5px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:11px;font-family:var(--mono);color:var(--text2)">' +
+      '<img src="' + s.dataUrl + '" style="height:28px;width:auto;border-radius:3px;object-fit:cover">' +
+      '<span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.name + '</span>' +
+      '<button onclick="taRemoveScreenshot(\'' + id + '\',' + i + ')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">✕</button>' +
+    '</div>';
+  }).join('');
+}
 
 // ── CHAT ABY ────────────────────────────────────────────────────────────────
 var chatHistory      = [];
@@ -10103,77 +10095,6 @@ function pushXraySteps() {
   });
 }
 
-// ── OPÉRATIONS QA ──────────────────────────────────────────
-function opsShowTab(tab) {
-  ['commande', 'config', 'tickets'].forEach(function(t) {
-    var pane = document.getElementById('ops-pane-' + t);
-    var btn  = document.getElementById('ops-tab-' + t);
-    if (!pane || !btn) return;
-    var active = t === tab;
-    pane.style.display = active ? 'block' : 'none';
-    btn.style.background   = active ? 'var(--blue)' : 'var(--bg3)';
-    btn.style.color        = active ? '#fff' : 'var(--text2)';
-    btn.style.borderColor  = active ? 'var(--blue)' : 'var(--border2)';
-  });
-}
-
-function opsLoadTicket() {
-  var key = (document.getElementById('ops-jira-key').value || '').trim().toUpperCase();
-  if (!key) return;
-  var statusEl = document.getElementById('ops-ticket-status');
-  var resultEl = document.getElementById('ops-ticket-result');
-  var btn      = document.getElementById('ops-btn-charger');
-  statusEl.textContent = 'Chargement…';
-  resultEl.innerHTML   = '';
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
-  fetch('/api/jira-ticket/' + key)
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Charger'; }
-      if (d.error) { statusEl.textContent = '❌ ' + d.error; return; }
-      var f = d.fields || {};
-      var type   = (f.issuetype && f.issuetype.name) || '?';
-      var status = (f.status && f.status.name) || '?';
-      var wi     = wfInfo ? wfInfo(status) : { color: '#888', label: status };
-      statusEl.textContent = '✅ Ticket chargé';
-      resultEl.innerHTML =
-        '<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:12px 14px">' +
-          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
-            '<span style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700">' + d.key + '</span>' +
-            '<span style="font-size:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:4px;padding:1px 7px;font-family:var(--mono)">' + type + '</span>' +
-            '<span style="font-size:10px;border-radius:4px;padding:1px 7px;font-family:var(--mono);color:#fff;background:' + wi.color + '">' + wi.label + '</span>' +
-          '</div>' +
-          '<div style="font-size:13px;font-weight:600;color:var(--text)">' + (f.summary || '—') + '</div>' +
-        '</div>';
-    })
-    .catch(function(e) {
-      if (btn) { btn.disabled = false; btn.textContent = 'Charger'; }
-      statusEl.textContent = '❌ Erreur : ' + e.message;
-    });
-}
-
-function opsUseTicket() {
-  var key = (document.getElementById('ops-jira-key').value || '').trim().toUpperCase();
-  if (!key) { showToast('Aucun ticket chargé', '⚠️'); return; }
-  showPanel('enriched');
-  var inp = document.getElementById('jira-import-key');
-  if (inp) inp.value = key;
-  if (typeof importFromJira === 'function') importFromJira();
-  showToast('Ticket ' + key + ' envoyé vers Tickets Enrichis', '🎫');
-}
-
-function opsRunCommande() {
-  var txt = (document.getElementById('ops-commande-input').value || '').trim();
-  if (!txt) return;
-  var res = document.getElementById('ops-commande-result');
-  res.textContent = '⏳ Traitement…';
-  fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: txt, model: 'haiku' })
-  }).then(function(r) { return r.json(); })
-    .then(function(d) { res.textContent = d.reply || d.error || 'Réponse vide'; })
-    .catch(function(e) { res.textContent = '❌ ' + e.message; });
 }
 </script>
 </body>
