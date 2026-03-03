@@ -287,8 +287,19 @@
     min-height: 0;
   }
 
+  /* Chat panel occupe toute la hauteur sans padding */
+  .content:has(#panel-chat.active) {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
   .panel { display: none; }
   .panel.active { display: block; animation: fadeIn .25s ease; }
+
+  /* Le panneau chat doit rester flex (override display:block) */
+  #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
@@ -1086,12 +1097,6 @@
   .chat-attach-chip button {
     background:none; border:none; color:var(--red); cursor:pointer; font-size:12px; padding:0; line-height:1;
   }
-  #chat-drop-zone {
-    border:2px dashed var(--border2); border-radius:8px; padding:10px 14px;
-    font-size:11px; color:var(--text3); transition:border-color .2s, background .2s;
-    text-align:center; cursor:pointer;
-  }
-  #chat-drop-zone.dragover { border-color:var(--blue); background:rgba(59,111,255,.06); color:var(--blue); }
   #chat-input-area {
     padding:12px 16px 14px; border-top:1px solid var(--border); background:var(--bg2); flex-shrink:0;
   }
@@ -2961,7 +2966,10 @@
           <div class="panel-title">Paramètres <span>QA</span></div>
           <div class="panel-desc">Configuration globale — navigateurs, devices, environnements, TNR, polling</div>
         </div>
-        <button class="btn btn-primary" onclick="saveSettingsPanel()">💾 Sauvegarder</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="resetSettingsPanel()" style="color:var(--text2)">↩ Réinitialiser</button>
+          <button class="btn btn-primary" onclick="saveSettingsPanel()">💾 Sauvegarder</button>
+        </div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
@@ -3177,7 +3185,7 @@
         <button class="chat-tool-btn" onclick="openGithubPicker()" title="Importer depuis GitHub">🐙 GitHub</button>
         <button class="chat-tool-btn" onclick="openJiraChatSearch()" title="Chercher un ticket Jira">🎫 Jira</button>
         <button class="chat-tool-btn" onclick="openWebSearch()" title="Recherche web DuckDuckGo">🔍 Web</button>
-        <button class="chat-tool-btn" onclick="openClaudeCodeDialog()" title="Envoyer à Claude Code CLI" style="border-color:rgba(255,165,0,.4);color:var(--orange)">🤖 Claude Code</button>
+        <button class="chat-tool-btn" onclick="openClaudeCodeDialog()" title="Envoyer à Claude Code CLI" style="border-color:rgba(255,165,0,.4);color:var(--orange)">🤖 Code</button>
       </div>
 
       <!-- Zone input -->
@@ -3628,6 +3636,33 @@ function showPanel(id) {
   if (id === "backlog") loadBacklog();
 }
 
+// ── FOCUS TRAP ────────────────────────────────────────────────────────────────
+var _focusTrapHandler = null;
+var _focusTrapPrev    = null;
+var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+function trapFocus(modalEl) {
+  _focusTrapPrev = document.activeElement;
+  var focusable = Array.from(modalEl.querySelectorAll(FOCUSABLE));
+  if (!focusable.length) return;
+  focusable[0].focus();
+  _focusTrapHandler = function(e) {
+    if (e.key !== "Tab") return;
+    var active = focusable.filter(function(el) { return !el.closest('[style*="display:none"]'); });
+    if (!active.length) return;
+    var first = active[0], last = active[active.length - 1];
+    if (e.shiftKey) { if (document.activeElement === first) { e.preventDefault(); last.focus(); } }
+    else            { if (document.activeElement === last)  { e.preventDefault(); first.focus(); } }
+  };
+  modalEl.addEventListener("keydown", _focusTrapHandler);
+}
+
+function releaseFocus(modalEl) {
+  if (_focusTrapHandler) { modalEl.removeEventListener("keydown", _focusTrapHandler); _focusTrapHandler = null; }
+  if (_focusTrapPrev && _focusTrapPrev.focus) _focusTrapPrev.focus();
+  _focusTrapPrev = null;
+}
+
 // ── TOAST ─────────────────────────────────────────────────────────────────────
 function showToast(msg, icon) {
   var t = document.getElementById("toast");
@@ -3698,6 +3733,7 @@ function updateLastXMLImportStatus(status) {
 }
 
 function clearXMLImports() {
+  if (!confirm("Effacer tout l'historique des imports ? Cette action est irréversible.")) return;
   localStorage.removeItem(XML_IMPORTS_KEY);
   renderRecentImports();
 }
@@ -3910,6 +3946,10 @@ function previewPipeline() {
     if (!g&&!w&&!t) { showToast("Remplis au moins un champ Étant donné / Lorsque / Alors", "⚠️"); return; }
   }
   if (currentSource === "bug" && !loadedBugKey) { showToast("Charge un ticket Bug d'abord", "⚠️"); return; }
+
+  // Valider la configuration
+  var envs = getSelectedEnvs();
+  if (!envs.length) { showToast("Sélectionne au moins un environnement", "⚠️"); return; }
 
   // Lire le XML si source xml
   if (currentSource === "xml" && xmlFile) {
@@ -4148,6 +4188,7 @@ function renderPreviewModal(tickets, src, release) {
   var modal = document.getElementById("previewModal");
   modal.style.display = "flex";
   document.body.style.overflow = "hidden";
+  trapFocus(modal);
 }
 
 // ── RENDU UN TICKET DANS LA PRÉVISUALISATION ──────────────────────────────────
@@ -4339,7 +4380,7 @@ function escHtml(str) {
 // ── FERMER / CONFIRMER ────────────────────────────────────────────────────────
 function closePreview() {
   var modal = document.getElementById("previewModal");
-  if (modal) modal.style.display = "none";
+  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
   document.body.style.overflow = "";
 }
 
@@ -5151,6 +5192,39 @@ function loadSettingsPanel() {
     .catch(function() {});
 }
 
+function resetSettingsPanel() {
+  if (!confirm("Réinitialiser les paramètres aux valeurs par défaut ?")) return;
+  // Navigateurs
+  ["chromium","firefox","webkit"].forEach(function(b) {
+    var el = document.getElementById("cfg-br-" + b);
+    if (el) el.checked = (b === "chromium");
+  });
+  // Devices
+  ["desktop","tablet","iphone","samsung"].forEach(function(d) {
+    var el = document.getElementById("cfg-dev-" + d);
+    if (el) el.checked = (d === "desktop");
+  });
+  // Environnements
+  ["sophie","prod","paulo"].forEach(function(e) {
+    var el = document.getElementById("cfg-env-" + e);
+    if (el) el.checked = (e === "sophie" || e === "prod");
+  });
+  // TNR
+  var tnrEnabled = document.getElementById("cfg-tnr-enabled");
+  var tnrHour    = document.getElementById("cfg-tnr-hour");
+  if (tnrEnabled) tnrEnabled.checked = false;
+  if (tnrHour)    tnrHour.value = "22:00";
+  // Polling
+  var polEnabled  = document.getElementById("cfg-pol-enabled");
+  var polInterval = document.getElementById("cfg-pol-interval");
+  if (polEnabled)  polEnabled.checked = false;
+  if (polInterval) polInterval.value  = "5";
+  // Release
+  var cfgRel = document.getElementById("cfg-latest-release");
+  if (cfgRel) cfgRel.value = "v1.25.0";
+  showToast("Paramètres réinitialisés — clique sur Sauvegarder pour confirmer", "↩");
+}
+
 function saveSettingsPanel() {
   var browsers = [];
   ["chromium","firefox","webkit"].forEach(function(b) {
@@ -5416,12 +5490,12 @@ function openCycleErrModal(cycleId) {
   if (relaunchBtn) relaunchBtn.style.display = cycleId === 1 ? "none" : "inline-block";
 
   _cycleErrModalId = cycleId;
-  if (modal) { modal.style.display = "flex"; }
+  if (modal) { modal.style.display = "flex"; trapFocus(modal); }
 }
 
 function closeCycleErrModal() {
   var modal = document.getElementById("cycle-err-modal");
-  if (modal) modal.style.display = "none";
+  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
 }
 
 function relaunchCycleFromModal() {
@@ -5712,6 +5786,11 @@ function launchPWDTest() {
   var instructions = document.getElementById("pwd-instructions") ? document.getElementById("pwd-instructions").value.trim() : "";
   var selectors    = document.getElementById("pwd-selectors")    ? document.getElementById("pwd-selectors").value.trim()    : "";
 
+  // Validation environnement / navigateur / device
+  if (!selectedEnvs.length)  { showToast("Sélectionne au moins un environnement", "⚠️"); return; }
+  if (!browsers.length)      { showToast("Sélectionne au moins un navigateur", "⚠️"); return; }
+  if (!devices.length)       { showToast("Sélectionne au moins un device", "⚠️"); return; }
+
   // Validation source
   if (pwdSource === "url") {
     var urlsRaw = document.getElementById("pwd-urls") ? document.getElementById("pwd-urls").value.trim() : "";
@@ -5908,6 +5987,7 @@ function openPWDResultModal() {
 
       modal.style.display = "block";
       document.body.style.overflow = "hidden";
+      trapFocus(modal);
     })
     .catch(function() {
       showToast("Impossible de charger les résultats", "⚠️");
@@ -5993,7 +6073,7 @@ function sendValidatedBugs() {
 
 function closePWDResult() {
   var modal = document.getElementById("pwdResultModal");
-  if (modal) modal.style.display = "none";
+  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
   document.body.style.overflow = "";
 }
 
@@ -8315,12 +8395,12 @@ function generateMatrix() {
 // ── MODAL MISE À JOUR TICKET ──────────────────────────────────────────────────
 function openUpdateTicket() {
   var modal = document.getElementById("updateModal");
-  if (modal) modal.style.display = "flex";
+  if (modal) { modal.style.display = "flex"; trapFocus(modal); }
 }
 
 function closeUpdateModal() {
   var modal = document.getElementById("updateModal");
-  if (modal) modal.style.display = "none";
+  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
 }
 
 function searchTicket() {
@@ -8428,6 +8508,7 @@ var _wsResults       = []; // résultats web en attente d'injection
 
 // ── Gestion des pièces jointes ───────────────────────────────────────────────
 function clearChat() {
+  if (!confirm("Vider la conversation ? Cette action est irréversible.")) return;
   chatHistory     = [];
   chatStreaming    = false;
   _chatStreamEl   = null;
