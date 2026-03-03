@@ -310,13 +310,21 @@
     flex-direction: column;
   }
 
+  /* Opérations panel : content sans padding pour que le panel prenne toute la hauteur */
+  .content:has(#panel-operations.active) {
+    padding: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
   .panel { display: none; }
   .panel.active { display: block; animation: fadeIn .25s ease; }
 
   /* Le panneau chat doit rester flex (override display:block) */
   #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
-  /* Le panneau opérations aussi */
-  #panel-operations.active { display: flex; flex-direction: column; animation: fadeIn .25s ease; }
+  /* Le panneau opérations : flex-column avec hauteur contrainte pour que les onglets soient visibles */
+  #panel-operations.active { display: flex; flex-direction: column; flex: 1; min-height: 0; animation: fadeIn .25s ease; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
