@@ -9112,8 +9112,72 @@ document.addEventListener("paste", function(e) {
         }
       }
     }
+    return;
+  }
+
+  // Fallback générique — tout textarea focalisé dans n'importe quel panel
+  var activeEl = document.activeElement;
+  if (activeEl && activeEl.tagName === "TEXTAREA") {
+    for (var gi = 0; gi < items.length; gi++) {
+      if (items[gi].type.startsWith("image/")) {
+        var gFile = items[gi].getAsFile();
+        if (gFile) {
+          e.preventDefault();
+          var gReader = new FileReader();
+          gReader.onload = (function(ta, fname) {
+            return function(ev) {
+              taShowChip(ta, ev.target.result, fname);
+            };
+          })(activeEl, "screenshot-" + Date.now() + ".png");
+          gReader.readAsDataURL(gFile);
+          showToast("Screenshot collé dans le champ", "📸");
+          break;
+        }
+      }
+    }
   }
 });
+
+// ── Screenshots génériques sur textareas ─────────────────────────────────────
+var _taShots = {};
+
+function taShowChip(ta, dataUrl, fname) {
+  if (!ta.id) ta.id = "ta-" + Date.now();
+  var id = ta.id;
+  if (!_taShots[id]) _taShots[id] = [];
+  _taShots[id].push({ dataUrl: dataUrl, fname: fname });
+  taRenderChips(id);
+}
+
+function taRenderChips(id) {
+  var zoneId = "ta-chips-" + id;
+  var zone = document.getElementById(zoneId);
+  if (!zone) {
+    var ta = document.getElementById(id);
+    if (!ta) return;
+    zone = document.createElement("div");
+    zone.id = zoneId;
+    zone.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:6px";
+    ta.parentNode.insertBefore(zone, ta.nextSibling);
+  }
+  var shots = _taShots[id] || [];
+  if (!shots.length) { zone.innerHTML = ""; return; }
+  zone.innerHTML = shots.map(function(s, i) {
+    return '<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:4px 8px">' +
+      '<img src="' + s.dataUrl + '" style="height:26px;border-radius:3px">' +
+      '<span style="font-size:11px;font-family:var(--mono);color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + s.fname + '</span>' +
+      '<button onclick="_taRemove(\'' + id + '\',' + i + ')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px;line-height:1">✕</button>' +
+    '</div>';
+  }).join("");
+}
+
+function _taRemove(id, idx) {
+  if (_taShots[id]) { _taShots[id].splice(idx, 1); taRenderChips(id); }
+}
+
+function taGetShots(taId) {
+  return (_taShots[taId] || []).map(function(s) { return { dataUrl: s.dataUrl, fname: s.fname }; });
+}
 
 // ── CHAT ABY ────────────────────────────────────────────────────────────────
 var chatHistory      = [];
