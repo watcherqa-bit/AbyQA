@@ -3,6 +3,11 @@
 // Usage : node agent-inspector.js --env=sophie --url=/fr [--force=true]
 "use strict";
 
+// Forcer le chemin des navigateurs Playwright (Render/cloud Linux uniquement)
+if (!process.env.PLAYWRIGHT_BROWSERS_PATH && process.platform !== "win32") {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = require("path").join(__dirname, ".playwright");
+}
+
 const { chromium } = require("playwright");
 const fs     = require("fs");
 const path   = require("path");

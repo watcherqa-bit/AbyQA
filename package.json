@@ -5,7 +5,7 @@
   "main": "agent-server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "npx playwright install chromium || true"
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=./.playwright npx playwright install chromium || true"
   },
   "keywords": [],
   "author": "",
