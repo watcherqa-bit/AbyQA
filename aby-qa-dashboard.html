@@ -315,6 +315,8 @@
 
   /* Le panneau chat doit rester flex (override display:block) */
   #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
+  /* Le panneau opérations aussi */
+  #panel-operations.active { display: flex; flex-direction: column; animation: fadeIn .25s ease; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
