@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aby QA V2 — Dashboard</title>
+<title>Aby QA — Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -81,7 +81,22 @@
     font-size: 14px;
     color: #fff;
     box-shadow: 0 0 20px rgba(59,111,255,.4);
+    cursor: pointer;
+    overflow: hidden;
+    position: relative;
   }
+  .logo-icon img {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
+  }
+  .logo-icon:hover::after {
+    content: '✏️';
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.5);
+    font-size: 16px;
+    border-radius: 10px;
+  }
+  #logo-file-input { display: none; }
 
   .logo-text {
     font-family: var(--mono);
@@ -1133,9 +1148,12 @@
 <!-- HEADER -->
 <header>
   <div class="logo">
-    <div class="logo-icon">AQ</div>
+    <div class="logo-icon" onclick="document.getElementById('logo-file-input').click()" title="Cliquer pour personnaliser le logo">
+      <span id="logo-content">AQ</span>
+    </div>
+    <input type="file" id="logo-file-input" accept="image/*" onchange="updateLogo(this)">
     <div>
-      <div class="logo-text">Aby <span>QA</span> V2</div>
+      <div class="logo-text">Aby <span>QA</span></div>
       <div class="logo-sub">ORCHESTRATEUR QA — SAFRAN</div>
     </div>
   </div>
@@ -1174,27 +1192,12 @@
         <span class="nav-text">Chat Aby</span>
       </div>
 
-      <!-- Pipeline QA -->
+      <!-- Opérations -->
       <div class="sidebar-group">
-        <div class="sidebar-group-label">Pipeline QA</div>
-        <div class="nav-item" onclick="showPanel('pipeline')" title="Pipeline Jira — Import XML / Spec / Manual / Bug">
+        <div class="sidebar-group-label">Opérations</div>
+        <div class="nav-item" onclick="showPanel('operations')" title="Centre de commande — toutes les opérations QA">
           <div class="icon">⚡</div>
-          <span class="nav-text">Pipeline Jira</span>
-        </div>
-        <div class="nav-item" onclick="showPanel('enriched')" title="Tickets Enrichis — US / Bug / Test / Task">
-          <div class="icon">✏️</div>
-          <span class="nav-text">Tickets Enrichis</span>
-          <span class="nav-badge new nav-text" id="badge-enriched" style="display:none">0</span>
-        </div>
-        <div class="nav-item" onclick="showPanel('backlog')" title="Backlog QA — Tickets en attente et archivés">
-          <div class="icon">📋</div>
-          <span class="nav-text">Backlog QA</span>
-          <span class="nav-badge new nav-text" id="badge-backlog" style="display:none">0</span>
-        </div>
-        <div class="nav-item" onclick="showPanel('playwright-direct')" title="Playwright Direct — Lancer des tests ciblés">
-          <div class="icon">🎯</div>
-          <span class="nav-text">Playwright Direct</span>
-          <span class="nav-badge new nav-text" id="badge-tests-queue" style="display:none">0</span>
+          <span class="nav-text">Opérations</span>
         </div>
       </div>
 
@@ -3344,7 +3347,319 @@
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:4px;border-top:1px solid var(--border)">
       <span style="font-size:11px;color:var(--text3)">Cliquez sur une URL ou "Tout ajouter" pour l'injecter dans le champ</span>
       <button onclick="closeTicketUrlPicker()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:7px 18px;cursor:pointer;font-size:12px">Fermer</button>
+    
+    <!-- ══ OPÉRATIONS ══ -->
+    <div class="panel" id="panel-operations">
+      <div class="panel-header" style="flex-shrink:0">
+        <div>
+          <div class="panel-title">Opérations <span>QA</span></div>
+          <div class="panel-desc">Centre de commande — décris ta demande, l'app route et exécute</div>
+        </div>
+        <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
+
+        <!-- Zone saisie centrale -->
+        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
+          <textarea id="ops-input" rows="4"
+            placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;"
+            style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
+            onkeydown="opsInputKeydown(event)"></textarea>
+
+          <!-- Pills contexte -->
+          <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
+
+          <!-- Toolbar -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
+            <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Joindre fichier XML, PDF, spec">📎 Fichier</button>
+            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira existant">🎫 Ticket</button>
+            <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Joindre un screenshot">🖼 Screenshot</button>
+            <button class="chat-tool-btn" onclick="toggleOpsOptions()" id="ops-options-btn" title="Options avancées">⚙️ Options</button>
+            <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
+            <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
+            <div style="flex:1"></div>
+            <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 20px;font-size:13px">🔍 Analyser</button>
+          </div>
+        </div>
+
+        <!-- Options avancées -->
+        <div id="ops-options-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">ENVIRONNEMENTS</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-sophie" checked> Sophie</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-paulo"> Paulo</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-env-prod"> Prod</label>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">NAVIGATEURS</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-chromium" checked> Chromium</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-firefox"> Firefox</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-br-webkit"> WebKit</label>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">DEVICES</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-desktop" checked> Desktop</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-tablet"> iPad</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-iphone"> iPhone</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung</label>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-end">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
+              <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px">
+                <option value="auto">Automatique (détection)</option>
+                <option value="ui">UI Playwright</option>
+                <option value="api">API REST</option>
+                <option value="fix">Correctif</option>
+                <option value="tnr">TNR Complet</option>
+                <option value="manual">Manuel</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">RELEASE</div>
+              <input type="text" id="ops-release" placeholder="v1.25.0" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:120px">
+            </div>
+          </div>
+        </div>
+
+        <!-- Ticket picker -->
+        <div id="ops-ticket-picker" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">RÉFÉRENCER UN TICKET JIRA</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:var(--mono)">
+            <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:12px">Charger</button>
+            <button class="btn" onclick="document.getElementById('ops-ticket-picker').style.display='none'" style="font-size:12px">✕</button>
+          </div>
+          <div id="ops-ticket-preview" style="margin-top:10px;font-size:12px;color:var(--text2);font-family:var(--mono)"></div>
+        </div>
+
+        <!-- Bloc confirmation intention -->
+        <div id="ops-confirm-block" style="display:none;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
+              <div id="ops-intent-label" style="font-size:15px;font-weight:600;color:var(--text)"></div>
+              <div id="ops-intent-detail" style="font-size:12px;color:var(--text2);margin-top:4px;font-family:var(--mono)"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn" onclick="opsReset()" style="font-size:12px;padding:6px 14px">✏️ Modifier</button>
+              <button class="btn btn-primary" onclick="opsExecute()" id="ops-execute-btn" style="font-size:12px;padding:6px 18px">🚀 Lancer</button>
+            </div>
+          </div>
+          <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+
+        <!-- Steps manuels -->
+        <div id="ops-steps-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
+            <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
+          </div>
+          <div id="ops-steps-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="opsSendToXray()" style="font-size:12px">📋 Envoyer vers Xray</button>
+            <button class="btn" onclick="opsSaveStepsDraft()" style="font-size:12px">💾 Brouillon</button>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div id="ops-terminal-wrap" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL</div>
+            <div style="display:flex;gap:8px">
+              <button onclick="stopAgent()" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">⏹ Stop</button>
+              <button onclick="clearLog('ops-log')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Vider</button>
+            </div>
+          </div>
+          <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
+        </div>
+
+        <!-- Résultats -->
+        <div id="ops-results-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
+          <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
+
+          <!-- Cas de test auto générés -->
+          <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">CAS DE TEST GÉNÉRÉS</div>
+            <div id="ops-test-cases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" onclick="opsCreateTestTicket()" style="font-size:12px">📋 Créer ticket Test Xray</button>
+              <button class="btn" onclick="opsExportTestCases()" style="font-size:12px">💾 Exporter</button>
+            </div>
+          </div>
+
+          <!-- Tickets avec workflow -->
+          <div id="ops-tickets-block" style="display:none">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">TICKETS</div>
+            <div id="ops-tickets-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+        </div>
+
+      </div>
     </div>
+
+
+    <!-- ══ OPÉRATIONS ══ -->
+    <div class="panel" id="panel-operations">
+      <div class="panel-header" style="flex-shrink:0">
+        <div>
+          <div class="panel-title">Opérations <span>QA</span></div>
+          <div class="panel-desc">Centre de commande — décris ta demande, l'app route et exécute</div>
+        </div>
+        <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;overflow-y:auto;padding-bottom:12px">
+
+        <!-- Zone saisie centrale -->
+        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
+          <textarea id="ops-input" rows="4"
+            placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;"
+            style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
+            onkeydown="opsInputKeydown(event)"></textarea>
+
+          <!-- Pills contexte -->
+          <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
+
+          <!-- Toolbar -->
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
+            <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Joindre fichier XML, PDF, spec">📎 Fichier</button>
+            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira existant">🎫 Ticket</button>
+            <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Joindre un screenshot">🖼 Screenshot</button>
+            <button class="chat-tool-btn" onclick="toggleOpsOptions()" id="ops-options-btn" title="Options avancées">⚙️ Options</button>
+            <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
+            <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
+            <div style="flex:1"></div>
+            <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 20px;font-size:13px">🔍 Analyser</button>
+          </div>
+        </div>
+
+        <!-- Options avancées -->
+        <div id="ops-options-panel" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">ENVIRONNEMENTS</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-sophie" checked> Sophie</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-env-paulo"> Paulo</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-env-prod"> Prod</label>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">NAVIGATEURS</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-chromium" checked> Chromium</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-br-firefox"> Firefox</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-br-webkit"> WebKit</label>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">DEVICES</div>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-desktop" checked> Desktop</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-tablet"> iPad</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px"><input type="checkbox" id="ops-dev-iphone"> iPhone</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="ops-dev-samsung"> Samsung</label>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:14px;align-items:flex-end">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">MODE TEST</div>
+              <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px">
+                <option value="auto">Automatique (détection)</option>
+                <option value="ui">UI Playwright</option>
+                <option value="api">API REST</option>
+                <option value="fix">Correctif</option>
+                <option value="tnr">TNR Complet</option>
+                <option value="manual">Manuel</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">RELEASE</div>
+              <input type="text" id="ops-release" placeholder="v1.25.0" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;width:120px">
+            </div>
+          </div>
+        </div>
+
+        <!-- Ticket picker -->
+        <div id="ops-ticket-picker" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:10px">RÉFÉRENCER UN TICKET JIRA</div>
+          <div style="display:flex;gap:8px">
+            <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
+              style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 12px;font-size:13px;font-family:var(--mono)">
+            <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:12px">Charger</button>
+            <button class="btn" onclick="document.getElementById('ops-ticket-picker').style.display='none'" style="font-size:12px">✕</button>
+          </div>
+          <div id="ops-ticket-preview" style="margin-top:10px;font-size:12px;color:var(--text2);font-family:var(--mono)"></div>
+        </div>
+
+        <!-- Bloc confirmation intention -->
+        <div id="ops-confirm-block" style="display:none;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+            <div>
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
+              <div id="ops-intent-label" style="font-size:15px;font-weight:600;color:var(--text)"></div>
+              <div id="ops-intent-detail" style="font-size:12px;color:var(--text2);margin-top:4px;font-family:var(--mono)"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-shrink:0">
+              <button class="btn" onclick="opsReset()" style="font-size:12px;padding:6px 14px">✏️ Modifier</button>
+              <button class="btn btn-primary" onclick="opsExecute()" id="ops-execute-btn" style="font-size:12px;padding:6px 18px">🚀 Lancer</button>
+            </div>
+          </div>
+          <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+
+        <!-- Steps manuels -->
+        <div id="ops-steps-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
+            <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
+          </div>
+          <div id="ops-steps-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="opsSendToXray()" style="font-size:12px">📋 Envoyer vers Xray</button>
+            <button class="btn" onclick="opsSaveStepsDraft()" style="font-size:12px">💾 Brouillon</button>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div id="ops-terminal-wrap" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL</div>
+            <div style="display:flex;gap:8px">
+              <button onclick="stopAgent()" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">⏹ Stop</button>
+              <button onclick="clearLog('ops-log')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Vider</button>
+            </div>
+          </div>
+          <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
+        </div>
+
+        <!-- Résultats -->
+        <div id="ops-results-block" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
+          <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
+
+          <!-- Cas de test auto générés -->
+          <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">CAS DE TEST GÉNÉRÉS</div>
+            <div id="ops-test-cases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" onclick="opsCreateTestTicket()" style="font-size:12px">📋 Créer ticket Test Xray</button>
+              <button class="btn" onclick="opsExportTestCases()" style="font-size:12px">💾 Exporter</button>
+            </div>
+          </div>
+
+          <!-- Tickets avec workflow -->
+          <div id="ops-tickets-block" style="display:none">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">TICKETS</div>
+            <div id="ops-tickets-list" style="display:flex;flex-direction:column;gap:8px"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+</div>
 
   </div>
 </div>
@@ -3411,6 +3726,10 @@ function connectSSE() {
 }
 
 function handleSSE(data) {
+  // Si le panneau Opérations est actif, rediriger les logs vers ops-log
+  var opsPanel = document.getElementById('panel-operations');
+  var opsActive = opsPanel && opsPanel.classList.contains('active');
+
   var termMap = {
     "css-audit":         "logCSS",
     "playwright":        "logCSS",
@@ -3422,7 +3741,8 @@ function handleSSE(data) {
     "generate-ticket":   "logTickets",
     "playwright-direct": "logPWDirect",
   };
-  var termId = termMap[data.agent] || "logPipeline";
+  var termId = opsActive ? "ops-log" : (termMap[data.agent] || "logPipeline");
+  if (opsActive) document.getElementById('ops-terminal-wrap').style.display = 'block';
   var isLLM = false;
 
   if (data.type === "start") {
@@ -3662,6 +3982,36 @@ function releaseFocus(modalEl) {
   if (_focusTrapPrev && _focusTrapPrev.focus) _focusTrapPrev.focus();
   _focusTrapPrev = null;
 }
+
+// ── LOGO PERSONNALISÉ ─────────────────────────────────────────────────────────
+function updateLogo(input) {
+  var file = input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var data = e.target.result;
+    localStorage.setItem('aby-logo', data);
+    applyLogo(data);
+    showToast('Logo mis à jour', '🖼');
+  };
+  reader.readAsDataURL(file);
+}
+
+function applyLogo(data) {
+  var el = document.getElementById('logo-content');
+  if (!el) return;
+  if (data.startsWith('data:image')) {
+    el.innerHTML = '<img src="' + data + '" alt="logo">';
+  } else {
+    el.textContent = data; // emoji ou texte
+  }
+}
+
+// Charger le logo sauvegardé au démarrage
+(function() {
+  var saved = localStorage.getItem('aby-logo');
+  if (saved) applyLogo(saved);
+})();
 
 // ── TOAST ─────────────────────────────────────────────────────────────────────
 function showToast(msg, icon) {
