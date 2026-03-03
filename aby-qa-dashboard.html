@@ -315,6 +315,7 @@
 
   /* Le panneau chat doit rester flex (override display:block) */
   #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
+  #panel-operations { min-height: 400px; overflow: visible; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
@@ -3350,6 +3351,7 @@
     
     <!-- ══ OPÉRATIONS ══ -->
     <div class="panel" id="panel-operations">
+      <div id="ops-debug" style="color:red;font-size:20px;font-weight:bold;padding:8px;background:yellow">✅ PANEL OK — version c07</div>
 
       <!-- ── EN-TÊTE ── -->
       <div class="panel-header" style="margin-bottom:0;padding-bottom:16px;flex-shrink:0">
