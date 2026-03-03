@@ -5174,17 +5174,12 @@ function opsInputKeydown(e) {
 }
 
 function toggleOpsOptions() {
-  var panel = document.getElementById('ops-options-panel');
-  var btn   = document.getElementById('ops-options-btn');
-  if (!panel) return;
-  var visible = panel.style.display !== 'none';
-  panel.style.display = visible ? 'none' : 'block';
-  if (btn) btn.style.borderColor = visible ? '' : 'var(--blue)';
+  // redirige vers l'onglet Config
+  switchOpsTab('config');
 }
 
 function opsPickTicket() {
-  var picker = document.getElementById('ops-ticket-picker');
-  if (picker) picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+  switchOpsTab('tickets');
 }
 
 function opsLoadTicket() {
@@ -5193,21 +5188,23 @@ function opsLoadTicket() {
   if (!key) { showToast('Saisis une clé Jira', '⚠️'); return; }
   var preview = document.getElementById('ops-ticket-preview');
   if (preview) preview.textContent = 'Chargement…';
-  fetch(SERVER + '/api/jira-ticket?key=' + encodeURIComponent(key))
+  fetch(SERVER + '/api/jira-ticket/' + encodeURIComponent(key))
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      var summary = (d.ticket && d.ticket.summary) ? d.ticket.summary : key;
-      var type    = (d.ticket && d.ticket.type)    ? d.ticket.type    : 'ticket';
+      var f       = d.fields || {};
+      var summary = f.summary || key;
+      var type    = (f.issuetype && f.issuetype.name) || 'ticket';
       opsTickets.push({ key: key, summary: summary, type: type });
-      if (preview) preview.textContent = type + ' — ' + summary;
+      if (preview) preview.textContent = '✅ ' + type + ' — ' + summary;
       opsRenderPills();
-      document.getElementById('ops-ticket-picker').style.display = 'none';
+      opsRenderLoadedTickets();
       showToast(key + ' ajouté au contexte', '🎫');
     })
     .catch(function() {
       opsTickets.push({ key: key, summary: key, type: 'ticket' });
       opsRenderPills();
-      document.getElementById('ops-ticket-picker').style.display = 'none';
+      opsRenderLoadedTickets();
+      if (preview) preview.textContent = '⚠️ Ticket ajouté sans détails';
     });
 }
 
