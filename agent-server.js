@@ -532,25 +532,37 @@ var server = http.createServer(function(req, res) {
           "- US   : \"User Story - [NOM_EPIC] - fonctionnalité à développer\"  (omettre [NOM_EPIC] si aucun epic)\n" +
           "- TEST : \"Test - [Titre de l'US] - test à effectuer\"               (omettre l'US si absente)\n" +
           "- BUG  : \"Bug - [Titre de l'US] - nom du bug\"                      (omettre l'US si absente)\n\n" +
-          "Selon le type, retourne UN seul objet JSON :\n\n" +
+          "Selon le type, retourne UN seul objet JSON.\n\n" +
+          "CHAMP COMMUN À TOUS LES TYPES — proposedTests :\n" +
+          "C'est le champ le plus important. Génère des VRAIS scénarios de test avec des étapes concrètes et exécutables.\n" +
+          "Chaque étape doit être une ACTION précise (naviguer, cliquer, saisir, vérifier, attendre).\n" +
+          "\"proposedTests\":[\n" +
+          "  {\"name\":\"Nom du scénario\",\"type\":\"auto|manual\",\n" +
+          "   \"steps\":[\"Naviguer vers https://...\",\"Cliquer sur le sélecteur X\",\"Saisir 'valeur' dans le champ Y\",\"Vérifier que Z est visible/contient 'texte'\"],\n" +
+          "   \"expectedResult\":\"Résultat final attendu du scénario\"}\n" +
+          "]\n\n" +
           "Si US :\n" +
           "{\"ticketType\":\"US\",\"title\":\"User Story - [EPIC] - ...\",\n" +
           " \"description\":\"En tant que [persona], je veux [action], afin de [bénéfice].\",\n" +
           " \"acceptanceCriteria\":[\"Étant donné... Lorsque... Alors...\"],\n" +
           " \"testCoverage\":{\"count\":5,\"types\":[\"e2e\"],\"notes\":\"...\"},\n" +
-          " \"automationType\":\"auto|manual|mix\",\"automationJustification\":\"...\",\"priority\":\"Haute\"}\n\n" +
+          " \"automationType\":\"auto|manual|mix\",\"automationJustification\":\"...\",\"priority\":\"Haute\",\n" +
+          " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"...\"],\"expectedResult\":\"...\"}]}\n\n" +
           "Si TEST :\n" +
           "{\"ticketType\":\"TEST\",\"title\":\"Test - [Titre_US] - ...\",\n" +
           " \"description\":\"...\",\"testType\":\"auto|manual\",\"testTypeJustification\":\"...\",\n" +
-          " \"testCases\":[{\"id\":\"TC-01\",\"action\":\"Étant donné...\\nLorsque...\\nAlors...\",\"data\":\"• Clé: Valeur\",\"expected\":\"• Critère 1\\n• Critère 2\"}]}\n\n" +
+          " \"testCases\":[{\"id\":\"TC-01\",\"action\":\"Étant donné...\\nLorsque...\\nAlors...\",\"data\":\"• Clé: Valeur\",\"expected\":\"• Critère 1\\n• Critère 2\"}],\n" +
+          " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"...\"],\"expectedResult\":\"...\"}]}\n\n" +
           "Si BUG :\n" +
           "{\"ticketType\":\"BUG\",\"title\":\"Bug - [Titre_US] - ...\",\n" +
           " \"description\":\"...\",\n" +
           " \"steps\":[\"1. Accéder à...\",\"2. Cliquer sur...\"],\n" +
           " \"actualResult\":\"...\",\"expectedResult\":\"...\",\n" +
           " \"severity\":\"Critique|Majeur|Mineur|Cosmétique\",\n" +
-          " \"fixTests\":[\"Vérifier que...\",\"Tester le cas nominal...\"]}\n\n" +
-          "Génère entre 3 et 6 acceptanceCriteria (US), 3 à 6 testCases (TEST), 3 à 6 steps + 2 à 4 fixTests (BUG).";
+          " \"fixTests\":[\"Vérifier que...\",\"Tester le cas nominal...\"],\n" +
+          " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"Naviguer vers URL réelle\",\"Effectuer l'action précise\",\"Vérifier le comportement attendu\"],\"expectedResult\":\"...\"}]}\n\n" +
+          "Génère : 3-6 acceptanceCriteria (US), 3-6 testCases (TEST), 3-6 steps + 2-4 fixTests (BUG).\n" +
+          "Pour proposedTests : 2 à 4 scénarios couvrant le cas nominal, le cas limite, et la régression.";
 
         var result = await leadQA.askJSON(prompt, "claude-sonnet-4-6");
 
