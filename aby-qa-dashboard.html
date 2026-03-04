@@ -145,22 +145,23 @@
 
   /* ── MAIN LAYOUT ── */
   .main {
-    position: relative;
+    position: relative;   /* contexte pour les absolute children */
     z-index: 5;
-    display: flex;          /* flex au lieu de grid — scroll fiable cross-browser */
-    flex: 1;
+    flex: 1;              /* prend toute la hauteur restante sous le header */
     min-height: 0;
     overflow: hidden;
   }
 
   /* ── SIDEBAR ── */
   .sidebar {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
     width: 260px;
-    flex-shrink: 0;         /* largeur fixe, ne rétrécit pas */
     border-right: 1px solid var(--border);
     background: rgba(17,21,32,.6);
     padding: 24px 0;
     overflow-y: auto;
+    z-index: 2;
   }
 
   .sidebar-section {
@@ -272,7 +273,8 @@
   }
   .sidebar-toggle:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
 
-  .main.sidebar-collapsed .sidebar { width: 64px; }
+  .main.sidebar-collapsed .sidebar { width: 64px; overflow: hidden; }
+  .main.sidebar-collapsed .content  { left: 64px; }
   .main.sidebar-collapsed .nav-text,
   .main.sidebar-collapsed .nav-badge,
   .main.sidebar-collapsed .sidebar-label,
@@ -281,7 +283,6 @@
   .main.sidebar-collapsed .nav-item { justify-content: center; padding: 9px 4px; }
   .main.sidebar-collapsed .sidebar-section { padding: 0 8px; }
   .main.sidebar-collapsed .nav-item .icon { margin: 0; }
-  .main.sidebar-collapsed .sidebar { overflow: hidden; }
 
   /* ── BACKLOG FILTERS ── */
   .bl-filter {
@@ -299,11 +300,10 @@
 
   /* ── CONTENT ── */
   .content {
-    flex: 1;            /* occupe tout l'espace restant */
-    min-width: 0;       /* évite le débordement horizontal */
-    min-height: 0;      /* permet au flex item de rétrécir sous son contenu */
+    position: absolute;
+    top: 0; left: 260px; right: 0; bottom: 0;  /* borné par .main */
     padding: 32px;
-    overflow-y: auto;   /* scroll vertical activé dès que le contenu dépasse */
+    overflow-y: auto;   /* scroll garanti : hauteur = bottom-top = hauteur de .main */
   }
 
   /* Chat panel occupe toute la hauteur sans padding */
