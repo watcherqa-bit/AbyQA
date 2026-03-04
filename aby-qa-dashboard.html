@@ -259,8 +259,8 @@
   }
 
   /* ── SIDEBAR COLLAPSIBLE ── */
-  .sidebar { position: relative; transition: all .25s ease; overflow: visible; }
-  .main    { transition: grid-template-columns .25s ease; }
+  .sidebar { transition: width .25s ease; }   /* animation collapse — ne réécrit PAS position/overflow */
+  .main    { transition: none; }
 
   .sidebar-toggle {
     position: absolute; right: -14px; top: 20px;
