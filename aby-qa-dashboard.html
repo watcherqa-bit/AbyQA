@@ -5433,10 +5433,17 @@ function opsLocalRoute(text) {
   if (t.includes('matrice') || t.includes('excel'))  return { agent:'matrix',     label:'📐 Matrice QA',      detail:'Génération Excel traceabilité' };
   if (t.includes('rapport') || t.includes('report')) return { agent:'reporter',   label:'📄 Rapport',         detail:'Génération rapport QA' };
   if (t.includes('tnr') || t.includes('régression')) return { agent:'playwright', label:'🔁 TNR Complet',     detail:'Campagne de régression complète', mode:'tnr' };
-  if (t.includes('bug') || t.includes('correctif'))  return { agent:'playwright', label:'🔧 Correctif',       detail:'Test de correction de bug', mode:'fix' };
   if (t.includes('api') || t.includes('rest'))       return { agent:'playwright', label:'⚡ Test API',         detail:'Test API REST', mode:'api' };
   if (t.includes('manuel') || t.includes('manual'))  return { agent:'manual',     label:'📋 Test manuel',     detail:'Définition des étapes manuelles' };
-  if (t.includes('ticket') || t.includes('jira') || t.includes('créer')) return { agent:'pipeline', label:'⚡ Pipeline Jira', detail:'Création / enrichissement ticket' };
+  // Génération tickets structurés (US / TEST / BUG)
+  if (t.match(/\buser[ -]?story\b|\b\bus\b.*créer|créer.*\bus\b|fonctionnalit/))
+    return { agent:'ticket-gen', subtype:'US',   label:'📝 Créer User Story', detail:'Génération US structurée (titre, AC, couverture tests)' };
+  if (t.match(/\bticket[ -]?test\b|cas de test|xray|créer.*\btest\b|\btest\b.*créer/))
+    return { agent:'ticket-gen', subtype:'TEST', label:'📋 Créer Test',       detail:'Génération ticket Test + cas de test Xray' };
+  if (t.match(/\bbug\b|\bcorrectif\b|anomalie|erreur.*signal|signale.*erreur/))
+    return { agent:'ticket-gen', subtype:'BUG',  label:'🐛 Créer Bug',        detail:'Génération ticket Bug (étapes, résultats, tests correctifs)' };
+  if (t.includes('ticket') || t.includes('jira') || t.includes('créer'))
+    return { agent:'ticket-gen', subtype:'AUTO', label:'🎫 Générer ticket',   detail:'Détection auto du type (US / Test / Bug)' };
   return { agent:'playwright', label:'🖥️ Test UI', detail:'Test Playwright automatisé', mode:'ui' };
 }
 
@@ -5486,6 +5493,28 @@ function opsExecute() {
   var text  = opsLastIntent.text;
 
   document.getElementById('ops-confirm-block').style.display = 'none';
+
+  // ── Génération ticket structuré (US / TEST / BUG) ────────────────────────
+  if (route.agent === 'ticket-gen') {
+    var resBlock = document.getElementById('ops-results-block');
+    if (resBlock) { resBlock.style.display = 'block'; resBlock.innerHTML = opsLoadingHTML(route.label); }
+    fetch(SERVER + '/api/ops-generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, tickets: opsTickets, subtype: route.subtype || 'AUTO' })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok && d.result) { opsRenderGenResult(d.result); }
+      else { if (resBlock) resBlock.innerHTML = '<div style="color:var(--red);padding:16px">❌ ' + escHtml(d.error || 'Erreur génération') + '</div>'; }
+    })
+    .catch(function(e) {
+      if (resBlock) resBlock.innerHTML = '<div style="color:var(--red);padding:16px">❌ ' + escHtml(e.message) + '</div>';
+    });
+    return;
+  }
+
+  // ── Agents classiques (Playwright, CSS, Drupal…) ──────────────────────────
   document.getElementById('ops-terminal-wrap').style.display = 'block';
   document.getElementById('ops-results-block').style.display = 'none';
   clearLog('ops-log');
@@ -5516,6 +5545,161 @@ function opsExecute() {
 function opsAgentId(agent) {
   var map = { playwright:'playwright-direct', pipeline:'pipeline', 'css-audit':'css-audit', drupal:'drupal', matrix:'matrix', reporter:'reporter' };
   return map[agent] || 'playwright-direct';
+}
+
+// ── Rendu spinner pendant génération ──────────────────────────────────────────
+function opsLoadingHTML(label) {
+  return '<div style="display:flex;align-items:center;gap:14px;padding:24px 16px;color:var(--text2)">' +
+    '<div style="width:22px;height:22px;border:3px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0"></div>' +
+    '<span style="font-family:var(--mono);font-size:13px">Génération ' + escHtml(label || 'ticket') + '…</span>' +
+    '</div>';
+}
+
+// ── Rendu résultat ticket structuré ───────────────────────────────────────────
+function opsRenderGenResult(r) {
+  var block = document.getElementById('ops-results-block');
+  if (!block) return;
+
+  var typeColors = { US: '#3b6fff', TEST: '#10b981', BUG: '#ef4444' };
+  var typeIcons  = { US: '📝', TEST: '🧪', BUG: '🐛' };
+  var tc  = typeColors[r.ticketType] || '#6b7280';
+  var ico = typeIcons[r.ticketType]  || '🎫';
+
+  // Fonctions utilitaires locales
+  function section(title, content) {
+    return '<div style="margin-bottom:16px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:8px">' + title + '</div>' +
+      content + '</div>';
+  }
+  function copyBtn(label, val) {
+    return '<button onclick="navigator.clipboard.writeText(' + JSON.stringify(val) + ');showToast(\'Copié\',\'📋\')" ' +
+      'style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">' +
+      label + '</button>';
+  }
+  function pill(label, color) {
+    return '<span style="display:inline-block;background:' + color + '22;border:1px solid ' + color + '55;color:' + color +
+      ';border-radius:20px;padding:2px 10px;font-size:11px;font-family:var(--mono)">' + escHtml(label) + '</span>';
+  }
+
+  var html = '<div style="border-radius:12px;overflow:hidden;border:1px solid ' + tc + '44">';
+
+  // En-tête
+  html += '<div style="background:' + tc + '18;padding:14px 16px;border-bottom:1px solid ' + tc + '33;display:flex;align-items:center;gap:10px">';
+  html += '<span style="background:' + tc + ';color:#fff;border-radius:6px;padding:3px 10px;font-family:var(--mono);font-size:11px;font-weight:700">' + ico + ' ' + r.ticketType + '</span>';
+  if (r.priority)  html += pill(r.priority, '#f59e0b');
+  if (r.severity)  html += pill(r.severity, '#ef4444');
+  if (r.automationType) html += pill(r.automationType.toUpperCase(), '#10b981');
+  if (r.testType)  html += pill('Test ' + r.testType, '#3b6fff');
+  html += '<div style="flex:1"></div>';
+  html += copyBtn('📋 Titre', r.title || '');
+  html += '</div>';
+
+  // Corps
+  html += '<div style="padding:16px;display:flex;flex-direction:column;gap:0">';
+
+  // Titre
+  html += section('TITRE', '<div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.4">' + escHtml(r.title || '') + '</div>');
+
+  // Description
+  if (r.description) {
+    html += section('DESCRIPTION', '<div style="font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap">' + escHtml(r.description) + '</div>');
+  }
+
+  // ── US ────────────────────────────────────────────────────────────────────
+  if (r.ticketType === 'US') {
+    if (r.acceptanceCriteria && r.acceptanceCriteria.length) {
+      var acHtml = '<ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">';
+      r.acceptanceCriteria.forEach(function(ac) {
+        acHtml += '<li style="font-size:12px;color:var(--text2);line-height:1.6;font-family:var(--mono)">' + escHtml(ac) + '</li>';
+      });
+      acHtml += '</ol>';
+      html += section('✅ CRITÈRES D\'ACCEPTATION', acHtml);
+    }
+    if (r.testCoverage) {
+      var tc2 = r.testCoverage;
+      var covHtml = '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px">';
+      covHtml += '<span style="font-family:var(--mono);font-size:12px;color:var(--cyan)">' + (tc2.count || '?') + ' cas estimés</span>';
+      if (tc2.types) tc2.types.forEach(function(t) { covHtml += pill(t, '#06b6d4'); });
+      covHtml += '</div>';
+      if (tc2.notes) covHtml += '<div style="font-size:11px;color:var(--text3);font-style:italic">' + escHtml(tc2.notes) + '</div>';
+      html += section('🧪 COUVERTURE DES TESTS', covHtml);
+    }
+    if (r.automationJustification) {
+      html += section('🤖 TYPE DE TEST RECOMMANDÉ', '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.automationJustification) + '</div>');
+    }
+  }
+
+  // ── TEST ──────────────────────────────────────────────────────────────────
+  if (r.ticketType === 'TEST') {
+    if (r.testTypeJustification) {
+      html += section('💡 JUSTIFICATION TYPE DE TEST', '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.testTypeJustification) + '</div>');
+    }
+    if (r.testCases && r.testCases.length) {
+      var tableHtml =
+        '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">' +
+        '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)">' +
+        '<thead><tr>' +
+        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:38%">ACTION (GHERKIN)</th>' +
+        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:22%">DONNÉES</th>' +
+        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:40%">RÉSULTAT ATTENDU</th>' +
+        '</tr></thead><tbody>';
+      r.testCases.forEach(function(tc, i) {
+        var bg = i % 2 === 0 ? 'var(--bg2)' : 'var(--bg3)';
+        tableHtml += '<tr style="background:' + bg + '">' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' +
+          '<span style="color:var(--text3)">' + escHtml(tc.id || '') + '</span>\n' + escHtml(tc.action || '') + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' + escHtml(tc.data || '') + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' + escHtml(tc.expected || '') + '</td>' +
+          '</tr>';
+      });
+      tableHtml += '</tbody></table></div>';
+      tableHtml += '<div style="margin-top:8px">' + (r.xrayCSV ? copyBtn('📎 Copier CSV Xray', r.xrayCSV) : '') + '</div>';
+      html += section('📊 CAS DE TEST XRAY (' + r.testCases.length + ')', tableHtml);
+    }
+  }
+
+  // ── BUG ───────────────────────────────────────────────────────────────────
+  if (r.ticketType === 'BUG') {
+    if (r.steps && r.steps.length) {
+      var stepsHtml = '<ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+      r.steps.forEach(function(s) { stepsHtml += '<li style="font-size:12px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</li>'; });
+      stepsHtml += '</ol>';
+      html += section('🔢 ÉTAPES DE REPRODUCTION', stepsHtml);
+    }
+    if (r.actualResult || r.expectedResult) {
+      var cmp = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+      cmp += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:10px">';
+      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#ef4444;margin-bottom:6px">❌ RÉSULTAT OBTENU</div>';
+      cmp += '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.actualResult || '') + '</div></div>';
+      cmp += '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:10px">';
+      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#10b981;margin-bottom:6px">✅ RÉSULTAT ATTENDU</div>';
+      cmp += '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.expectedResult || '') + '</div></div>';
+      cmp += '</div>';
+      html += section('⚖️ COMPARAISON RÉSULTATS', cmp);
+    }
+    if (r.fixTests && r.fixTests.length) {
+      var fixHtml = '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+      r.fixTests.forEach(function(f) { fixHtml += '<li style="font-size:12px;color:var(--text2)">' + escHtml(f) + '</li>'; });
+      fixHtml += '</ul>';
+      html += section('🔧 TESTS DE CORRECTION', fixHtml);
+    }
+  }
+
+  // Actions finales
+  html += '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">';
+  html += copyBtn('📋 Copier titre', r.title || '');
+  var fullText = (r.title || '') + '\n\n' + (r.description || '');
+  if (r.ticketType === 'US' && r.acceptanceCriteria) fullText += '\n\nCritères d\'acceptation:\n' + r.acceptanceCriteria.map(function(a,i){return (i+1)+'. '+a;}).join('\n');
+  if (r.ticketType === 'BUG' && r.steps) fullText += '\n\nÉtapes:\n' + r.steps.join('\n');
+  html += ' ' + copyBtn('📄 Copier tout', fullText);
+  html += ' <button onclick="opsReset()" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↩ Nouvelle demande</button>';
+  html += '</div>';
+
+  html += '</div></div>';
+  block.innerHTML = html;
+  block.style.display = 'block';
+  block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  showToast(r.ticketType + ' généré', '✅');
 }
 
 // ── Steps manuels ─────────────────────────────────────────────────────────────

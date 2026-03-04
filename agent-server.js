@@ -456,6 +456,76 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Génération ticket structuré (US / TEST / BUG) ──────────────────────
+  if (method === "POST" && url === "/api/ops-generate") {
+    var genChunks = [];
+    req.on("data", function(c) { genChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body    = JSON.parse(Buffer.concat(genChunks).toString());
+        var text    = (body.text || "").trim();
+        var tickets = body.tickets || [];
+        var subtype = (body.subtype || "auto").toUpperCase(); // US | TEST | BUG | AUTO
+
+        var ticketCtx = tickets.length
+          ? tickets.map(function(t) { return t.key + " : " + t.summary + " (" + (t.type || "ticket") + ")"; }).join("\n")
+          : "";
+
+        var prompt =
+          "Tu es expert QA chez Safran Group. Génère un ticket structuré selon la demande.\n\n" +
+          "DEMANDE : " + text + "\n" +
+          (ticketCtx ? "TICKETS RÉFÉRENCÉS :\n" + ticketCtx + "\n\n" : "\n") +
+          "TYPE DEMANDÉ : " + subtype + " (si AUTO, déduis-le de la demande)\n\n" +
+          "RÈGLES DE NOMENCLATURE OBLIGATOIRES :\n" +
+          "- US   : \"User Story - [NOM_EPIC] - fonctionnalité à développer\"  (omettre [NOM_EPIC] si aucun epic)\n" +
+          "- TEST : \"Test - [Titre de l'US] - test à effectuer\"               (omettre l'US si absente)\n" +
+          "- BUG  : \"Bug - [Titre de l'US] - nom du bug\"                      (omettre l'US si absente)\n\n" +
+          "Selon le type, retourne UN seul objet JSON :\n\n" +
+          "Si US :\n" +
+          "{\"ticketType\":\"US\",\"title\":\"User Story - [EPIC] - ...\",\n" +
+          " \"description\":\"En tant que [persona], je veux [action], afin de [bénéfice].\",\n" +
+          " \"acceptanceCriteria\":[\"Étant donné... Lorsque... Alors...\"],\n" +
+          " \"testCoverage\":{\"count\":5,\"types\":[\"e2e\"],\"notes\":\"...\"},\n" +
+          " \"automationType\":\"auto|manual|mix\",\"automationJustification\":\"...\",\"priority\":\"Haute\"}\n\n" +
+          "Si TEST :\n" +
+          "{\"ticketType\":\"TEST\",\"title\":\"Test - [Titre_US] - ...\",\n" +
+          " \"description\":\"...\",\"testType\":\"auto|manual\",\"testTypeJustification\":\"...\",\n" +
+          " \"testCases\":[{\"id\":\"TC-01\",\"action\":\"Étant donné...\\nLorsque...\\nAlors...\",\"data\":\"• Clé: Valeur\",\"expected\":\"• Critère 1\\n• Critère 2\"}]}\n\n" +
+          "Si BUG :\n" +
+          "{\"ticketType\":\"BUG\",\"title\":\"Bug - [Titre_US] - ...\",\n" +
+          " \"description\":\"...\",\n" +
+          " \"steps\":[\"1. Accéder à...\",\"2. Cliquer sur...\"],\n" +
+          " \"actualResult\":\"...\",\"expectedResult\":\"...\",\n" +
+          " \"severity\":\"Critique|Majeur|Mineur|Cosmétique\",\n" +
+          " \"fixTests\":[\"Vérifier que...\",\"Tester le cas nominal...\"]}\n\n" +
+          "Génère entre 3 et 6 acceptanceCriteria (US), 3 à 6 testCases (TEST), 3 à 6 steps + 2 à 4 fixTests (BUG).";
+
+        var result = await leadQA.askJSON(prompt, "claude-sonnet-4-6");
+
+        // Générer CSV Xray pour les TEST
+        if (result && result.ticketType === "TEST" && Array.isArray(result.testCases)) {
+          var csvLines = ['"Action","Données","Résultat Attendu"'];
+          result.testCases.forEach(function(tc) {
+            csvLines.push(
+              '"' + (tc.action   || "").replace(/"/g, '""') + '",' +
+              '"' + (tc.data     || "").replace(/"/g, '""') + '",' +
+              '"' + (tc.expected || "").replace(/"/g, '""') + '"'
+            );
+          });
+          result.xrayCSV = csvLines.join("\n");
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: result }));
+      } catch(e) {
+        console.error("[ops-generate] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── API : Upload session storageState (cookies Cloudflare + Drupal) ──────────
   if (method === "POST" && /^\/api\/session\/[a-z-]+$/.test(url)) {
     var sessEnv = url.split("/").pop();
