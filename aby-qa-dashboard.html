@@ -5600,10 +5600,24 @@ function opsRenderGenResult(r) {
   var ico = typeIcons[r.ticketType]  || '🎫';
 
   // Fonctions utilitaires locales
+  var _genData = r; // référence pour opsPushJira()
   function section(title, content) {
     return '<div style="margin-bottom:16px">' +
       '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:8px">' + title + '</div>' +
       content + '</div>';
+  }
+  function editable(fieldId, value, multiline) {
+    var tag = multiline ? 'div' : 'span';
+    var style = 'display:block;font-size:' + (multiline ? '13' : '15') + 'px;color:var(--text);' +
+      (multiline ? 'line-height:1.7;white-space:pre-wrap;' : 'font-weight:700;line-height:1.4;') +
+      'border-radius:6px;padding:6px 8px;outline:none;border:1px dashed transparent;' +
+      'transition:border-color .2s;' +
+      (multiline ? 'min-height:48px;' : '');
+    return '<' + tag + ' id="' + fieldId + '" contenteditable="true" ' +
+      'style="' + style + '" ' +
+      'onfocus="this.style.borderColor=\'var(--blue)\';this.style.background=\'var(--bg3)\'" ' +
+      'onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">' +
+      escHtml(value || '') + '</' + tag + '>';
   }
   function copyBtn(label, val) {
     return '<button onclick="navigator.clipboard.writeText(' + JSON.stringify(val) + ');showToast(\'Copié\',\'📋\')" ' +
@@ -5631,23 +5645,21 @@ function opsRenderGenResult(r) {
   // Corps
   html += '<div style="padding:16px;display:flex;flex-direction:column;gap:0">';
 
-  // Titre
-  html += section('TITRE', '<div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.4">' + escHtml(r.title || '') + '</div>');
+  // Titre (éditable)
+  html += section('TITRE ✏️', editable('ops-gen-title', r.title || '', false));
 
-  // Description
-  if (r.description) {
-    html += section('DESCRIPTION', '<div style="font-size:13px;color:var(--text2);line-height:1.7;white-space:pre-wrap">' + escHtml(r.description) + '</div>');
-  }
+  // Description (éditable)
+  html += section('DESCRIPTION ✏️', editable('ops-gen-desc', r.description || '', true));
 
   // ── US ────────────────────────────────────────────────────────────────────
   if (r.ticketType === 'US') {
     if (r.acceptanceCriteria && r.acceptanceCriteria.length) {
-      var acHtml = '<ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">';
-      r.acceptanceCriteria.forEach(function(ac) {
-        acHtml += '<li style="font-size:12px;color:var(--text2);line-height:1.6;font-family:var(--mono)">' + escHtml(ac) + '</li>';
+      var acHtml = '<ol id="ops-gen-ac" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">';
+      r.acceptanceCriteria.forEach(function(ac, i) {
+        acHtml += '<li><div contenteditable="true" style="font-size:12px;color:var(--text2);line-height:1.6;font-family:var(--mono);padding:3px 6px;border-radius:4px;border:1px dashed transparent;outline:none" onfocus="this.style.borderColor=\'var(--blue)\'" onblur="this.style.borderColor=\'transparent\'">' + escHtml(ac) + '</div></li>';
       });
       acHtml += '</ol>';
-      html += section('✅ CRITÈRES D\'ACCEPTATION', acHtml);
+      html += section('✅ CRITÈRES D\'ACCEPTATION ✏️', acHtml);
     }
     if (r.testCoverage) {
       var tc2 = r.testCoverage;
@@ -5695,21 +5707,23 @@ function opsRenderGenResult(r) {
   // ── BUG ───────────────────────────────────────────────────────────────────
   if (r.ticketType === 'BUG') {
     if (r.steps && r.steps.length) {
-      var stepsHtml = '<ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
-      r.steps.forEach(function(s) { stepsHtml += '<li style="font-size:12px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</li>'; });
+      var stepsHtml = '<ol id="ops-gen-steps" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+      r.steps.forEach(function(s) {
+        stepsHtml += '<li><div contenteditable="true" style="font-size:12px;color:var(--text2);font-family:var(--mono);padding:3px 6px;border-radius:4px;border:1px dashed transparent;outline:none" onfocus="this.style.borderColor=\'var(--blue)\'" onblur="this.style.borderColor=\'transparent\'">' + escHtml(s) + '</div></li>';
+      });
       stepsHtml += '</ol>';
-      html += section('🔢 ÉTAPES DE REPRODUCTION', stepsHtml);
+      html += section('🔢 ÉTAPES DE REPRODUCTION ✏️', stepsHtml);
     }
     if (r.actualResult || r.expectedResult) {
       var cmp = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
       cmp += '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:10px">';
-      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#ef4444;margin-bottom:6px">❌ RÉSULTAT OBTENU</div>';
-      cmp += '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.actualResult || '') + '</div></div>';
+      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#ef4444;margin-bottom:6px">❌ RÉSULTAT OBTENU ✏️</div>';
+      cmp += '<div id="ops-gen-actual" contenteditable="true" style="font-size:12px;color:var(--text2);outline:none;min-height:32px;padding:2px 4px;border-radius:4px;border:1px dashed transparent" onfocus="this.style.borderColor=\'var(--blue)\'" onblur="this.style.borderColor=\'transparent\'">' + escHtml(r.actualResult || '') + '</div></div>';
       cmp += '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:8px;padding:10px">';
-      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#10b981;margin-bottom:6px">✅ RÉSULTAT ATTENDU</div>';
-      cmp += '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.expectedResult || '') + '</div></div>';
+      cmp += '<div style="font-family:var(--mono);font-size:10px;color:#10b981;margin-bottom:6px">✅ RÉSULTAT ATTENDU ✏️</div>';
+      cmp += '<div id="ops-gen-expected" contenteditable="true" style="font-size:12px;color:var(--text2);outline:none;min-height:32px;padding:2px 4px;border-radius:4px;border:1px dashed transparent" onfocus="this.style.borderColor=\'var(--blue)\'" onblur="this.style.borderColor=\'transparent\'">' + escHtml(r.expectedResult || '') + '</div></div>';
       cmp += '</div>';
-      html += section('⚖️ COMPARAISON RÉSULTATS', cmp);
+      html += section('⚖️ COMPARAISON RÉSULTATS ✏️', cmp);
     }
     if (r.fixTests && r.fixTests.length) {
       var fixHtml = '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
@@ -5746,13 +5760,17 @@ function opsRenderGenResult(r) {
     html += section('🎯 SCÉNARIOS DE TEST PROPOSÉS (' + r.proposedTests.length + ')', ptHtml);
   }
 
+  // Stocker la donnée pour opsPushJira
+  html += '<script>window._opsGenData=' + JSON.stringify(r) + ';<\/script>';
+
   // Actions finales
-  html += '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap">';
-  html += copyBtn('📋 Copier titre', r.title || '');
-  var fullText = (r.title || '') + '\n\n' + (r.description || '');
-  if (r.ticketType === 'US' && r.acceptanceCriteria) fullText += '\n\nCritères d\'acceptation:\n' + r.acceptanceCriteria.map(function(a,i){return (i+1)+'. '+a;}).join('\n');
-  if (r.ticketType === 'BUG' && r.steps) fullText += '\n\nÉtapes:\n' + r.steps.join('\n');
-  html += ' ' + copyBtn('📄 Copier tout', fullText);
+  html += '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center">';
+  html += '<button onclick="opsPushJira()" id="ops-push-btn" ' +
+    'style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">' +
+    '📤 Push Jira</button>';
+  html += '<span id="ops-push-status" style="font-size:12px;font-family:var(--mono);color:var(--text3)"></span>';
+  html += '<div style="flex:1"></div>';
+  html += copyBtn('📋 Titre', r.title || '');
   html += ' <button onclick="opsReset()" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↩ Nouvelle demande</button>';
   html += '</div>';
 
@@ -5819,6 +5837,70 @@ function opsSaveStepsDraft() {
 
 function opsCreateTestTicket() { showToast('Création ticket Test Xray en cours…', '📋'); }
 function opsExportTestCases()  { showToast('Export des cas de test en cours…', '💾'); }
+
+function opsPushJira() {
+  var base = window._opsGenData || {};
+  var btn  = document.getElementById('ops-push-btn');
+  var st   = document.getElementById('ops-push-status');
+
+  // Lire les champs éditables (valeur modifiée par l'utilisateur)
+  function getText(id) {
+    var el = document.getElementById(id);
+    return el ? el.innerText.trim() : '';
+  }
+  function getList(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('li [contenteditable]'))
+      .map(function(el) { return el.innerText.trim(); })
+      .filter(function(v) { return v; });
+  }
+
+  var payload = {
+    ticketType:  base.ticketType,
+    title:       getText('ops-gen-title') || base.title,
+    description: getText('ops-gen-desc')  || base.description,
+    priority:    base.priority,
+    severity:    base.severity,
+    labels:      base.labels || []
+  };
+
+  if (base.ticketType === 'BUG') {
+    payload.steps         = getList('ops-gen-steps');
+    payload.actualResult  = getText('ops-gen-actual')   || base.actualResult;
+    payload.expectedResult= getText('ops-gen-expected') || base.expectedResult;
+    payload.fixTests      = base.fixTests || [];
+  }
+  if (base.ticketType === 'US') {
+    payload.acceptanceCriteria = getList('ops-gen-ac');
+  }
+  // Lier au ticket Jira chargé si présent
+  if (opsTickets.length) payload.parentKey = opsTickets[0].key;
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Push…'; }
+  if (st)  st.textContent = '';
+
+  fetch(SERVER + '/api/jira-push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
+    if (d.ok) {
+      if (st) st.innerHTML = '✅ Créé : <a href="' + escHtml(d.url) + '" target="_blank" style="color:var(--blue)">' + escHtml(d.key) + '</a>';
+      showToast('Ticket ' + d.key + ' créé sur Jira', '✅');
+    } else {
+      if (st) st.textContent = '❌ ' + (d.error || 'Erreur Jira');
+      showToast('Erreur Jira', '❌');
+    }
+  })
+  .catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
+    if (st) st.textContent = '❌ ' + e.message;
+  });
+}
 
 // ── INSPECTEUR DOM ────────────────────────────────────────────────────────────
 var _lastInspectData = null;

@@ -599,6 +599,112 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Push ticket vers Jira (après édition) ──────────────────────────────
+  if (method === "POST" && url === "/api/jira-push") {
+    var jpChunks = [];
+    req.on("data", function(c) { jpChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(jpChunks).toString());
+        var CFGj = require("./config");
+        var authj = Buffer.from(CFGj.jira.email + ":" + CFGj.jira.token).toString("base64");
+
+        // Mapping type ticket → issuetype Jira
+        var typeMap = { US: "Story", TEST: "Test", BUG: "Bug", TASK: "Task" };
+        var issueType = typeMap[(body.ticketType || "").toUpperCase()] || "Task";
+
+        // Mapping priorité → Jira
+        var prioMap = { Critique:"Highest", Majeur:"High", Mineur:"Low", Cosmétique:"Lowest",
+                        Haute:"High", Haute:"High", Moyenne:"Medium", Basse:"Low" };
+        var priority = prioMap[body.priority] || "Medium";
+
+        // Conversion texte → ADF (Atlassian Document Format) pour description
+        function toADF(text) {
+          if (!text) return { version:1, type:"doc", content:[{ type:"paragraph", content:[{ type:"text", text:"" }] }] };
+          var lines = String(text).split("\n");
+          var content = [];
+          lines.forEach(function(l) {
+            if (!l.trim()) { content.push({ type:"paragraph", content:[{ type:"text", text:"" }] }); return; }
+            // Listes numérotées
+            var numMatch = l.match(/^(\d+)\.\s+(.*)/);
+            if (numMatch) { content.push({ type:"paragraph", content:[{ type:"text", text: numMatch[1] + ". " + numMatch[2] }] }); return; }
+            // Listes à puces
+            var bulletMatch = l.match(/^[-•]\s+(.*)/);
+            if (bulletMatch) { content.push({ type:"paragraph", content:[{ type:"text", text:"• " + bulletMatch[1] }] }); return; }
+            content.push({ type:"paragraph", content:[{ type:"text", text: l }] });
+          });
+          return { version:1, type:"doc", content: content };
+        }
+
+        // Construire la description complète
+        var fullDesc = (body.description || "") + "\n\n";
+        if (body.ticketType === "BUG") {
+          if (body.steps && body.steps.length) {
+            fullDesc += "Étapes de reproduction :\n" + body.steps.join("\n") + "\n\n";
+            fullDesc += "Résultat obtenu :\n" + (body.actualResult || "") + "\n\n";
+            fullDesc += "Résultat attendu :\n" + (body.expectedResult || "") + "\n\n";
+          }
+          if (body.fixTests && body.fixTests.length) {
+            fullDesc += "Tests de correction :\n" + body.fixTests.join("\n") + "\n\n";
+          }
+        }
+        if (body.ticketType === "US") {
+          if (body.acceptanceCriteria && body.acceptanceCriteria.length) {
+            fullDesc += "Critères d'acceptation :\n" + body.acceptanceCriteria.join("\n") + "\n\n";
+          }
+        }
+
+        var fields = {
+          project:     { key: CFGj.jira.project || "SAFWBST" },
+          summary:     body.title || "Ticket généré par AbyQA",
+          description: toADF(fullDesc.trim()),
+          issuetype:   { name: issueType },
+          priority:    { name: priority }
+        };
+        if (body.labels && body.labels.length)     fields.labels = body.labels;
+        if (body.parentKey) fields.parent = { key: body.parentKey };
+
+        var payload = JSON.stringify({ fields: fields });
+        var https_j = require("https");
+
+        var createResult = await new Promise(function(resolve, reject) {
+          var cr = https_j.request({
+            hostname: CFGj.jira.host,
+            path: "/rest/api/3/issue",
+            method: "POST",
+            headers: {
+              "Authorization": "Basic " + authj,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "Content-Length": Buffer.byteLength(payload)
+            }
+          }, function(cRes) {
+            var cData = ""; cRes.on("data", function(d) { cData += d; });
+            cRes.on("end", function() { try { resolve(JSON.parse(cData)); } catch(e) { resolve({ error: cData }); } });
+          });
+          cr.on("error", reject);
+          cr.write(payload); cr.end();
+        });
+
+        if (createResult.key) {
+          var issueUrl = "https://" + CFGj.jira.host + "/browse/" + createResult.key;
+          console.log("[jira-push] Créé : " + createResult.key);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: createResult.key, url: issueUrl }));
+        } else {
+          var errMsg = (createResult.errors ? JSON.stringify(createResult.errors) : JSON.stringify(createResult)).substring(0, 200);
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: errMsg }));
+        }
+      } catch(e) {
+        console.error("[jira-push] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── API : Upload session storageState (cookies Cloudflare + Drupal) ──────────
   if (method === "POST" && /^\/api\/session\/[a-z-]+$/.test(url)) {
     var sessEnv = url.split("/").pop();

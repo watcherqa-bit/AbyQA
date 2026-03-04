@@ -17,6 +17,16 @@ const client = new Anthropic({ apiKey: CFG.anthropic.apiKey });
 const MODEL_FAST    = "claude-haiku-4-5-20251001";  // Décisions rapides (routing, analyse)
 const MODEL_QUALITY = "claude-sonnet-4-6";           // Génération de contenu qualité
 
+// ── RÈGLES ANTI-HALLUCINATION — appliquées à toutes les générations ───────────
+const ANTI_HALLU =
+  "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
+  "1. Génère UNIQUEMENT du contenu basé sur les données du ticket fourni. RIEN d'autre.\n" +
+  "2. Si une information est absente du ticket → écris [À préciser], n'invente JAMAIS.\n" +
+  "3. URLs → uniquement celles mentionnées dans le ticket. Sinon : [URL à préciser].\n" +
+  "4. Noms de champs, boutons, composants → exactement ceux décrits dans le ticket.\n" +
+  "5. Personas, valeurs de test, sélecteurs CSS absents → [À préciser].\n" +
+  "6. Tu ne complètes JAMAIS un contenu manquant par supposition.\n\n";
+
 // ── SYSTEM PROMPT — RÈGLES QA SAFRAN ─────────────────────────────────────────
 const SYSTEM_QA = `Tu es Aby QA — Lead QA Senior et expert en automatisation pour Safran Group.
 
@@ -322,6 +332,7 @@ async function enrichUS(ticket) {
   var status  = (ticket.fields && ticket.fields.status && ticket.fields.status.name) || "Backlog";
 
   var prompt =
+    ANTI_HALLU +
     "Améliore cette User Story pour qu'elle soit complète, actionnable et prête à tester.\n\n" +
     "Clé    : " + key + "\n" +
     "Epic   : " + epic + "\n" +
@@ -405,6 +416,7 @@ async function generateTestTicket(us, testType, fonction) {
   var title   = "TEST - [" + summary + "] - " + fn;
 
   var prompt =
+    ANTI_HALLU +
     "Génère un ticket TEST complet et actionnable.\n\n" +
     "US de référence : " + usKey + "\n" +
     "Epic            : " + epic + "\n" +
@@ -427,6 +439,7 @@ async function generateTestCasesCSV(us, count) {
   var type    = us.automationType || "mixte";
 
   var prompt =
+    ANTI_HALLU +
     "Génère " + (count || 5) + " cas de test au format CSV strict.\n\n" +
     "US      : " + usKey + " — " + summary + "\n" +
     "Type    : " + type + "\n" +
@@ -457,6 +470,7 @@ async function generateBugTicket(opts) {
   var title    = "BUG - [" + ref + "] - " + fonction;
 
   var prompt =
+    ANTI_HALLU +
     "Génère un ticket BUG complet, précis et actionnable.\n\n" +
     "Titre           : \"" + title + "\"\n" +
     "US source       : " + (usKey || "Aucune") + (usSummary ? " — " + usSummary : "") + "\n" +
