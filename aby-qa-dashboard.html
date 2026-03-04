@@ -147,9 +147,7 @@
   .main {
     position: relative;
     z-index: 5;
-    display: grid;
-    grid-template-columns: 260px 1fr;
-    grid-template-rows: 1fr;   /* borne la ligne → .content peut vraiment scroller */
+    display: flex;          /* flex au lieu de grid — scroll fiable cross-browser */
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -157,11 +155,12 @@
 
   /* ── SIDEBAR ── */
   .sidebar {
+    width: 260px;
+    flex-shrink: 0;         /* largeur fixe, ne rétrécit pas */
     border-right: 1px solid var(--border);
     background: rgba(17,21,32,.6);
     padding: 24px 0;
     overflow-y: auto;
-    height: 100%;     /* même fix : borné par la cellule grille */
   }
 
   .sidebar-section {
@@ -273,7 +272,7 @@
   }
   .sidebar-toggle:hover { background: var(--blue); color: #fff; border-color: var(--blue); }
 
-  .main.sidebar-collapsed { grid-template-columns: 64px 1fr; }
+  .main.sidebar-collapsed .sidebar { width: 64px; }
   .main.sidebar-collapsed .nav-text,
   .main.sidebar-collapsed .nav-badge,
   .main.sidebar-collapsed .sidebar-label,
@@ -300,10 +299,11 @@
 
   /* ── CONTENT ── */
   .content {
+    flex: 1;            /* occupe tout l'espace restant */
+    min-width: 0;       /* évite le débordement horizontal */
+    min-height: 0;      /* permet au flex item de rétrécir sous son contenu */
     padding: 32px;
-    overflow-y: auto;
-    min-height: 0;
-    height: 100%;     /* forcé à occuper exactement la cellule grille → overflow-y:auto s'active */
+    overflow-y: auto;   /* scroll vertical activé dès que le contenu dépasse */
   }
 
   /* Chat panel occupe toute la hauteur sans padding */
