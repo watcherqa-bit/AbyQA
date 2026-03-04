@@ -522,24 +522,33 @@ var server = http.createServer(function(req, res) {
         }
 
         var prompt =
-          "Tu es expert QA chez Safran Group. Génère un ticket structuré en te basant PRÉCISÉMENT sur les données Jira fournies.\n\n" +
+          "Tu es expert QA chez Safran Group.\n\n" +
+          "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
+          "1. Tu ne génères QUE du contenu basé sur les données du ticket fourni. RIEN d'autre.\n" +
+          "2. Si une information n'est PAS dans le ticket (URL, sélecteur, composant, valeur), tu écris [À préciser] — tu n'inventes JAMAIS.\n" +
+          "3. Les URLs dans les étapes de test doivent être EXACTEMENT celles mentionnées dans la description du ticket. Pas d'URL inventée.\n" +
+          "4. Les sélecteurs CSS/XPath dans les étapes doivent être ceux mentionnés dans le ticket ou décrits comme [sélecteur à préciser].\n" +
+          "5. Les noms de champs, boutons, éléments doivent correspondre exactement aux termes utilisés dans la description du ticket.\n" +
+          "6. Tu ne complètes JAMAIS un contenu manquant par une supposition. Mieux vaut [À préciser] qu'une invention.\n\n" +
           (text ? "INSTRUCTION UTILISATEUR : " + text + "\n\n" : "") +
-          (ticketCtx ? "DONNÉES JIRA COMPLÈTES :\n" + ticketCtx : "") +
+          (ticketCtx ? "DONNÉES JIRA (SOURCE UNIQUE DE VÉRITÉ) :\n" + ticketCtx : "") +
           "TYPE À GÉNÉRER : " + subtype + "\n\n" +
-          "IMPORTANT : Utilise le contenu exact du ticket Jira (description, composants, priorité, version).\n" +
-          "Ne génère PAS de contenu générique. Chaque champ doit refléter la réalité du ticket.\n\n" +
           "RÈGLES DE NOMENCLATURE OBLIGATOIRES :\n" +
           "- US   : \"User Story - [NOM_EPIC] - fonctionnalité à développer\"  (omettre [NOM_EPIC] si aucun epic)\n" +
           "- TEST : \"Test - [Titre de l'US] - test à effectuer\"               (omettre l'US si absente)\n" +
           "- BUG  : \"Bug - [Titre de l'US] - nom du bug\"                      (omettre l'US si absente)\n\n" +
           "Selon le type, retourne UN seul objet JSON.\n\n" +
           "CHAMP COMMUN À TOUS LES TYPES — proposedTests :\n" +
-          "C'est le champ le plus important. Génère des VRAIS scénarios de test avec des étapes concrètes et exécutables.\n" +
-          "Chaque étape doit être une ACTION précise (naviguer, cliquer, saisir, vérifier, attendre).\n" +
+          "Génère des scénarios de test STRICTEMENT basés sur le contenu du ticket.\n" +
+          "Règles pour les étapes :\n" +
+          "  - Utilise UNIQUEMENT les URLs présentes dans la description du ticket\n" +
+          "  - Si un sélecteur CSS n'est pas mentionné dans le ticket → écris '[sélecteur à préciser]'\n" +
+          "  - Si une valeur de test n'est pas mentionnée → écris '[valeur à préciser]'\n" +
+          "  - Chaque étape doit être actionnable : Naviguer vers X / Cliquer sur Y / Vérifier que Z\n" +
           "\"proposedTests\":[\n" +
-          "  {\"name\":\"Nom du scénario\",\"type\":\"auto|manual\",\n" +
-          "   \"steps\":[\"Naviguer vers https://...\",\"Cliquer sur le sélecteur X\",\"Saisir 'valeur' dans le champ Y\",\"Vérifier que Z est visible/contient 'texte'\"],\n" +
-          "   \"expectedResult\":\"Résultat final attendu du scénario\"}\n" +
+          "  {\"name\":\"Nom du scénario (basé sur le ticket)\",\"type\":\"auto|manual\",\n" +
+          "   \"steps\":[\"Naviguer vers [URL du ticket]\",\"Cliquer sur [élément décrit dans le ticket]\",\"Vérifier que [comportement décrit dans le ticket]\"],\n" +
+          "   \"expectedResult\":\"[Résultat attendu tel que décrit dans le ticket]\"}\n" +
           "]\n\n" +
           "Si US :\n" +
           "{\"ticketType\":\"US\",\"title\":\"User Story - [EPIC] - ...\",\n" +
