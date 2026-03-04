@@ -3546,7 +3546,25 @@
                 onkeydown="if(event.key==='Enter') runInspect()">
               <button class="btn btn-primary" onclick="runInspect()" id="inspect-btn" style="white-space:nowrap">🔍 Inspecter</button>
               <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Forcer re-inspection (ignorer cache)">↺ Forcer</button>
+              <button onclick="openSessionUpload()" id="inspect-session-btn" style="background:none;border:1px solid rgba(249,115,22,.4);color:#f97316;border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Uploader une session sauvegardée (contourne Cloudflare)">💾 Session</button>
             </div>
+
+            <!-- Upload session -->
+            <div id="inspect-session-block" style="display:none;background:var(--bg3);border:1px solid rgba(249,115,22,.3);border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px">
+              <div style="color:#f97316;font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-bottom:8px">💾 UPLOAD SESSION (BYPASS CLOUDFLARE)</div>
+              <div style="color:var(--text2);margin-bottom:8px;line-height:1.6">
+                1. En local : <code style="background:var(--bg);padding:1px 5px;border-radius:4px">node login-save-state.js sophie</code> (ou paulo)<br>
+                2. Copie le contenu de <code style="background:var(--bg);padding:1px 5px;border-radius:4px">auth/sophie.json</code><br>
+                3. Colle ci-dessous et clique Uploader
+              </div>
+              <textarea id="inspect-session-json" rows="4" placeholder='{"cookies":[...],"origins":[]}' style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;resize:vertical;box-sizing:border-box"></textarea>
+              <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+                <button onclick="uploadSession()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">⬆️ Uploader</button>
+                <button onclick="document.getElementById('inspect-session-block').style.display='none'" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">Annuler</button>
+                <span id="inspect-session-status" style="font-size:11px;color:var(--text3);font-family:var(--mono)"></span>
+              </div>
+            </div>
+
             <div id="inspect-status" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;min-height:16px"></div>
             <div id="inspect-result" style="display:none">
               <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start">
@@ -5575,6 +5593,53 @@ function inspectEnvChanged(val) {
     urlInput.value = '/fr';
     urlInput.placeholder = '/fr ou /en/group/about';
   }
+  // Afficher le statut de session pour cet env
+  checkSessionStatus(val.replace('drupal-', ''));
+}
+
+function checkSessionStatus(envName) {
+  fetch('/api/session/' + envName).then(function(r) { return r.json(); }).then(function(d) {
+    var btn = document.getElementById('inspect-session-btn');
+    if (!btn) return;
+    if (d.ok) {
+      var age = Math.round((Date.now() - new Date(d.savedAt).getTime()) / 3600000);
+      btn.title = '✅ Session active — ' + d.cookies + ' cookies — il y a ' + age + 'h';
+      btn.style.borderColor = 'rgba(16,185,129,.4)';
+      btn.style.color = '#10b981';
+    } else {
+      btn.title = '⚠️ Pas de session — Cloudflare peut bloquer';
+      btn.style.borderColor = 'rgba(249,115,22,.4)';
+      btn.style.color = '#f97316';
+    }
+  }).catch(function() {});
+}
+
+function openSessionUpload() {
+  var block = document.getElementById('inspect-session-block');
+  if (block) block.style.display = block.style.display === 'none' ? 'block' : 'none';
+}
+
+function uploadSession() {
+  var env  = (document.getElementById('inspect-env') || {}).value || 'sophie';
+  var envBase = env.replace('drupal-', '');
+  var json = (document.getElementById('inspect-session-json') || {}).value || '';
+  var st   = document.getElementById('inspect-session-status');
+  if (!json.trim()) { if (st) st.textContent = '⚠️ Colle le JSON de session'; return; }
+  try { JSON.parse(json); } catch(e) { if (st) st.textContent = '⚠️ JSON invalide'; return; }
+  if (st) st.textContent = '⏳ Upload...';
+  fetch('/api/session/' + envBase, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: json
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      if (st) st.textContent = '✅ ' + d.cookies + ' cookies sauvegardés';
+      document.getElementById('inspect-session-block').style.display = 'none';
+      checkSessionStatus(envBase);
+    } else {
+      if (st) st.textContent = '❌ ' + (d.error || 'Erreur');
+    }
+  }).catch(function(e) { if (st) st.textContent = '❌ ' + e.message; });
 }
 
 function runInspect(force) {

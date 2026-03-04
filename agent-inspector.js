@@ -75,11 +75,14 @@ async function inspect() {
     extraHTTPHeaders: { "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8" }
   };
 
-  // Basic auth pour envs staging (sophie / paulo / drupal-*)
-  if (ENV_NAME === "sophie" || ENV_NAME === "paulo" || ENV_NAME.startsWith("drupal-")) {
-    var drupalUser = (cfg.drupal && cfg.drupal.user) || process.env.DRUPAL_USER || "";
-    var drupalPass = (cfg.drupal && cfg.drupal.pass) || process.env.DRUPAL_PASS || "";
-    if (drupalUser) ctxOpts.httpCredentials = { username: drupalUser, password: drupalPass };
+  // HTTP Basic Auth pour envs staging (sophie / paulo / drupal-*)
+  // Utilise cfg.httpAuth.sophie/paulo (SOPHIE_HTTP_USER/PASS dans .env)
+  var baseEnvName = ENV_NAME.replace("drupal-", "");
+  if (baseEnvName === "sophie" || baseEnvName === "paulo") {
+    var httpAuthCfg = (cfg.httpAuth && cfg.httpAuth[baseEnvName]) || {};
+    var httpUser = httpAuthCfg.user || process.env[baseEnvName.toUpperCase() + "_HTTP_USER"] || (cfg.drupal && cfg.drupal.user) || "";
+    var httpPass = httpAuthCfg.pass || process.env[baseEnvName.toUpperCase() + "_HTTP_PASS"] || (cfg.drupal && cfg.drupal.pass) || "";
+    if (httpUser) ctxOpts.httpCredentials = { username: httpUser, password: httpPass };
   }
 
   var browser = await chromium.launch({
@@ -88,13 +91,14 @@ async function inspect() {
   });
   var ctx     = await browser.newContext(ctxOpts);
 
-  // Charger session auth si disponible
-  var baseEnv     = ENV_NAME.replace("drupal-", "");
-  var sessionFile = path.join(__dirname, baseEnv + ".json");
+  // Charger session auth si disponible (cookies Cloudflare + Drupal)
+  // Cherche d'abord auth/[env].json (format storageState), puis [env].json à la racine
+  var sessionFile = path.join(__dirname, "auth", baseEnvName + ".json");
+  if (!fs.existsSync(sessionFile)) sessionFile = path.join(__dirname, baseEnvName + ".json");
   if (fs.existsSync(sessionFile)) {
     try {
       var sess = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
-      if (sess.cookies) await ctx.addCookies(sess.cookies);
+      if (sess.cookies && sess.cookies.length) await ctx.addCookies(sess.cookies);
     } catch(e) {}
   }
 

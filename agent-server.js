@@ -456,6 +456,51 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Upload session storageState (cookies Cloudflare + Drupal) ──────────
+  if (method === "POST" && /^\/api\/session\/[a-z-]+$/.test(url)) {
+    var sessEnv = url.split("/").pop();
+    var sessChunks = [];
+    req.on("data", function(c) { sessChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var sessBody = JSON.parse(Buffer.concat(sessChunks).toString());
+        // Accepte { cookies:[...] } ou storageState complet
+        var authDir = path.join(BASE_DIR, "auth");
+        if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+        var sessFile = path.join(authDir, sessEnv + ".json");
+        fs.writeFileSync(sessFile, JSON.stringify(sessBody, null, 2));
+        console.log("[session] Saved auth/" + sessEnv + ".json (" + (sessBody.cookies || []).length + " cookies)");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, env: sessEnv, cookies: (sessBody.cookies || []).length }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (method === "GET" && /^\/api\/session\/[a-z-]+$/.test(url)) {
+    var sessEnvG = url.split("/").pop();
+    var sessFileG = path.join(BASE_DIR, "auth", sessEnvG + ".json");
+    if (fs.existsSync(sessFileG)) {
+      try {
+        var sessData = JSON.parse(fs.readFileSync(sessFileG, "utf8"));
+        var cookieCount = (sessData.cookies || []).length;
+        var savedAt = fs.statSync(sessFileG).mtime.toISOString();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, env: sessEnvG, cookies: cookieCount, savedAt: savedAt }));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    } else {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Pas de session pour " + sessEnvG }));
+    }
+    return;
+  }
+
   if (method === "POST" && url === "/api/drupal-suggest") {
     var dsChunks = [];
     req.on("data", function(c) { dsChunks.push(c); });
