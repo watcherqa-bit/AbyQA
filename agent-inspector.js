@@ -43,7 +43,7 @@ function resolveBaseUrl(envName) {
 
 // Pour drupal-*, le chemin par défaut est la page de login Drupal
 if ((ENV_NAME === "drupal-sophie" || ENV_NAME === "drupal-paulo") && URL_PATH === "/fr") {
-  URL_PATH = "/fr/user/login";
+  URL_PATH = "/user/login";
 }
 
 var BASE_URL = resolveBaseUrl(ENV_NAME);
@@ -69,7 +69,11 @@ async function inspect() {
 
   console.log("[inspector] Navigation → " + FULL_URL);
 
-  var ctxOpts = { viewport: { width: 1280, height: 800 } };
+  var ctxOpts = {
+    viewport:  { width: 1280, height: 800 },
+    userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    extraHTTPHeaders: { "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8" }
+  };
 
   // Basic auth pour envs staging (sophie / paulo / drupal-*)
   if (ENV_NAME === "sophie" || ENV_NAME === "paulo" || ENV_NAME.startsWith("drupal-")) {
@@ -78,7 +82,10 @@ async function inspect() {
     if (drupalUser) ctxOpts.httpCredentials = { username: drupalUser, password: drupalPass };
   }
 
-  var browser = await chromium.launch({ headless: true });
+  var browser = await chromium.launch({
+    headless: true,
+    args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
+  });
   var ctx     = await browser.newContext(ctxOpts);
 
   // Charger session auth si disponible
