@@ -653,6 +653,18 @@ var server = http.createServer(function(req, res) {
             fullDesc += "Critères d'acceptation :\n" + body.acceptanceCriteria.join("\n") + "\n\n";
           }
         }
+        if (body.ticketType === "TEST") {
+          if (body.testCases && body.testCases.length) {
+            fullDesc += "Cas de test :\n";
+            body.testCases.forEach(function(tc, i) {
+              fullDesc += "\n" + (tc.id || ("TC-" + (i + 1))) + "\n";
+              if (tc.action)   fullDesc += "Action : " + tc.action + "\n";
+              if (tc.data)     fullDesc += "Données : " + tc.data + "\n";
+              if (tc.expected) fullDesc += "Attendu : " + tc.expected + "\n";
+            });
+            fullDesc += "\n";
+          }
+        }
 
         var fields = {
           project:     { key: CFGj.jira.project || "SAFWBST" },
@@ -661,8 +673,9 @@ var server = http.createServer(function(req, res) {
           issuetype:   { name: issueType },
           priority:    { name: priority }
         };
-        if (body.labels && body.labels.length)     fields.labels = body.labels;
-        if (body.parentKey) fields.parent = { key: body.parentKey };
+        if (body.labels && body.labels.length) fields.labels = body.labels;
+        // Ne pas utiliser fields.parent — on crée un issueLink à part (plus compatible)
+        // (champ parent Jira Cloud est pour les sous-tâches uniquement)
 
         var payload = JSON.stringify({ fields: fields });
         var https_j = require("https");
@@ -687,10 +700,47 @@ var server = http.createServer(function(req, res) {
         });
 
         if (createResult.key) {
-          var issueUrl = "https://" + CFGj.jira.host + "/browse/" + createResult.key;
-          console.log("[jira-push] Créé : " + createResult.key);
+          var newKey   = createResult.key;
+          var issueUrl = "https://" + CFGj.jira.host + "/browse/" + newKey;
+          console.log("[jira-push] Créé : " + newKey);
+
+          // Créer le lien Jira si un ticket parent est fourni
+          var linked = false;
+          if (body.parentKey) {
+            try {
+              // TEST teste une Story/Bug → type "Tests"
+              // BUG/US liés → type "Relates"
+              var linkTypeName = (body.ticketType === "TEST") ? "Tests" : "Relates";
+              var linkPayload  = JSON.stringify({
+                type:         { name: linkTypeName },
+                inwardIssue:  { key: newKey },
+                outwardIssue: { key: body.parentKey }
+              });
+              await new Promise(function(resolve) {
+                var lr = https_j.request({
+                  hostname: CFGj.jira.host,
+                  path: "/rest/api/3/issueLink",
+                  method: "POST",
+                  headers: {
+                    "Authorization": "Basic " + authj,
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "Content-Length": Buffer.byteLength(linkPayload)
+                  }
+                }, function(lRes) {
+                  lRes.resume();
+                  linked = lRes.statusCode < 300;
+                  console.log("[jira-push] Lien " + linkTypeName + " → " + body.parentKey + " : " + lRes.statusCode);
+                  resolve();
+                });
+                lr.on("error", function(e) { console.warn("[jira-push] Link err:", e.message); resolve(); });
+                lr.write(linkPayload); lr.end();
+              });
+            } catch(le) { console.warn("[jira-push] Link exception:", le.message); }
+          }
+
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, key: createResult.key, url: issueUrl }));
+          res.end(JSON.stringify({ ok: true, key: newKey, url: issueUrl, linked: linked, parentKey: body.parentKey || null, ticketType: body.ticketType }));
         } else {
           var errMsg = (createResult.errors ? JSON.stringify(createResult.errors) : JSON.stringify(createResult)).substring(0, 200);
           res.writeHead(400, { "Content-Type": "application/json" });

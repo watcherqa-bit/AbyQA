@@ -148,6 +148,7 @@
     z-index: 5;
     display: grid;
     grid-template-columns: 260px 1fr;
+    grid-template-rows: 1fr;   /* borne la ligne → .content peut vraiment scroller */
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -315,7 +316,7 @@
 
   /* Le panneau chat doit rester flex (override display:block) */
   #panel-chat.active { display: flex; animation: fadeIn .25s ease; }
-  #panel-operations { min-height: 400px; overflow: visible; }
+  #panel-operations { min-height: 400px; }
 
   @keyframes fadeIn {
     from { opacity:0; transform: translateY(8px); }
@@ -3381,7 +3382,7 @@
       </div>
 
       <!-- ── CONTENU ONGLETS + BLOCS COMMUNS ── -->
-      <div style="overflow-y:auto;padding-bottom:20px">
+      <div style="padding-bottom:40px">
 
         <!-- ─── ONGLET COMMANDE ─── -->
         <div id="ops-pane-commande">
@@ -3624,23 +3625,8 @@
           <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
         </div>
 
-        <!-- ─── RÉSULTATS ─── -->
-        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉSULTATS</div>
-          <div id="ops-result-status" style="display:flex;align-items:center;gap:10px;margin-bottom:14px"></div>
-          <div id="ops-test-cases-block" style="display:none;margin-bottom:14px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">CAS DE TEST GÉNÉRÉS</div>
-            <div id="ops-test-cases-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary" onclick="opsCreateTestTicket()" style="font-size:12px">📋 Créer ticket Test Xray</button>
-              <button class="btn" onclick="opsExportTestCases()" style="font-size:12px">💾 Exporter</button>
-            </div>
-          </div>
-          <div id="ops-tickets-block" style="display:none">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:8px">TICKETS</div>
-            <div id="ops-tickets-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          </div>
-        </div>
+        <!-- ─── RÉSULTATS (innerHTML géré par opsRenderGenResult) ─── -->
+        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px"></div>
 
       </div>
     </div>
@@ -5774,6 +5760,9 @@ function opsRenderGenResult(r) {
   html += ' <button onclick="opsReset()" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↩ Nouvelle demande</button>';
   html += '</div>';
 
+  // Zone workflow chain (visible après Push Jira)
+  html += '<div id="ops-workflow-chain"></div>';
+
   html += '</div></div>';
   block.innerHTML = html;
   block.style.display = 'block';
@@ -5835,8 +5824,6 @@ function opsSaveStepsDraft() {
   showToast('Brouillon sauvegardé', '💾');
 }
 
-function opsCreateTestTicket() { showToast('Création ticket Test Xray en cours…', '📋'); }
-function opsExportTestCases()  { showToast('Export des cas de test en cours…', '💾'); }
 
 function opsPushJira() {
   var base = window._opsGenData || {};
@@ -5874,7 +5861,10 @@ function opsPushJira() {
   if (base.ticketType === 'US') {
     payload.acceptanceCriteria = getList('ops-gen-ac');
   }
-  // Lier au ticket Jira chargé si présent
+  if (base.ticketType === 'TEST') {
+    payload.testCases = base.testCases || [];
+  }
+  // Lier au ticket Jira source si présent
   if (opsTickets.length) payload.parentKey = opsTickets[0].key;
 
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Push…'; }
@@ -5889,8 +5879,13 @@ function opsPushJira() {
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
     if (d.ok) {
-      if (st) st.innerHTML = '✅ Créé : <a href="' + escHtml(d.url) + '" target="_blank" style="color:var(--blue)">' + escHtml(d.key) + '</a>';
+      var linkInfo = (d.linked && d.parentKey)
+        ? ' · lié à <a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(d.parentKey) + '" target="_blank" style="color:var(--text3)">' + escHtml(d.parentKey) + '</a>'
+        : '';
+      if (st) st.innerHTML = '✅ <a href="' + escHtml(d.url) + '" target="_blank" style="color:var(--blue);font-weight:600">' + escHtml(d.key) + '</a>' + linkInfo;
       showToast('Ticket ' + d.key + ' créé sur Jira', '✅');
+      // Afficher les actions de workflow selon le type
+      opsShowWorkflowActions(d, base);
     } else {
       if (st) st.textContent = '❌ ' + (d.error || 'Erreur Jira');
       showToast('Erreur Jira', '❌');
@@ -5900,6 +5895,264 @@ function opsPushJira() {
     if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
     if (st) st.textContent = '❌ ' + e.message;
   });
+}
+
+// ── Workflow actions après Push Jira ──────────────────────────────────────────
+// Affiche les boutons d'étapes suivantes selon le type de ticket créé
+function opsShowWorkflowActions(pushResult, genData) {
+  var container = document.getElementById('ops-workflow-chain');
+  if (!container) return;
+  var type = (genData.ticketType || '').toUpperCase();
+  var key  = pushResult.key;
+  var jiraHost = window.CFG_JIRA_HOST || 'eurelis.atlassian.net';
+
+  var html = '<div style="margin-top:16px;padding:14px;background:rgba(0,0,0,.15);border-radius:10px;border:1px solid var(--border)">';
+  html += '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">⛓️ WORKFLOW — PROCHAINES ÉTAPES</div>';
+
+  // Indicateur de chaîne visuel
+  html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">';
+  if (pushResult.parentKey) {
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(59,111,255,.15);color:var(--blue);font-weight:600">' + escHtml(pushResult.parentKey) + ' ✓</span>';
+    html += '<span style="color:var(--text3)">→</span>';
+  }
+  html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(16,185,129,.15);color:#10b981;font-weight:600">' + escHtml(key) + ' ✓</span>';
+
+  if (type === 'BUG' || type === 'US') {
+    html += '<span style="color:var(--text3)">→</span>';
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(100,100,100,.2);color:var(--text3)">TEST ?</span>';
+    html += '<span style="color:var(--text3)">→</span>';
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(100,100,100,.2);color:var(--text3)">Xray ?</span>';
+    html += '<span style="color:var(--text3)">→</span>';
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(100,100,100,.2);color:var(--text3)">▶ Playwright ?</span>';
+  } else if (type === 'TEST') {
+    html += '<span style="color:var(--text3)">→</span>';
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(100,100,100,.2);color:var(--text3)">Xray ?</span>';
+    html += '<span style="color:var(--text3)">→</span>';
+    html += '<span style="padding:3px 8px;border-radius:5px;background:rgba(100,100,100,.2);color:var(--text3)">▶ Playwright ?</span>';
+  }
+  html += '</div>';
+
+  // Boutons d'action
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+
+  // Stocker la clé du ticket créé pour les boutons de workflow
+  html += '<script>window._opsCreatedKey=' + JSON.stringify(key) + ';<\/script>';
+
+  if (type === 'BUG' || type === 'US') {
+    html += '<button onclick="opsGenerateLinkedTest(window._opsCreatedKey)" ' +
+      'style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
+      '📋 Générer TEST lié</button>';
+  }
+
+  if (type === 'TEST') {
+    // Préparer les steps pour Xray depuis les testCases générés
+    html += '<script>window._opsPendingTestKey=' + JSON.stringify(key) + ';window._opsPendingTestCases=' + JSON.stringify(genData.testCases || []) + ';<\/script>';
+    html += '<button onclick="opsPushXraySteps(window._opsPendingTestKey)" ' +
+      'style="background:#8b5cf6;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
+      '🔮 Push Xray</button>';
+    html += '<button onclick="opsLaunchPlaywright(window._opsPendingTestKey)" ' +
+      'style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
+      '▶ Tester maintenant</button>';
+  }
+
+  html += '<a href="https://' + jiraHost + '/browse/' + key + '" target="_blank" ' +
+    'style="display:inline-flex;align-items:center;padding:8px 14px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text2);text-decoration:none">' +
+    '🔗 Voir sur Jira</a>';
+  html += '</div>';
+
+  // Zone de résultat pour le TEST généré depuis ce ticket
+  html += '<div id="ops-linked-test-result" style="margin-top:12px"></div>';
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+// ── Générer un ticket TEST lié depuis un BUG ou une US ────────────────────────
+function opsGenerateLinkedTest(sourceKey, sourceTitle) {
+  var resultZone = document.getElementById('ops-linked-test-result');
+  if (!resultZone) return;
+
+  // Contexte : ticket nouvellement créé + ticket source chargé
+  var tickets = [];
+  // Ticket source initial (chargé dans ops)
+  if (opsTickets.length) tickets = tickets.concat(opsTickets);
+  // Ajouter contexte du ticket nouvellement créé
+  var genData = window._opsGenData || {};
+  if (sourceKey) {
+    tickets.push({
+      key:         sourceKey,
+      type:        genData.ticketType || 'BUG',
+      summary:     genData.title || sourceTitle || '',
+      description: (genData.description || '') +
+        (genData.steps && genData.steps.length ? '\nÉtapes:\n' + genData.steps.join('\n') : '') +
+        (genData.acceptanceCriteria && genData.acceptanceCriteria.length ? '\nAC:\n' + genData.acceptanceCriteria.join('\n') : ''),
+      status:      'Open'
+    });
+  }
+
+  resultZone.innerHTML = '<div style="padding:12px;color:var(--text3);font-family:var(--mono);font-size:12px">⏳ Génération du ticket TEST…</div>';
+
+  fetch(SERVER + '/api/ops-generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: 'Générer un ticket TEST pour ce ticket : ' + sourceKey, tickets: tickets, subtype: 'TEST' })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok && d.result) {
+      // Stocker le résultat TEST lié pour push Xray/Playwright
+      window._opsLinkedTestData = d.result;
+      opsRenderLinkedTest(d.result, resultZone, sourceKey);
+    } else {
+      resultZone.innerHTML = '<div style="color:var(--red);padding:12px">❌ ' + escHtml(d.error || 'Erreur génération TEST') + '</div>';
+    }
+  })
+  .catch(function(e) {
+    resultZone.innerHTML = '<div style="color:var(--red);padding:12px">❌ ' + escHtml(e.message) + '</div>';
+  });
+}
+
+// ── Rendu du ticket TEST lié ──────────────────────────────────────────────────
+function opsRenderLinkedTest(r, container, sourceKey) {
+  var html = '<div style="margin-top:10px;padding:14px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25);border-radius:10px">';
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+  html += '<span style="background:rgba(16,185,129,.2);color:#10b981;border-radius:6px;padding:2px 10px;font-size:11px;font-weight:700">🧪 TEST GÉNÉRÉ</span>';
+  html += '<span style="font-size:13px;font-weight:600;color:var(--text1)">' + escHtml(r.title || '') + '</span>';
+  html += '</div>';
+
+  if (r.description) {
+    html += '<div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6">' + escHtml(r.description) + '</div>';
+  }
+
+  if (r.testCases && r.testCases.length) {
+    html += '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px">CAS DE TEST (' + r.testCases.length + ')</div>';
+    r.testCases.forEach(function(tc, i) {
+      html += '<div style="margin-bottom:8px;padding:8px;background:rgba(0,0,0,.2);border-radius:6px">';
+      html += '<div style="font-size:11px;font-weight:600;color:#10b981;margin-bottom:4px">' + escHtml(tc.id || ('TC-' + (i+1))) + '</div>';
+      html += '<div style="font-size:11px;color:var(--text2)">' + escHtml(tc.action || '') + '</div>';
+      html += '</div>';
+    });
+  }
+
+  // Actions : Push Jira + Xray + Playwright
+  html += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid rgba(16,185,129,.2)">';
+  // Stocker sourceKey pour opsPushLinkedTest (évite l'injection inline)
+  html += '<script>window._opsLinkedSourceKey=' + JSON.stringify(sourceKey || '') + ';<\/script>';
+  html += '<button onclick="opsPushLinkedTest(window._opsLinkedSourceKey)" ' +
+    'style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
+    '📤 Push TEST sur Jira</button>';
+  html += '<span id="ops-linked-test-status" style="font-size:12px;font-family:var(--mono);color:var(--text3);align-self:center"></span>';
+  html += '</div>';
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+// ── Push le TEST lié vers Jira puis Xray ─────────────────────────────────────
+function opsPushLinkedTest(sourceKey) {
+  var r   = window._opsLinkedTestData || {};
+  var btn = document.querySelector('#ops-linked-test-result button');
+  var st  = document.getElementById('ops-linked-test-status');
+
+  var payload = {
+    ticketType:  'TEST',
+    title:       r.title || 'Test généré par AbyQA',
+    description: r.description || '',
+    testCases:   r.testCases || [],
+    labels:      r.labels || [],
+    priority:    r.priority || 'Medium',
+    parentKey:   sourceKey || (opsTickets.length ? opsTickets[0].key : null)
+  };
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Push…'; }
+  if (st)  st.textContent = '';
+
+  fetch(SERVER + '/api/jira-push', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r2) { return r2.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Push TEST sur Jira'; }
+    if (d.ok) {
+      var jiraHost = window.CFG_JIRA_HOST || 'eurelis.atlassian.net';
+      if (st) st.innerHTML = '✅ <a href="' + escHtml(d.url) + '" target="_blank" style="color:var(--blue);font-weight:600">' + escHtml(d.key) + '</a>';
+      showToast('TEST ' + d.key + ' créé sur Jira', '✅');
+      // Mettre à jour la chaîne avec boutons Xray + Playwright
+      opsShowTestActions(d.key, r.testCases || []);
+    } else {
+      if (st) st.textContent = '❌ ' + (d.error || 'Erreur Jira');
+    }
+  })
+  .catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Push TEST sur Jira'; }
+    if (st) st.textContent = '❌ ' + e.message;
+  });
+}
+
+// ── Afficher boutons Xray + Playwright après création du TEST ─────────────────
+function opsShowTestActions(testKey, testCases) {
+  var zone = document.getElementById('ops-linked-test-result');
+  if (!zone) return;
+  // Stocker pour usage par opsPushXraySteps
+  window._opsPendingTestKey   = testKey;
+  window._opsPendingTestCases = testCases;
+
+  var actDiv = document.createElement('div');
+  actDiv.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid rgba(16,185,129,.2)';
+  // Utiliser window._opsPendingTestKey (déjà stocké ci-dessus) plutôt que d'injecter la clé inline
+  actDiv.innerHTML =
+    '<button onclick="opsPushXraySteps(window._opsPendingTestKey)" style="background:#8b5cf6;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">🔮 Push Xray</button>' +
+    '<button onclick="opsLaunchPlaywright(window._opsPendingTestKey)" style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">▶ Tester maintenant</button>' +
+    '<span id="ops-xray-status" style="font-size:12px;font-family:var(--mono);color:var(--text3);align-self:center"></span>';
+  zone.appendChild(actDiv);
+}
+
+// ── Push steps Xray pour un ticket TEST ──────────────────────────────────────
+function opsPushXraySteps(testKey) {
+  var testCases = window._opsPendingTestCases || (window._opsLinkedTestData && window._opsLinkedTestData.testCases) || (window._opsGenData && window._opsGenData.testCases) || [];
+  var st = document.getElementById('ops-xray-status');
+  var steps = testCases.map(function(tc) {
+    return { action: tc.action || '', data: tc.data || '', result: tc.expected || tc.result || '' };
+  });
+
+  if (!steps.length) { if (st) st.textContent = '⚠️ Aucun cas de test à pousser'; return; }
+  if (st) st.textContent = '⏳ Push Xray…';
+
+  fetch(SERVER + '/api/xray/push-steps/' + testKey, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ steps: steps })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (d.ok) {
+      if (st) st.textContent = '✅ Steps Xray poussés (' + steps.length + ')';
+      showToast('Xray mis à jour pour ' + testKey, '🔮');
+    } else {
+      if (st) st.textContent = '⚠️ Xray: ' + (d.raw || d.error || 'status ' + d.status);
+    }
+  })
+  .catch(function(e) {
+    if (st) st.textContent = '❌ ' + e.message;
+  });
+}
+
+// ── Lancer Playwright Direct depuis un ticket TEST ────────────────────────────
+function opsLaunchPlaywright(testKey) {
+  // Basculer vers le panel Playwright Direct et pré-remplir le ticket
+  showPanel('playwright-direct');
+  // Sélectionner la source "jira-key" et remplir la clé
+  var srcJira = document.getElementById('pwd-src-jira-key');
+  if (srcJira) srcJira.click();
+  var pwdTicketInput = document.getElementById('pwd-jira-key');
+  if (pwdTicketInput) {
+    pwdTicketInput.value = testKey;
+    pwdTicketInput.dispatchEvent(new Event('input'));
+  }
+  // Déclencher la vérification du ticket
+  if (typeof checkPWDTicket === 'function') checkPWDTicket();
+  showToast('Ticket ' + testKey + ' chargé dans Playwright Direct', '▶');
 }
 
 // ── INSPECTEUR DOM ────────────────────────────────────────────────────────────
