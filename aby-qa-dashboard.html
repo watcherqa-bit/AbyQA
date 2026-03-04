@@ -5296,28 +5296,49 @@ function opsPickTicket() {
 }
 
 function opsLoadTicket() {
-  var key = (document.getElementById('ops-ticket-key') || {}).value || '';
-  key = key.trim().toUpperCase();
-  if (!key) { showToast('Saisis une clé Jira', '⚠️'); return; }
+  var raw = (document.getElementById('ops-ticket-key') || {}).value || '';
+  // Accepte une clé (SAFWBST-123) ou une URL Jira complète
+  var key = raw.trim().toUpperCase();
+  var urlMatch = raw.match(/[A-Z]+-\d+/i);
+  if (urlMatch) key = urlMatch[0].toUpperCase();
+  if (!key) { showToast('Saisis une clé ou une URL Jira', '⚠️'); return; }
   var preview = document.getElementById('ops-ticket-preview');
-  if (preview) preview.textContent = 'Chargement…';
+  if (preview) preview.innerHTML = '<span style="color:var(--text3)">⏳ Chargement ' + key + '…</span>';
   fetch(SERVER + '/api/jira-ticket/' + encodeURIComponent(key))
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      var f       = d.fields || {};
-      var summary = f.summary || key;
-      var type    = (f.issuetype && f.issuetype.name) || 'ticket';
-      opsTickets.push({ key: key, summary: summary, type: type });
-      if (preview) preview.textContent = '✅ ' + type + ' — ' + summary;
+      if (d.error) { if (preview) preview.textContent = '❌ ' + d.error; return; }
+      // Sauvegarder TOUTES les données pour la génération
+      var ticket = {
+        key:         d.key || key,
+        summary:     d.summary || key,
+        type:        d.type || 'ticket',
+        status:      d.status || '',
+        priority:    d.priority || '',
+        description: d.description || '',
+        labels:      d.labels || [],
+        components:  d.components || [],
+        fixVersions: d.fixVersions || [],
+        epic:        d.epic || '',
+        comments:    d.comments || []
+      };
+      opsTickets.push(ticket);
+      var typeColors = { 'Story':'#3b6fff','Bug':'#ef4444','Test':'#10b981','Task':'#8b5cf6' };
+      var tc = typeColors[ticket.type] || '#6b7280';
+      if (preview) preview.innerHTML =
+        '<span style="color:' + tc + ';font-weight:600">' + ticket.type + '</span>' +
+        ' <span style="color:var(--text)">— ' + escHtml(ticket.summary) + '</span>' +
+        (ticket.priority ? ' <span style="color:var(--text3);font-size:11px">· ' + ticket.priority + '</span>' : '') +
+        (ticket.description ? ' <span style="color:var(--green);font-size:11px">· desc ✓</span>' : '');
       opsRenderPills();
       opsRenderLoadedTickets();
-      showToast(key + ' ajouté au contexte', '🎫');
+      showToast(key + ' chargé (' + ticket.type + ')', '🎫');
     })
-    .catch(function() {
-      opsTickets.push({ key: key, summary: key, type: 'ticket' });
+    .catch(function(e) {
+      opsTickets.push({ key: key, summary: key, type: 'ticket', description: '' });
       opsRenderPills();
       opsRenderLoadedTickets();
-      if (preview) preview.textContent = '⚠️ Ticket ajouté sans détails';
+      if (preview) preview.textContent = '⚠️ ' + key + ' ajouté sans détails Jira';
     });
 }
 
@@ -5427,6 +5448,19 @@ function opsAnalyze() {
 }
 
 function opsLocalRoute(text) {
+  // Si un ticket Jira est chargé et que le texte est vide/minimal,
+  // on se base sur le TYPE du ticket pour router
+  if (opsTickets.length) {
+    var firstType = (opsTickets[0].type || '').toLowerCase();
+    var hasRealText = text.trim().length > 8 && !text.match(/^[A-Z]+-\d+$/i);
+    if (!hasRealText) {
+      if (firstType.includes('bug'))   return { agent:'ticket-gen', subtype:'BUG',  label:'🐛 Enrichir Bug',  detail:'Génération ticket Bug depuis ' + opsTickets[0].key };
+      if (firstType.includes('story')) return { agent:'ticket-gen', subtype:'US',   label:'📝 Enrichir US',   detail:'Génération User Story depuis ' + opsTickets[0].key };
+      if (firstType.includes('test'))  return { agent:'ticket-gen', subtype:'TEST', label:'📋 Enrichir Test',  detail:'Génération ticket Test depuis ' + opsTickets[0].key };
+      if (firstType.includes('task'))  return { agent:'ticket-gen', subtype:'US',   label:'📝 Enrichir Task',  detail:'Génération ticket depuis ' + opsTickets[0].key };
+      return { agent:'ticket-gen', subtype:'AUTO', label:'🎫 Enrichir ticket', detail:'Enrichissement depuis ' + opsTickets[0].key };
+    }
+  }
   var t = text.toLowerCase();
   if (t.includes('audit css') || t.includes('css'))  return { agent:'css-audit',  label:'🎨 Audit CSS',       detail:'Analyse visuelle cross-browser' };
   if (t.includes('drupal') || t.includes('contenu')) return { agent:'drupal',     label:'🧪 Données de test', detail:'Création contenu Drupal BO' };

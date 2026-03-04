@@ -376,7 +376,7 @@ var server = http.createServer(function(req, res) {
     var auth2 = Buffer.from(CFG2.jira.email + ":" + CFG2.jira.token).toString("base64");
     var jiraReq = https2.request({
       hostname: CFG2.jira.host,
-      path: "/rest/api/2/issue/" + ticketKey + "?fields=summary,status,issuetype,assignee,labels,description",
+      path: "/rest/api/2/issue/" + ticketKey + "?fields=summary,status,issuetype,assignee,labels,description,priority,components,fixVersions,parent,customfield_10014,customfield_10016,customfield_10010,comment",
       method: "GET",
       headers: { "Authorization": "Basic " + auth2, "Accept": "application/json" }
     }, function(jiraRes) {
@@ -389,15 +389,39 @@ var server = http.createServer(function(req, res) {
             res.writeHead(404, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Ticket introuvable" }));
           } else {
+            var f = issue.fields;
+            // Extraction texte depuis ADF (Atlassian Document Format) ou string
+            function adfText(node) {
+              if (!node) return "";
+              if (typeof node === "string") return node;
+              var out = "";
+              if (node.text) out += node.text;
+              if (node.content) node.content.forEach(function(c) { out += adfText(c) + (c.type === "paragraph" ? "\n" : ""); });
+              return out;
+            }
+            var descText = typeof f.description === "string" ? f.description : adfText(f.description);
+            var epicLink = (f.customfield_10014) || (f.parent && f.parent.fields && f.parent.fields.issuetype && f.parent.fields.issuetype.name === "Epic" ? f.parent.fields.summary : null) || "";
+            var lastComments = [];
+            if (f.comment && f.comment.comments) {
+              lastComments = f.comment.comments.slice(-3).map(function(c) {
+                return { author: c.author && c.author.displayName, body: adfText(c.body).substring(0, 300) };
+              });
+            }
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify({
               key:         ticketKey,
-              summary:     issue.fields.summary,
-              status:      issue.fields.status.name,
-              type:        issue.fields.issuetype.name,
-              assignee:    issue.fields.assignee ? issue.fields.assignee.displayName : "Non assignÃ©",
-              labels:      issue.fields.labels,
-              description: issue.fields.description || ""
+              summary:     f.summary,
+              status:      f.status && f.status.name,
+              type:        f.issuetype && f.issuetype.name,
+              assignee:    f.assignee ? f.assignee.displayName : "Non assigné",
+              priority:    f.priority && f.priority.name,
+              labels:      f.labels || [],
+              components:  (f.components || []).map(function(c) { return c.name; }),
+              fixVersions: (f.fixVersions || []).map(function(v) { return v.name; }),
+              epic:        epicLink,
+              storyPoints: f.customfield_10016 || null,
+              description: descText,
+              comments:    lastComments
             }));
           }
         } catch(e) {
@@ -467,15 +491,43 @@ var server = http.createServer(function(req, res) {
         var tickets = body.tickets || [];
         var subtype = (body.subtype || "auto").toUpperCase(); // US | TEST | BUG | AUTO
 
-        var ticketCtx = tickets.length
-          ? tickets.map(function(t) { return t.key + " : " + t.summary + " (" + (t.type || "ticket") + ")"; }).join("\n")
-          : "";
+        // Construire un contexte riche depuis les données Jira complètes
+        var ticketCtx = "";
+        if (tickets.length) {
+          tickets.forEach(function(t) {
+            ticketCtx += "--- Ticket " + t.key + " ---\n";
+            ticketCtx += "Type     : " + (t.type || "?") + "\n";
+            ticketCtx += "Titre    : " + (t.summary || "") + "\n";
+            if (t.status)      ticketCtx += "Statut   : " + t.status + "\n";
+            if (t.priority)    ticketCtx += "Priorité : " + t.priority + "\n";
+            if (t.epic)        ticketCtx += "Epic     : " + t.epic + "\n";
+            if (t.components && t.components.length) ticketCtx += "Composants: " + t.components.join(", ") + "\n";
+            if (t.labels && t.labels.length)         ticketCtx += "Labels   : " + t.labels.join(", ") + "\n";
+            if (t.fixVersions && t.fixVersions.length) ticketCtx += "Version  : " + t.fixVersions.join(", ") + "\n";
+            if (t.description) ticketCtx += "Description:\n" + t.description.substring(0, 1500) + "\n";
+            if (t.comments && t.comments.length) {
+              ticketCtx += "Derniers commentaires :\n";
+              t.comments.forEach(function(c) { ticketCtx += "  [" + (c.author || "?") + "] " + (c.body || "") + "\n"; });
+            }
+            ticketCtx += "\n";
+          });
+        }
+
+        // Si subtype AUTO, déduire depuis le type du premier ticket
+        if (subtype === "AUTO" && tickets.length) {
+          var firstType = (tickets[0].type || "").toLowerCase();
+          if (firstType.includes("bug"))   subtype = "BUG";
+          else if (firstType.includes("story")) subtype = "US";
+          else if (firstType.includes("test"))  subtype = "TEST";
+        }
 
         var prompt =
-          "Tu es expert QA chez Safran Group. Génère un ticket structuré selon la demande.\n\n" +
-          "DEMANDE : " + text + "\n" +
-          (ticketCtx ? "TICKETS RÉFÉRENCÉS :\n" + ticketCtx + "\n\n" : "\n") +
-          "TYPE DEMANDÉ : " + subtype + " (si AUTO, déduis-le de la demande)\n\n" +
+          "Tu es expert QA chez Safran Group. Génère un ticket structuré en te basant PRÉCISÉMENT sur les données Jira fournies.\n\n" +
+          (text ? "INSTRUCTION UTILISATEUR : " + text + "\n\n" : "") +
+          (ticketCtx ? "DONNÉES JIRA COMPLÈTES :\n" + ticketCtx : "") +
+          "TYPE À GÉNÉRER : " + subtype + "\n\n" +
+          "IMPORTANT : Utilise le contenu exact du ticket Jira (description, composants, priorité, version).\n" +
+          "Ne génère PAS de contenu générique. Chaque champ doit refléter la réalité du ticket.\n\n" +
           "RÈGLES DE NOMENCLATURE OBLIGATOIRES :\n" +
           "- US   : \"User Story - [NOM_EPIC] - fonctionnalité à développer\"  (omettre [NOM_EPIC] si aucun epic)\n" +
           "- TEST : \"Test - [Titre de l'US] - test à effectuer\"               (omettre l'US si absente)\n" +
