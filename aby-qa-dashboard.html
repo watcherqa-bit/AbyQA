@@ -1241,33 +1241,42 @@
     <div class="sidebar-section">
 
       <!-- Accueil -->
-      <div class="nav-item active" onclick="showPanel('dashboard')" title="Dashboard">
+      <div class="nav-item active" onclick="showPanel('dashboard')" title="Dashboard QA">
         <div class="icon">🏠</div>
         <span class="nav-text">Dashboard</span>
       </div>
-      <div class="nav-item" onclick="showPanel('chat')" title="Chat Aby — Assistant QA contextuel">
-        <div class="icon">💬</div>
-        <span class="nav-text">Chat Aby</span>
+
+      <!-- PRÉPARER -->
+      <div class="sidebar-group">
+        <div class="sidebar-group-label">Préparer</div>
+        <div class="nav-item" onclick="showPanel('backlog')" title="Backlog QA — tickets par phase">
+          <div class="icon">📥</div>
+          <span class="nav-text">Backlog QA</span>
+          <span class="nav-badge new nav-text" id="badge-backlog" style="display:none">0</span>
+        </div>
+        <div class="nav-item" onclick="showPanel('enriched')" title="Tickets Enrichis — enrichissement IA">
+          <div class="icon">✏️</div>
+          <span class="nav-text">Tickets Enrichis</span>
+        </div>
       </div>
 
-      <!-- Opérations -->
+      <!-- EXÉCUTER -->
       <div class="sidebar-group">
-        <div class="sidebar-group-label">Opérations</div>
-        <div class="nav-item" onclick="showPanel('operations')" title="Centre de commande — toutes les opérations QA">
+        <div class="sidebar-group-label">Exécuter</div>
+        <div class="nav-item" onclick="showPanel('operations')" title="Opérations — centre de commande QA">
           <div class="icon">⚡</div>
           <span class="nav-text">Opérations</span>
         </div>
+        <div class="nav-item" onclick="showPanel('chat')" title="Chat Aby — assistant QA contextuel">
+          <div class="icon">💬</div>
+          <span class="nav-text">Chat Aby</span>
+        </div>
       </div>
 
-      <!-- Résultats -->
+      <!-- ANALYSER -->
       <div class="sidebar-group">
-        <div class="sidebar-group-label">Résultats</div>
-        <div class="nav-item" onclick="showPanel('css')" title="Audit CSS — Cross-browser visuel">
-          <div class="icon">🎨</div>
-          <span class="nav-text">Audit CSS</span>
-          <span class="nav-badge ok nav-text" id="badge-css">100%</span>
-        </div>
-        <div class="nav-item" onclick="showPanel('reports')" title="Rapports de tests">
+        <div class="sidebar-group-label">Analyser</div>
+        <div class="nav-item" onclick="showPanel('reports')" title="Rapports de tests Playwright">
           <div class="icon">📄</div>
           <span class="nav-text">Rapports</span>
           <span class="nav-badge new nav-text" id="badge-reports" style="display:none">0</span>
@@ -1276,16 +1285,16 @@
           <div class="icon">📐</div>
           <span class="nav-text">Matrice QA</span>
         </div>
+        <div class="nav-item" onclick="showPanel('css')" title="Audit CSS — cross-browser visuel">
+          <div class="icon">🎨</div>
+          <span class="nav-text">Audit CSS</span>
+          <span class="nav-badge ok nav-text" id="badge-css">100%</span>
+        </div>
         <div class="nav-item" onclick="showPanel('releases')" title="Suivi des releases Jira">
           <div class="icon">📦</div>
           <span class="nav-text">Suivi Releases</span>
         </div>
-      </div>
-
-      <!-- Outils -->
-      <div class="sidebar-group">
-        <div class="sidebar-group-label">Outils</div>
-        <div class="nav-item" onclick="showPanel('drupal')" title="Données de test — Création Drupal BO">
+        <div class="nav-item" onclick="showPanel('drupal')" title="Données de test — création Drupal BO">
           <div class="icon">🧪</div>
           <span class="nav-text">Données de test</span>
         </div>
@@ -2901,10 +2910,13 @@
       <div class="bl-topbar">
         <div>
           <div style="font-size:20px;font-weight:800">Backlog <span style="color:var(--cyan)">QA</span></div>
-          <div style="font-size:12px;color:var(--text3);margin-top:3px">Tickets en attente de traitement + archives — structuré par phase</div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:3px">
+            <span style="font-size:12px;color:var(--text3)">Tickets en attente de traitement + archives — structuré par phase</span>
+            <span id="bl-sync-stamp" style="font-size:10px;color:var(--text3);font-family:var(--mono)"></span>
+          </div>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          <button onclick="loadBacklog(true)" class="bl-ghost-btn">↺ Rafraîchir</button>
+          <button onclick="loadBacklog(false)" class="bl-ghost-btn">↺ Sync Jira</button>
           <div class="bl-view-toggle">
             <button id="bl-btn-list"   class="bl-toggle-btn active" onclick="setBacklogDisplayMode('list')">≡ Liste</button>
             <button id="bl-btn-kanban" class="bl-toggle-btn"        onclick="setBacklogDisplayMode('kanban')">⊞ Kanban</button>
@@ -3977,22 +3989,22 @@ function loadReports() {
 function showPanel(id) {
   var panel = document.getElementById("panel-" + id);
   if (!panel) return;
-  // Forcer display:none sur tous les panels + retirer la classe active
   document.querySelectorAll(".panel").forEach(function(p) {
     p.classList.remove("active");
     p.style.display = "none";
   });
   document.querySelectorAll(".nav-item").forEach(function(n) { n.classList.remove("active"); });
-  // Afficher le panel cible
   panel.classList.add("active");
-  panel.style.display = (id === "chat") ? "flex" : "block";
+  panel.style.display = (id === "chat") ? "flex" : (id === "backlog") ? "flex" : "block";
   if (typeof event !== "undefined" && event && event.currentTarget) event.currentTarget.classList.add("active");
+  // Auto-refresh callbacks
   if (id === "backup")            loadReports();
-  if (id === "playwright-direct") loadTestQueue();
+  if (id === "playwright-direct") { loadTestQueue(); updatePWDSummary(); }
+  if (id === "pipeline")          updatePWDSummary();
   if (id === "reports")           loadPlaywrightReports();
   if (id === "settings")          loadSettingsPanel();
-  if (id === "playwright-direct" || id === "pipeline") updatePWDSummary();
-  if (id === "backlog") loadBacklog();
+  if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
+  if (id === "releases" && typeof loadReleases === "function") loadReleases();
 }
 
 // ── FOCUS TRAP ────────────────────────────────────────────────────────────────
@@ -7737,13 +7749,80 @@ function clearLLMTerminals() {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Charger les US enrichies + backlog actif (mes tickets) au démarrage
   loadEnrichedList();
   loadBacklog(false, "mine");
   renderRecentImports();
   setInterval(loadEnrichedList, 30000);
   setInterval(function() { loadBacklog(false, "mine"); }, 120000);
+  setInterval(blUpdateSyncStamp, 60000); // rafraîchit le label "il y a X min"
+  initKeyboardShortcuts();
 });
+
+// ── TIMESTAMP BACKLOG ─────────────────────────────────────────────────────────
+function blUpdateSyncStamp() {
+  var el = document.getElementById("bl-sync-stamp");
+  if (!el) return;
+  if (!_backlogSyncTime) { el.textContent = ""; return; }
+  var diff = Math.round((Date.now() - _backlogSyncTime) / 60000);
+  el.textContent = diff === 0 ? "· sync à l'instant" : "· sync il y a " + diff + " min";
+}
+
+// ── RACCOURCIS CLAVIER GLOBAUX ─────────────────────────────────────────────────
+function initKeyboardShortcuts() {
+  document.addEventListener("keydown", function(e) {
+    var tag = ((document.activeElement || {}).tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Ignorer si une modale est ouverte (display:flex ou visible)
+    var modalOpen = document.querySelector(
+      '#cascade-modal[style*="flex"], #xray-modal[style*="flex"], #backlog-add-modal[style*="flex"]'
+    );
+    if (modalOpen) return;
+    switch (e.key) {
+      case "r": case "R":
+        var active = document.querySelector(".panel.active");
+        if (!active) break;
+        if (active.id === "panel-backlog")  { loadBacklog(true); showToast("Backlog rechargé", "↺"); }
+        if (active.id === "panel-reports")  { loadPlaywrightReports(); showToast("Rapports rechargés", "↺"); }
+        if (active.id === "panel-releases" && typeof loadReleases === "function") loadReleases();
+        break;
+      case "k": case "K":
+        if (document.getElementById("panel-backlog").classList.contains("active"))
+          toggleBacklogView();
+        break;
+      case "b": case "B": showPanel("backlog");     break;
+      case "o": case "O": showPanel("operations");  break;
+      case "d": case "D": showPanel("dashboard");   break;
+      case "?":           showShortcutsHelp();      break;
+    }
+  });
+}
+
+function showShortcutsHelp() {
+  var existing = document.getElementById("shortcuts-modal");
+  if (existing) { existing.remove(); return; }
+  var m = document.createElement("div");
+  m.id = "shortcuts-modal";
+  m.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center";
+  m.onclick = function(e) { if (e.target === m) m.remove(); };
+  m.innerHTML =
+    '<div style="background:#111520;border:1px solid #2a3350;border-radius:16px;padding:28px 32px;min-width:340px">' +
+      '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:20px">⌨️ Raccourcis clavier</div>' +
+      '<div style="display:flex;flex-direction:column;gap:10px">' +
+        [["B","Aller au Backlog QA"],["O","Aller aux Opérations"],["D","Aller au Dashboard"],
+         ["R","Rafraîchir le panel actif"],["K","Toggle Liste/Kanban (Backlog)"],
+         ["?","Afficher/masquer cette aide"]]
+        .map(function(s) {
+          return '<div style="display:flex;align-items:center;gap:12px">' +
+            '<kbd style="font-family:var(--mono);font-size:11px;background:#1e2536;border:1px solid #2a3350;border-radius:5px;padding:3px 8px;color:var(--cyan);min-width:22px;text-align:center">' + s[0] + '</kbd>' +
+            '<span style="font-size:13px;color:#e2e8f0">' + s[1] + '</span>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+      '<div style="margin-top:18px;font-size:11px;color:#4a5568;font-family:var(--mono)">Appuie sur ? ou clique en dehors pour fermer</div>' +
+    '</div>';
+  document.body.appendChild(m);
+}
 
 // ══════════════════════════════════════════════════════
 // US ENRICHIES — Gestion stockage + éditeur
@@ -10516,6 +10595,7 @@ var _backlogAssigneeFilter = "all";
 var _backlogTypeFilter     = "all";
 var _backlogSearchFilter   = "";
 var _blLinksCache          = {}; // key → tableau de liens (lazy-fetch)
+var _backlogSyncTime       = null; // timestamp de la dernière sync Jira réussie
 var _backlogDisplayMode    = "list"; // "list" | "kanban"
 
 function setBacklogView(view) {
@@ -10539,6 +10619,8 @@ function loadBacklog(skipSync, view) {
     : fetch(syncUrl, { method: "POST" })
         .then(function(r) { return r.json(); })
         .then(function(d) {
+          _backlogSyncTime = Date.now();
+          blUpdateSyncStamp();
           if (d.added > 0) showToast(d.added + " ticket(s) QA importé(s) depuis Jira", "🔄");
         })
         .catch(function() {});
@@ -10553,8 +10635,7 @@ function loadBacklog(skipSync, view) {
     _backlogDone    = Array.isArray(results[1]) ? results[1] : [];
     renderBacklogPending();
     renderBacklogDone();
-    var badge = document.getElementById("badge-backlog");
-    if (badge) { badge.style.display = _backlogPending.length > 0 ? "inline" : "none"; badge.textContent = _backlogPending.length; }
+    if (skipSync) blUpdateSyncStamp(); // affiche le stamp même en mode local-only
   }).catch(function() {});
 }
 
