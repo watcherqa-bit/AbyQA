@@ -282,14 +282,68 @@
   .main.sidebar-collapsed .sidebar-section { padding: 0 8px; }
   .main.sidebar-collapsed .nav-item .icon { margin: 0; }
 
-  /* ── BACKLOG FILTERS ── */
-  .bl-filter {
-    padding: 4px 12px; font-size: 11px; font-family: var(--mono);
-    background: var(--bg3); border: 1px solid var(--border); border-radius: 20px;
-    color: var(--text2); cursor: pointer; transition: all .15s;
-  }
-  .bl-filter:hover { border-color: var(--border2); color: var(--text); }
-  .bl-filter.active { background: var(--blue); border-color: var(--blue); color: #fff; }
+  /* ── BACKLOG v2 ── */
+  .content:has(#panel-backlog.active) { padding: 0; }
+  #panel-backlog.active { display: flex !important; flex-direction: column; height: 100%; }
+
+  .bl-topbar { display:flex; align-items:center; justify-content:space-between; padding:16px 28px; border-bottom:1px solid var(--border); background:var(--bg2); flex-shrink:0; }
+  .bl-ghost-btn { padding:6px 14px; border-radius:8px; font-size:12px; cursor:pointer; background:var(--bg3); border:1px solid var(--border); color:var(--text2); font-family:var(--mono); transition:all .15s; }
+  .bl-ghost-btn:hover { border-color:var(--border2); color:var(--text); }
+  .bl-view-toggle { display:flex; background:var(--bg3); border:1px solid var(--border); border-radius:8px; padding:3px; }
+  .bl-toggle-btn { padding:5px 14px; border-radius:6px; font-size:12px; cursor:pointer; background:transparent; border:none; color:var(--text2); font-family:var(--mono); transition:all .15s; }
+  .bl-toggle-btn.active { background:var(--bg2); color:var(--cyan); box-shadow:0 1px 4px rgba(0,0,0,.3); }
+  .bl-add-btn { padding:6px 16px; border-radius:8px; font-size:12px; cursor:pointer; font-weight:700; background:var(--cyan); color:#000; border:none; }
+  .bl-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 28px; border-bottom:1px solid var(--border); background:var(--bg); flex-shrink:0; }
+  .bl-toolbar-group { display:flex; align-items:center; gap:6px; }
+  .bl-toolbar-label { font-family:var(--mono); font-size:10px; color:var(--text3); text-transform:uppercase; letter-spacing:.08em; }
+  .bl-toolbar-sep { width:1px; height:24px; background:var(--border); flex-shrink:0; }
+  .bl-phase-btn { padding:4px 12px; border-radius:20px; font-size:11px; font-family:var(--mono); cursor:pointer; background:transparent; border:1px solid transparent; color:var(--text2); transition:all .15s; display:inline-flex; align-items:center; gap:6px; }
+  .bl-phase-btn:hover { color:var(--text); border-color:var(--border); }
+  .bl-phase-btn.active { background:rgba(0,212,255,.12); color:var(--cyan); border-color:rgba(0,212,255,.3); }
+  .bl-phase-btn.active .bl-badge { background:var(--cyan); color:#000; }
+  .bl-badge { font-size:10px; font-family:var(--mono); background:var(--bg3); color:var(--text3); border-radius:10px; padding:1px 6px; }
+  .bl-select { padding:5px 10px; border-radius:8px; font-size:11px; font-family:var(--mono); background:var(--bg3); border:1px solid var(--border2); color:var(--text2); cursor:pointer; outline:none; }
+  .bl-select:focus { border-color:var(--cyan); }
+  .bl-search-input { padding:5px 10px 5px 32px; border-radius:8px; font-size:12px; background:var(--bg3); border:1px solid var(--border2); color:var(--text); width:200px; outline:none; }
+  .bl-search-input:focus { border-color:var(--cyan); }
+  .bl-stats-row { display:flex; gap:12px; padding:14px 28px; border-bottom:1px solid var(--border); flex-shrink:0; }
+  .bl-stat-card { flex:1; padding:12px 16px; border-radius:10px; display:flex; align-items:center; gap:12px; border:1px solid; }
+  .bl-stat-cyan   { background:rgba(0,212,255,.08); border-color:rgba(0,212,255,.2); }
+  .bl-stat-green  { background:rgba(0,232,118,.08); border-color:rgba(0,232,118,.2); }
+  .bl-stat-orange { background:rgba(255,149,0,.08);  border-color:rgba(255,149,0,.2); }
+  .bl-stat-red    { background:rgba(255,59,92,.08);  border-color:rgba(255,59,92,.2); }
+  .bl-stat-value  { font-size:22px; font-weight:800; }
+  .bl-stat-label  { font-size:11px; color:var(--text3); }
+  .bl-row { display:flex; align-items:center; gap:12px; padding:12px 16px; border-radius:10px; background:var(--bg2); border:1px solid var(--border); border-left:3px solid; transition:all .15s; }
+  .bl-row:hover { border-color:var(--border2); background:var(--bg3); transform:translateX(2px); }
+  .bl-row:hover .bl-row-actions { opacity:1; }
+  .bl-row-id { font-family:var(--mono); font-size:11px; color:var(--cyan); min-width:100px; flex-shrink:0; }
+  .bl-row-title { flex:1; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .bl-row-meta { display:flex; gap:8px; align-items:center; flex-shrink:0; }
+  .bl-row-actions { display:flex; gap:6px; opacity:0; transition:opacity .15s; }
+  .bl-pill { font-size:10px; font-family:var(--mono); padding:2px 8px; border-radius:10px; font-weight:600; white-space:nowrap; }
+  .bl-pill-test    { background:rgba(0,212,255,.15); color:var(--cyan); }
+  .bl-pill-bug     { background:rgba(255,59,92,.15);  color:var(--red); }
+  .bl-pill-us      { background:rgba(168,85,247,.15); color:var(--purple); }
+  .bl-pill-other   { background:rgba(255,149,0,.15);  color:var(--orange); }
+  .bl-pill-entrant        { background:rgba(100,116,139,.15); color:#94a3b8; }
+  .bl-pill-enrichissement { background:rgba(255,214,0,.15);   color:#fbbf24; }
+  .bl-pill-pret           { background:rgba(0,232,118,.15);   color:var(--green); }
+  .bl-pill-en-test        { background:rgba(168,85,247,.15);  color:var(--purple); }
+  .bl-pill-prio-critique  { background:rgba(255,59,92,.15);  color:var(--red); }
+  .bl-pill-prio-high      { background:rgba(255,149,0,.15);  color:var(--orange); }
+  .bl-pill-prio-low       { background:rgba(0,212,255,.15);  color:var(--cyan); }
+  .bl-avatar { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; }
+  .bl-action-btn { font-size:10px; padding:3px 10px; border-radius:6px; cursor:pointer; font-weight:600; border:1px solid; font-family:var(--mono); transition:all .1s; }
+  .bl-action-enrich { background:rgba(255,214,0,.12); border-color:rgba(255,214,0,.3); color:#fbbf24; }
+  .bl-action-xray   { background:rgba(168,85,247,.12); border-color:rgba(168,85,247,.3); color:var(--purple); }
+  .bl-action-test   { background:rgba(0,232,118,.12); border-color:rgba(0,232,118,.3); color:var(--green); }
+  .bl-action-ignore { background:none; border-color:var(--border); color:var(--text3); }
+  .bl-kanban-col { background:var(--bg2); border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+  .bl-kanban-col-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--border); }
+  .bl-kanban-col-body { padding:12px; display:flex; flex-direction:column; gap:8px; min-height:200px; }
+  .bl-kanban-card { background:var(--bg3); border:1px solid var(--border2); border-left:3px solid; border-radius:8px; padding:12px; cursor:pointer; transition:all .15s; }
+  .bl-kanban-card:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
 
   /* Xray step row */
   .xray-step-row { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
@@ -2842,89 +2896,99 @@
 
     <!-- ══ BACKLOG QA ══ -->
     <div class="panel" id="panel-backlog">
-      <div class="panel-header">
+
+      <!-- 1. TOPBAR -->
+      <div class="bl-topbar">
         <div>
-          <div class="panel-title">Backlog <span>QA</span></div>
-          <div class="panel-desc">Tickets en attente de traitement + archives — structuré par phase</div>
+          <div style="font-size:20px;font-weight:800">Backlog <span style="color:var(--cyan)">QA</span></div>
+          <div style="font-size:12px;color:var(--text3);margin-top:3px">Tickets en attente de traitement + archives — structuré par phase</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <button class="btn btn-secondary" onclick="loadBacklog(true)" style="padding:6px 14px;font-size:12px">⟳ Rafraîchir</button>
-          <button class="btn btn-secondary" onclick="loadBacklog(false,'mine')" style="padding:6px 14px;font-size:12px">🔄 Mes tickets</button>
-          <button class="btn btn-secondary" onclick="loadBacklog(false,'all')" style="padding:6px 14px;font-size:12px">🔄 Toute l'équipe</button>
-          <button id="bl-toggle-kanban" onclick="toggleBacklogView()" style="padding:6px 14px;font-size:12px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer">⊞ Kanban</button>
-          <button class="btn" onclick="showBacklogAddModal()" style="padding:6px 14px;font-size:12px">+ Ajouter</button>
+        <div style="display:flex;gap:10px;align-items:center">
+          <button onclick="loadBacklog(true)" class="bl-ghost-btn">↺ Rafraîchir</button>
+          <div class="bl-view-toggle">
+            <button id="bl-btn-list"   class="bl-toggle-btn active" onclick="setBacklogDisplayMode('list')">≡ Liste</button>
+            <button id="bl-btn-kanban" class="bl-toggle-btn"        onclick="setBacklogDisplayMode('kanban')">⊞ Kanban</button>
+          </div>
+          <button onclick="showBacklogAddModal()" class="bl-add-btn">+ Ajouter</button>
         </div>
       </div>
-      <div style="padding:20px">
 
-        <!-- Filtre vue : Mes tickets / Toute l'équipe -->
-        <div style="display:flex;gap:8px;margin-bottom:16px;align-items:center">
-          <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">VUE :</span>
-          <button id="bl-view-mine" onclick="setBacklogView('mine')"
-            style="padding:4px 14px;border-radius:20px;font-size:11px;font-family:var(--mono);cursor:pointer;background:var(--blue);border:1px solid var(--blue);color:#fff">
-            👤 Mes tickets
-          </button>
-          <button id="bl-view-all" onclick="setBacklogView('all')"
-            style="padding:4px 14px;border-radius:20px;font-size:11px;font-family:var(--mono);cursor:pointer;background:var(--bg3);border:1px solid var(--border);color:var(--text2)">
-            👥 Toute l'équipe
-          </button>
+      <!-- 2. TOOLBAR -->
+      <div class="bl-toolbar">
+        <div class="bl-toolbar-group">
+          <span class="bl-toolbar-label">Phase</span>
+          <button class="bl-phase-btn active" data-phase="all"            onclick="filterBacklog('all')">Tous <span class="bl-badge" id="badge-phase-all">0</span></button>
+          <button class="bl-phase-btn"        data-phase="entrant"        onclick="filterBacklog('entrant')">📥 Entrants <span class="bl-badge" id="badge-phase-entrant">0</span></button>
+          <button class="bl-phase-btn"        data-phase="enrichissement" onclick="filterBacklog('enrichissement')">✏️ Enrichissement <span class="bl-badge" id="badge-phase-enrichissement">0</span></button>
+          <button class="bl-phase-btn"        data-phase="pret"           onclick="filterBacklog('pret')">✅ Prêts <span class="bl-badge" id="badge-phase-pret">0</span></button>
+          <button class="bl-phase-btn"        data-phase="en-test"        onclick="filterBacklog('en-test')">🧪 En test <span class="bl-badge" id="badge-phase-en-test">0</span></button>
         </div>
-
-        <!-- Onglets EN ATTENTE / ARCHIVÉS -->
-        <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:20px">
-          <button id="bl-tab-pending" onclick="switchBacklogTab('pending')"
-            style="padding:8px 20px;background:var(--blue);border:none;color:#fff;border-radius:8px 8px 0 0;font-size:12px;font-family:var(--mono);cursor:pointer;font-weight:700">
-            📥 EN ATTENTE <span id="bl-pending-count" style="background:rgba(255,255,255,.2);border-radius:8px;padding:1px 7px;margin-left:4px">0</span>
-          </button>
-          <button id="bl-tab-done" onclick="switchBacklogTab('done')"
-            style="padding:8px 20px;background:var(--bg3);border:none;color:var(--text2);border-radius:8px 8px 0 0;font-size:12px;font-family:var(--mono);cursor:pointer">
-            📦 ARCHIVÉS <span id="bl-done-count" style="background:rgba(255,255,255,.1);border-radius:8px;padding:1px 7px;margin-left:4px">0</span>
-          </button>
+        <div class="bl-toolbar-sep"></div>
+        <button class="bl-phase-btn" id="bl-tab-archives" onclick="switchBacklogTab('done')">🗄️ Archivés <span class="bl-badge" id="badge-archives">0</span></button>
+        <div class="bl-toolbar-sep"></div>
+        <div class="bl-toolbar-group">
+          <span class="bl-toolbar-label">Vue</span>
+          <button id="bl-view-mine" class="bl-phase-btn"        onclick="setBacklogView('mine')">👤 Mes tickets</button>
+          <button id="bl-view-all"  class="bl-phase-btn active" onclick="setBacklogView('all')">👥 Toute l'équipe</button>
         </div>
-
-        <!-- EN ATTENTE -->
-        <div id="bl-section-pending">
-          <div id="bl-phase-filters" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-            <button onclick="filterBacklog('all')"    id="blf-all"            class="bl-filter active">Tous</button>
-            <button onclick="filterBacklog('entrant')" id="blf-entrant"       class="bl-filter">📥 Entrants</button>
-            <button onclick="filterBacklog('enrichissement')" id="blf-enrichissement" class="bl-filter">✏️ En enrichissement</button>
-            <button onclick="filterBacklog('pret')"   id="blf-pret"           class="bl-filter">✅ Prêts</button>
-            <button onclick="filterBacklog('en-test')" id="blf-en-test"       class="bl-filter">🔬 En test</button>
-          </div>
-          <!-- Filtres Priorité + Assignee -->
-          <div id="bl-dropdown-filters" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
-            <select id="bl-filter-prio" onchange="filterBacklogPrio(this.value)"
-              style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:11px;cursor:pointer">
-              <option value="all">🏷 Priorité : Toutes</option>
-            </select>
-            <select id="bl-filter-assignee" onchange="filterBacklogAssignee(this.value)"
-              style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:var(--mono);font-size:11px;cursor:pointer">
-              <option value="all">👤 Assignee : Tous</option>
-            </select>
-          </div>
-
-          <div id="bl-pending-list" style="display:flex;flex-direction:column;gap:8px">
-            <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
-          </div>
-
-          <!-- Vue Kanban -->
-          <div id="bl-kanban-view" style="display:none;gap:12px;align-items:flex-start;overflow-x:auto;padding-bottom:8px"></div>
+        <div class="bl-toolbar-sep"></div>
+        <select id="bl-filter-prio"     onchange="filterBacklogPrio(this.value)"     class="bl-select"><option value="all">🔥 Priorité : Toutes</option></select>
+        <select id="bl-filter-type"     onchange="filterBacklogType(this.value)"     class="bl-select">
+          <option value="all">🏷️ Type : Tous</option>
+          <option value="Test Case">TEST</option>
+          <option value="Bug">BUG</option>
+          <option value="Story">User Story</option>
+        </select>
+        <select id="bl-filter-assignee" onchange="filterBacklogAssignee(this.value)" class="bl-select"><option value="all">👤 Assignee : Tous</option></select>
+        <div class="bl-toolbar-sep"></div>
+        <div style="position:relative">
+          <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none">🔍</span>
+          <input type="text" id="bl-search" class="bl-search-input" placeholder="Rechercher un ticket..." oninput="filterBacklogSearch(this.value)">
         </div>
-
-        <!-- ARCHIVÉS -->
-        <div id="bl-section-done" style="display:none">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-            <button onclick="filterDone('all')"  id="bld-all"  class="bl-filter active">Tous</button>
-            <button onclick="filterDone('PASS')" id="bld-pass" class="bl-filter">✅ PASS</button>
-            <button onclick="filterDone('FAIL')" id="bld-fail" class="bl-filter">❌ FAIL</button>
-            <button onclick="filterDone('SKIP')" id="bld-skip" class="bl-filter">⏭ SKIP</button>
-          </div>
-          <div id="bl-done-list" style="display:flex;flex-direction:column;gap:8px">
-            <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
-          </div>
-        </div>
-
       </div>
+
+      <!-- 3. STATS ROW -->
+      <div class="bl-stats-row">
+        <div class="bl-stat-card bl-stat-cyan">
+          <span style="font-size:20px">📋</span>
+          <div><div class="bl-stat-value" id="stat-total">0</div><div class="bl-stat-label">En attente</div></div>
+        </div>
+        <div class="bl-stat-card bl-stat-green">
+          <span style="font-size:20px">✅</span>
+          <div><div class="bl-stat-value" id="stat-pret">0</div><div class="bl-stat-label">Prêts à tester</div></div>
+        </div>
+        <div class="bl-stat-card bl-stat-orange">
+          <span style="font-size:20px">✏️</span>
+          <div><div class="bl-stat-value" id="stat-enrichissement">0</div><div class="bl-stat-label">En enrichissement</div></div>
+        </div>
+        <div class="bl-stat-card bl-stat-red">
+          <span style="font-size:20px">🧪</span>
+          <div><div class="bl-stat-value" id="stat-en-test">0</div><div class="bl-stat-label">En test actif</div></div>
+        </div>
+      </div>
+
+      <!-- 4+5. CONTENT — Pending -->
+      <div id="bl-section-pending" style="padding:16px 28px;overflow-y:auto;flex:1">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:12px;letter-spacing:.05em">AFFICHAGE : <span id="bl-display-count">0</span> TICKET(S)</div>
+        <div id="bl-pending-list" style="display:flex;flex-direction:column;gap:8px">
+          <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
+        </div>
+        <div id="bl-kanban-view" style="display:none;grid-template-columns:repeat(4,1fr);gap:14px"></div>
+      </div>
+
+      <!-- CONTENT — Archives -->
+      <div id="bl-section-done" style="display:none;padding:16px 28px;overflow-y:auto;flex:1">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+          <button onclick="filterDone('all')"  id="bld-all"  class="bl-phase-btn active">Tous</button>
+          <button onclick="filterDone('PASS')" id="bld-pass" class="bl-phase-btn">✅ PASS</button>
+          <button onclick="filterDone('FAIL')" id="bld-fail" class="bl-phase-btn">❌ FAIL</button>
+          <button onclick="filterDone('SKIP')" id="bld-skip" class="bl-phase-btn">⏭ SKIP</button>
+        </div>
+        <div id="bl-done-list" style="display:flex;flex-direction:column;gap:8px">
+          <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ══ MODAL CASCADE ══ -->
@@ -10441,22 +10505,24 @@ function sendToClaudeCode() {
 // ══════════════════════════════════════════════════════════════════════════════
 // BACKLOG QA — EN ATTENTE + ARCHIVÉS
 // ══════════════════════════════════════════════════════════════════════════════
-var _backlogPending  = [];
-var _backlogDone     = [];
-var _backlogFilter   = "all";
-var _doneFilter      = "all";
-var _backlogTab      = "pending";
-var _backlogView     = "mine"; // "mine" | "all"
+var _backlogPending        = [];
+var _backlogDone           = [];
+var _backlogFilter         = "all";
+var _doneFilter            = "all";
+var _backlogTab            = "pending";
+var _backlogView           = "all"; // "mine" | "all"
 var _backlogPrioFilter     = "all";
 var _backlogAssigneeFilter = "all";
+var _backlogTypeFilter     = "all";
+var _backlogSearchFilter   = "";
 var _backlogDisplayMode    = "list"; // "list" | "kanban"
 
 function setBacklogView(view) {
   _backlogView = view;
   var btnMine = document.getElementById("bl-view-mine");
   var btnAll  = document.getElementById("bl-view-all");
-  if (btnMine) { btnMine.style.background = view === "mine" ? "var(--blue)" : "var(--bg3)"; btnMine.style.borderColor = view === "mine" ? "var(--blue)" : "var(--border)"; btnMine.style.color = view === "mine" ? "#fff" : "var(--text2)"; }
-  if (btnAll)  { btnAll.style.background  = view === "all"  ? "var(--blue)" : "var(--bg3)"; btnAll.style.borderColor  = view === "all"  ? "var(--blue)" : "var(--border)"; btnAll.style.color  = view === "all"  ? "#fff" : "var(--text2)"; }
+  if (btnMine) btnMine.classList.toggle("active", view === "mine");
+  if (btnAll)  btnAll.classList.toggle("active",  view === "all");
   loadBacklog(false, view);
 }
 
@@ -10493,220 +10559,247 @@ function loadBacklog(skipSync, view) {
 
 function switchBacklogTab(tab) {
   _backlogTab = tab;
-  var tabP = document.getElementById("bl-tab-pending");
-  var tabD = document.getElementById("bl-tab-done");
-  var secP = document.getElementById("bl-section-pending");
-  var secD = document.getElementById("bl-section-done");
+  var secP    = document.getElementById("bl-section-pending");
+  var secD    = document.getElementById("bl-section-done");
+  var archBtn = document.getElementById("bl-tab-archives");
   if (tab === "pending") {
-    if (tabP) { tabP.style.background = "var(--blue)"; tabP.style.color = "#fff"; }
-    if (tabD) { tabD.style.background = "var(--bg3)";  tabD.style.color = "var(--text2)"; }
     if (secP) secP.style.display = "block";
     if (secD) secD.style.display = "none";
+    if (archBtn) archBtn.classList.remove("active");
+    // Restore last phase filter btn
+    document.querySelectorAll(".bl-phase-btn[data-phase]").forEach(function(b) {
+      b.classList.toggle("active", b.getAttribute("data-phase") === _backlogFilter);
+    });
   } else {
-    if (tabD) { tabD.style.background = "var(--blue)"; tabD.style.color = "#fff"; }
-    if (tabP) { tabP.style.background = "var(--bg3)";  tabP.style.color = "var(--text2)"; }
     if (secP) secP.style.display = "none";
     if (secD) secD.style.display = "block";
+    if (archBtn) archBtn.classList.add("active");
+    document.querySelectorAll(".bl-phase-btn[data-phase]").forEach(function(b) { b.classList.remove("active"); });
   }
 }
 
 function filterBacklog(phase) {
   _backlogFilter = phase;
-  document.querySelectorAll(".bl-filter").forEach(function(b) { b.classList.remove("active"); });
-  var el = document.getElementById("blf-" + phase);
-  if (el) el.classList.add("active");
+  if (_backlogTab !== "pending") switchBacklogTab("pending");
+  document.querySelectorAll(".bl-phase-btn[data-phase]").forEach(function(b) {
+    b.classList.toggle("active", b.getAttribute("data-phase") === phase);
+  });
+  var archBtn = document.getElementById("bl-tab-archives");
+  if (archBtn) archBtn.classList.remove("active");
   renderBacklogPending();
 }
 
 function filterDone(result) {
   _doneFilter = result;
-  document.querySelectorAll(".bl-filter").forEach(function(b) { b.classList.remove("active"); });
+  document.querySelectorAll("#bld-all,#bld-pass,#bld-fail,#bld-skip").forEach(function(b) { b.classList.remove("active"); });
   var el = document.getElementById("bld-" + result.toLowerCase());
   if (el) el.classList.add("active");
   renderBacklogDone();
 }
 
-var PHASE_LABELS = { entrant:"📥 Entrant", enrichissement:"✏️ En enrichissement", pret:"✅ Prêt", "en-test":"🔬 En test" };
+function filterBacklogType(val)    { _backlogTypeFilter   = val; renderBacklogPending(); }
+function filterBacklogSearch(query){ _backlogSearchFilter = query.trim().toLowerCase(); renderBacklogPending(); }
+
+var PHASE_LABELS = { entrant:"📥 Entrant", enrichissement:"✏️ En enrichissement", pret:"✅ Prêt", "en-test":"🧪 En test" };
 var PHASE_COLORS = { entrant:"var(--text3)", enrichissement:"var(--blue)", pret:"var(--green)", "en-test":"#f97316" };
 
-function toggleBacklogView() {
-  _backlogDisplayMode = _backlogDisplayMode === "list" ? "kanban" : "list";
-  var btn = document.getElementById("bl-toggle-kanban");
-  if (btn) {
-    btn.textContent = _backlogDisplayMode === "kanban" ? "☰ Liste" : "⊞ Kanban";
-    btn.style.color      = _backlogDisplayMode === "kanban" ? "var(--blue)"   : "var(--text2)";
-    btn.style.borderColor= _backlogDisplayMode === "kanban" ? "var(--blue)"   : "var(--border)";
-    btn.style.background = _backlogDisplayMode === "kanban" ? "rgba(59,130,246,.12)" : "var(--bg3)";
-  }
+function setBacklogDisplayMode(mode) {
+  _backlogDisplayMode = mode;
+  var btnList   = document.getElementById("bl-btn-list");
+  var btnKanban = document.getElementById("bl-btn-kanban");
+  if (btnList)   btnList.classList.toggle("active",   mode === "list");
+  if (btnKanban) btnKanban.classList.toggle("active", mode === "kanban");
   renderBacklogPending();
 }
+
+function toggleBacklogView() { setBacklogDisplayMode(_backlogDisplayMode === "list" ? "kanban" : "list"); }
 
 function renderBacklogKanban(filtered) {
   var container = document.getElementById("bl-kanban-view");
   if (!container) return;
-  var PHASES = ["entrant", "enrichissement", "pret", "en-test"];
-  var PRIO_COLOR = { Highest:"#ef4444", High:"#f97316", Medium:"#f59e0b", Low:"#10b981", Lowest:"#6b7280" };
+  var PHASES       = ["entrant", "enrichissement", "pret", "en-test"];
+  var PHASE_ACCENT = { entrant:"#94a3b8", enrichissement:"#fbbf24", pret:"var(--green)", "en-test":"var(--purple)" };
+  var PRIO_COLORS  = { Highest:"#ff3b5c", High:"#ff9500", Medium:"#ffd600", Low:"var(--cyan)", Lowest:"#64748b" };
   container.innerHTML = PHASES.map(function(phase) {
-    var col     = filtered.filter(function(t) { return t.phase === phase; });
-    var color   = PHASE_COLORS[phase]  || "var(--text3)";
-    var label   = PHASE_LABELS[phase]  || phase;
-    return '<div style="flex:1;min-width:220px;max-width:340px;background:var(--bg3);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">' +
-        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:' + color + '">' + label + '</span>' +
-        '<span style="font-family:var(--mono);font-size:10px;color:var(--text3);background:var(--bg2);border-radius:8px;padding:1px 8px">' + col.length + '</span>' +
+    var col = (_backlogFilter === "all" || _backlogFilter === phase)
+      ? filtered.filter(function(t) { return t.phase === phase; }) : [];
+    var accent = PHASE_ACCENT[phase] || "var(--text3)";
+    var label  = PHASE_LABELS[phase] || phase;
+    return '<div class="bl-kanban-col">' +
+      '<div class="bl-kanban-col-header">' +
+        '<span style="font-family:var(--mono);font-size:11px;font-weight:700;color:' + accent + '">' + label + '</span>' +
+        '<span style="font-family:var(--mono);font-size:10px;background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:1px 8px;color:var(--text3)">' + col.length + '</span>' +
       '</div>' +
-      (col.length === 0
-        ? '<div style="color:var(--text3);font-size:11px;text-align:center;padding:20px 8px;border:1px dashed var(--border);border-radius:8px">—</div>'
-        : col.map(function(t) {
-            var wf       = wfInfo(t.jiraStatus || "");
-            var typeIcon = t.type === "Bug" ? "🔴" : t.type === "Story" ? "📋" : t.type === "Test Case" ? "🧪" : "✅";
-            var pc       = PRIO_COLOR[t.priority] || "var(--text3)";
-            var daysAgo  = Math.round((Date.now() - new Date(t.addedAt)) / 86400000);
-            var ageStr   = daysAgo === 0 ? "auj." : daysAgo + "j";
-            return '<div style="background:var(--bg2);border:1px solid var(--border);border-left:3px solid ' + wf.color + ';border-radius:8px;padding:10px">' +
-              '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:6px">' +
-                '<span style="font-size:13px;flex-shrink:0">' + typeIcon + '</span>' +
-                '<div style="flex:1;min-width:0">' +
-                  '<div style="font-family:var(--mono);font-size:10px;color:var(--cyan);font-weight:700;margin-bottom:2px">' + t.key + '</div>' +
-                  '<div style="font-size:11px;color:var(--text);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">' + escHtml(t.summary || "") + '</div>' +
+      '<div class="bl-kanban-col-body">' +
+        (col.length === 0
+          ? '<div style="color:var(--text3);font-size:11px;text-align:center;padding:24px 8px;font-family:var(--mono)">Aucun ticket</div>'
+          : col.map(function(t) {
+              var pc = PRIO_COLORS[t.priority] || "var(--border2)";
+              var typeClass = t.type === "Test Case" || t.type === "Test" ? "bl-pill-test"
+                            : t.type === "Bug" ? "bl-pill-bug"
+                            : (t.type === "Story" || t.type === "User Story") ? "bl-pill-us" : "bl-pill-other";
+              var typeLabel = t.type === "Test Case" ? "TEST" : (t.type === "Story" || t.type === "User Story") ? "US" : (t.type || "?");
+              var prioClass = (t.priority === "Highest" || t.priority === "High") ? "bl-pill-prio-critique"
+                            : (t.priority === "Low"     || t.priority === "Lowest") ? "bl-pill-prio-low" : "bl-pill-prio-high";
+              var initials = (t.assignee || "").split(" ").map(function(w) { return w[0]; }).join("").slice(0,2).toUpperCase() || "?";
+              var avatarBg  = t.assignee ? blAvatarColor(t.assignee) : "#4a5568";
+              return '<div class="bl-kanban-card" style="border-left-color:' + pc + '">' +
+                '<div style="font-family:var(--mono);font-size:10px;color:var(--cyan);margin-bottom:6px">' +
+                  '<a href="https://' + CFG_JIRA_HOST + '/browse/' + t.key + '" target="_blank" style="color:var(--cyan);text-decoration:none">' + t.key + '</a>' +
                 '</div>' +
-              '</div>' +
-              '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin-bottom:8px">' +
-                (t.priority ? '<span style="font-size:9px;font-family:var(--mono);color:' + pc + ';background:rgba(0,0,0,.3);border-radius:4px;padding:1px 6px">' + t.priority + '</span>' : '') +
-                (t.assignee ? '<span style="font-size:9px;font-family:var(--mono);color:var(--text3);background:rgba(0,0,0,.2);border-radius:4px;padding:1px 6px;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(t.assignee) + '">' + escHtml(t.assignee) + '</span>' : '') +
-                '<span style="font-size:9px;font-family:var(--mono);color:var(--text3);margin-left:auto">' + ageStr + '</span>' +
-              '</div>' +
-              '<div style="display:flex;gap:4px;flex-wrap:wrap">' + blActionButtons(t) + '</div>' +
-            '</div>';
-          }).join("")
-      ) +
+                '<div style="font-size:12px;font-weight:600;line-height:1.4;margin-bottom:10px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">' + escHtml(t.summary || "") + '</div>' +
+                '<div style="display:flex;justify-content:space-between;align-items:center">' +
+                  '<div style="display:flex;gap:4px">' +
+                    '<span class="bl-pill ' + typeClass + '">' + typeLabel + '</span>' +
+                    (t.priority ? '<span class="bl-pill ' + prioClass + '">' + t.priority + '</span>' : '') +
+                  '</div>' +
+                  (t.assignee ? '<div class="bl-avatar" style="background:' + avatarBg + ';color:#000;font-size:9px" title="' + escHtml(t.assignee) + '">' + initials + '</div>' : '') +
+                '</div>' +
+              '</div>';
+            }).join("")
+        ) +
+      '</div>' +
     '</div>';
   }).join("");
 }
 
-function filterBacklogPrio(val) {
-  _backlogPrioFilter = val;
-  renderBacklogPending();
-}
+function filterBacklogPrio(val)     { _backlogPrioFilter     = val; renderBacklogPending(); }
+function filterBacklogAssignee(val) { _backlogAssigneeFilter = val; renderBacklogPending(); }
 
-function filterBacklogAssignee(val) {
-  _backlogAssigneeFilter = val;
-  renderBacklogPending();
+function updateBacklogBadges() {
+  ["all","entrant","enrichissement","pret","en-test"].forEach(function(p) {
+    var el = document.getElementById("badge-phase-" + p);
+    if (!el) return;
+    el.textContent = p === "all" ? _backlogPending.length
+      : _backlogPending.filter(function(t) { return t.phase === p; }).length;
+  });
+  var ab = document.getElementById("badge-archives");
+  if (ab) ab.textContent = _backlogDone.length;
+  var sv = function(id, val) { var e = document.getElementById(id); if (e) e.textContent = val; };
+  sv("stat-total",          _backlogPending.length);
+  sv("stat-pret",           _backlogPending.filter(function(t){ return t.phase === "pret"; }).length);
+  sv("stat-enrichissement", _backlogPending.filter(function(t){ return t.phase === "enrichissement"; }).length);
+  sv("stat-en-test",        _backlogPending.filter(function(t){ return t.phase === "en-test"; }).length);
+  var nb = document.getElementById("badge-backlog");
+  if (nb) { nb.style.display = _backlogPending.length > 0 ? "inline" : "none"; nb.textContent = _backlogPending.length; }
 }
 
 function populateBacklogDropdowns() {
   var prioSel     = document.getElementById("bl-filter-prio");
   var assigneeSel = document.getElementById("bl-filter-assignee");
   if (!prioSel || !assigneeSel) return;
-
-  var prios     = [];
-  var assignees = [];
+  var prios = [], assignees = [];
   _backlogPending.forEach(function(t) {
-    if (t.priority  && prios.indexOf(t.priority)   === -1) prios.push(t.priority);
-    if (t.assignee  && assignees.indexOf(t.assignee) === -1) assignees.push(t.assignee);
+    if (t.priority && prios.indexOf(t.priority) === -1)     prios.push(t.priority);
+    if (t.assignee && assignees.indexOf(t.assignee) === -1) assignees.push(t.assignee);
   });
-
   var PRIO_ORDER = ["Highest","High","Medium","Low","Lowest"];
   prios.sort(function(a, b) {
-    var ia = PRIO_ORDER.indexOf(a), ib = PRIO_ORDER.indexOf(b);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    return (PRIO_ORDER.indexOf(a)+1||99) - (PRIO_ORDER.indexOf(b)+1||99);
   });
   assignees.sort();
-
-  prioSel.innerHTML = '<option value="all">🏷 Priorité : Toutes</option>' +
-    prios.map(function(p) { return '<option value="' + p + '"' + (_backlogPrioFilter === p ? ' selected' : '') + '>' + p + '</option>'; }).join("");
-
+  prioSel.innerHTML = '<option value="all">🔥 Priorité : Toutes</option>' +
+    prios.map(function(p) { return '<option value="' + p + '"' + (_backlogPrioFilter === p ? ' selected':'') + '>' + p + '</option>'; }).join("");
   assigneeSel.innerHTML = '<option value="all">👤 Assignee : Tous</option>' +
-    assignees.map(function(a) { return '<option value="' + escHtml(a) + '"' + (_backlogAssigneeFilter === a ? ' selected' : '') + '>' + escHtml(a) + '</option>'; }).join("");
+    assignees.map(function(a) { return '<option value="' + escHtml(a) + '"' + (_backlogAssigneeFilter === a ? ' selected':'') + '>' + escHtml(a) + '</option>'; }).join("");
+}
+
+function blAvatarColor(name) {
+  var palette = ["#00d4ff","#00e676","#ff9800","#ff4757","#a855f7","#ffd600","#3b6fff","#10b981"];
+  var h = 0;
+  for (var i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) & 0xffff;
+  return palette[h % palette.length];
+}
+
+function blRenderRow(t) {
+  var PRIO_COLORS = { Highest:"#ff3b5c", High:"#ff9500", Medium:"#ffd600", Low:"var(--cyan)", Lowest:"#64748b" };
+  var prioColor = PRIO_COLORS[t.priority] || "var(--border)";
+  var typeClass = t.type === "Test Case" || t.type === "Test" ? "bl-pill-test"
+                : t.type === "Bug" ? "bl-pill-bug"
+                : (t.type === "Story" || t.type === "User Story") ? "bl-pill-us" : "bl-pill-other";
+  var typeLabel = t.type === "Test Case" ? "TEST"
+                : (t.type === "Story" || t.type === "User Story") ? "US" : (t.type || "?");
+  var phaseClass = t.phase ? "bl-pill-" + t.phase : "";
+  var phaseLabel = PHASE_LABELS[t.phase] || "";
+  var prioClass  = (t.priority === "Highest" || t.priority === "High") ? "bl-pill-prio-critique"
+                 : (t.priority === "Low"     || t.priority === "Lowest") ? "bl-pill-prio-low" : "bl-pill-prio-high";
+  var initials   = (t.assignee || "?").split(" ").map(function(w){ return w[0]; }).join("").slice(0,2).toUpperCase();
+  var avatarBg   = t.assignee ? blAvatarColor(t.assignee) : "#4a5568";
+  var nextPhaseMap = { entrant:"enrichissement", enrichissement:"pret", pret:"en-test" };
+  var advanceBtn = nextPhaseMap[t.phase]
+    ? '<button onclick="blAdvancePhase(\'' + t.key + '\',\'' + nextPhaseMap[t.phase] + '\')" class="bl-action-btn bl-action-test">→ ' + (PHASE_LABELS[nextPhaseMap[t.phase]] || nextPhaseMap[t.phase]) + '</button>'
+    : '';
+  var cascadeBtn = (t.type === "Story" || t.type === "User Story")
+    ? '<button onclick="openCascadeModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">🔗 Cascade</button>' : '';
+  var xrayBtn = (t.type === "Test Case" || t.type === "Test")
+    ? '<button onclick="openXrayModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">⚡ Xray</button>' : '';
+  return '<div class="bl-row" style="border-left-color:' + prioColor + '">' +
+    '<span class="bl-row-id"><a href="https://' + CFG_JIRA_HOST + '/browse/' + t.key + '" target="_blank" style="color:var(--cyan);text-decoration:none">' + t.key + '</a></span>' +
+    '<span class="bl-row-title" title="' + escHtml(t.summary||"") + '">' + escHtml(t.summary||"") + '</span>' +
+    '<div class="bl-row-meta">' +
+      '<span class="bl-pill ' + typeClass + '">' + typeLabel + '</span>' +
+      (t.priority  ? '<span class="bl-pill ' + prioClass  + '">' + t.priority  + '</span>' : '') +
+      (phaseLabel  ? '<span class="bl-pill ' + phaseClass + '">' + phaseLabel  + '</span>' : '') +
+      (t.assignee  ? '<div class="bl-avatar" style="background:' + avatarBg + ';color:#000" title="' + escHtml(t.assignee) + '">' + initials + '</div>' : '') +
+      '<div class="bl-row-actions">' +
+        '<button onclick="blOpenEnrich(\'' + t.key + '\')" class="bl-action-btn bl-action-enrich">✏️ Enrichir</button>' +
+        cascadeBtn + xrayBtn +
+        '<button onclick="openInPlaywright(\'' + t.key + '\')" class="bl-action-btn bl-action-test">▶ Tester</button>' +
+        advanceBtn +
+        '<button onclick="blArchive(\'' + t.key + '\',\'SKIP\')" class="bl-action-btn bl-action-ignore">🗑</button>' +
+      '</div>' +
+    '</div>' +
+  '</div>';
 }
 
 function renderBacklogPending() {
-  var list         = document.getElementById("bl-pending-list");
-  var kanbanEl     = document.getElementById("bl-kanban-view");
-  var phaseFilters = document.getElementById("bl-phase-filters");
-  var countEl      = document.getElementById("bl-pending-count");
+  var list     = document.getElementById("bl-pending-list");
+  var kanbanEl = document.getElementById("bl-kanban-view");
+  var countEl  = document.getElementById("bl-display-count");
   if (!list) return;
-
   var isKanban = _backlogDisplayMode === "kanban";
-
-  // Show / hide list vs kanban containers + phase chips
-  list.style.display         = isKanban ? "none"  : "flex";
-  if (kanbanEl)     kanbanEl.style.display     = isKanban ? "flex"  : "none";
-  if (phaseFilters) phaseFilters.style.display = isKanban ? "none"  : "";
-
-  var viewFiltered = _backlogView === "mine" ? _backlogPending.filter(function(t) { return t.mine !== false; }) : _backlogPending;
-  // Phase filter is ignored in kanban (all phases shown as columns)
-  var filtered = (isKanban || _backlogFilter === "all") ? viewFiltered : viewFiltered.filter(function(t) { return t.phase === _backlogFilter; });
-  if (_backlogPrioFilter !== "all")     filtered = filtered.filter(function(t) { return t.priority === _backlogPrioFilter; });
-  if (_backlogAssigneeFilter !== "all") filtered = filtered.filter(function(t) { return t.assignee === _backlogAssigneeFilter; });
-  if (countEl) countEl.textContent = _backlogPending.length;
+  list.style.display    = isKanban ? "none" : "flex";
+  if (kanbanEl) kanbanEl.style.display = isKanban ? "grid" : "none";
+  var viewFiltered = _backlogView === "mine"
+    ? _backlogPending.filter(function(t) { return t.mine !== false; }) : _backlogPending;
+  var filtered = (isKanban || _backlogFilter === "all")
+    ? viewFiltered : viewFiltered.filter(function(t) { return t.phase === _backlogFilter; });
+  if (_backlogPrioFilter     !== "all") filtered = filtered.filter(function(t){ return t.priority === _backlogPrioFilter; });
+  if (_backlogAssigneeFilter !== "all") filtered = filtered.filter(function(t){ return t.assignee === _backlogAssigneeFilter; });
+  if (_backlogTypeFilter     !== "all") filtered = filtered.filter(function(t){ return t.type === _backlogTypeFilter; });
+  if (_backlogSearchFilter)             filtered = filtered.filter(function(t){
+    return (t.key||"").toLowerCase().indexOf(_backlogSearchFilter) >= 0 ||
+           (t.summary||"").toLowerCase().indexOf(_backlogSearchFilter) >= 0;
+  });
+  if (countEl) countEl.textContent = filtered.length;
+  updateBacklogBadges();
   populateBacklogDropdowns();
   updateDashBacklog();
-
-  if (isKanban) {
-    renderBacklogKanban(filtered);
-    return;
-  }
-
+  if (isKanban) { renderBacklogKanban(filtered); return; }
   if (!filtered.length) {
-    list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Aucun ticket' + (_backlogFilter !== "all" ? ' en phase "' + _backlogFilter + '"' : "") + '</div>';
+    list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Aucun ticket trouvé</div>';
     return;
   }
-  list.innerHTML = filtered.map(function(t) {
-    var wf       = wfInfo(t.jiraStatus || "");
-    var typeColor = t.type === "Bug" ? "var(--red)" : t.type === "Story" ? "var(--blue)" : t.type === "Test Case" ? "var(--cyan)" : "var(--orange)";
-    var typeIcon  = t.type === "Bug" ? "🔴" : t.type === "Story" ? "📋" : t.type === "Test Case" ? "🧪" : "✅";
-    var pc = PHASE_COLORS[t.phase] || "var(--text3)";
-    var pl = PHASE_LABELS[t.phase] || t.phase;
-    var daysAgo = Math.round((Date.now() - new Date(t.addedAt)) / 86400000);
-    var ageStr  = daysAgo === 0 ? "auj." : daysAgo + "j";
-    return '<div style="border:1px solid var(--border);border-left:3px solid ' + wf.color + ';border-radius:8px;background:var(--bg2);padding:12px 14px">' +
-      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        '<span style="font-size:15px">' + typeIcon + '</span>' +
-        '<span style="font-family:var(--mono);font-size:11px;color:var(--cyan);font-weight:700">' + t.key + '</span>' +
-        '<span style="flex:1;font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">' + escHtml(t.summary || "") + '</span>' +
-        '<span style="font-family:var(--mono);font-size:9px;color:' + wf.color + ';background:rgba(0,0,0,.3);border-radius:4px;padding:1px 6px;white-space:nowrap">' + wf.label + '</span>' +
-        '<span style="font-family:var(--mono);font-size:9px;color:' + pc + ';background:rgba(0,0,0,.2);border-radius:4px;padding:1px 6px;white-space:nowrap">' + pl + '</span>' +
-        '<span style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">' + ageStr + '</span>' +
-      '</div>' +
-      (t.notes ? '<div style="margin-top:6px;font-size:11px;color:var(--text3);font-style:italic">' + escHtml(t.notes) + '</div>' : '') +
-      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
-        blActionButtons(t) +
-      '</div>' +
-    '</div>';
-  }).join("");
+  list.innerHTML = filtered.map(blRenderRow).join("");
 }
 
 function blActionButtons(t) {
-  var btns = "";
-  // Enrichir → ouvre Tickets Enrichis
-  btns += '<button onclick="blOpenEnrich(\'' + t.key + '\')" class="btn btn-secondary" style="font-size:10px;padding:3px 10px">✏️ Enrichir</button>';
-  // Cascade (uniquement pour les Stories)
-  if (t.type === "Story" || t.type === "User Story") {
-    btns += '<button onclick="openCascadeModal(\'' + t.key + '\',\'' + escHtml(t.summary || "").replace(/'/g,"") + '\')" class="btn btn-secondary" style="font-size:10px;padding:3px 10px">🔗 Cascade</button>';
-  }
-  // Steps Xray (uniquement pour Test Case)
-  if (t.type === "Test Case" || t.type === "Test") {
-    btns += '<button onclick="openXrayModal(\'' + t.key + '\',\'' + escHtml(t.summary || "").replace(/'/g,"") + '\')" class="btn btn-secondary" style="font-size:10px;padding:3px 10px;color:var(--orange);border-color:var(--orange)">📋 Xray Steps</button>';
-  }
-  // Tester → Playwright Direct
-  btns += '<button onclick="openInPlaywright(\'' + t.key + '\')" style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#f97316;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:10px;font-weight:700">▶ Tester</button>';
-  // Avancer la phase
-  var nextPhaseMap = { entrant:"enrichissement", enrichissement:"pret", pret:"en-test" };
-  if (nextPhaseMap[t.phase]) {
-    btns += '<button onclick="blAdvancePhase(\'' + t.key + '\',\'' + nextPhaseMap[t.phase] + '\')" style="background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:10px">→ ' + PHASE_LABELS[nextPhaseMap[t.phase]] + '</button>';
-  }
-  // Archiver
-  btns += '<button onclick="blArchive(\'' + t.key + '\',\'SKIP\')" style="background:none;border:1px solid var(--border);color:var(--text3);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:10px">🗑 Ignorer</button>';
+  // Kept for backward compat (used by kanban old code paths)
+  var btns = '<button onclick="blOpenEnrich(\'' + t.key + '\')" class="bl-action-btn bl-action-enrich">✏️ Enrichir</button>';
+  if (t.type === "Story" || t.type === "User Story")
+    btns += '<button onclick="openCascadeModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">🔗 Cascade</button>';
+  if (t.type === "Test Case" || t.type === "Test")
+    btns += '<button onclick="openXrayModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">⚡ Xray</button>';
+  btns += '<button onclick="openInPlaywright(\'' + t.key + '\')" class="bl-action-btn bl-action-test">▶ Tester</button>';
+  btns += '<button onclick="blArchive(\'' + t.key + '\',\'SKIP\')" class="bl-action-btn bl-action-ignore">🗑</button>';
   return btns;
 }
 
 function renderBacklogDone() {
-  var list    = document.getElementById("bl-done-list");
-  var countEl = document.getElementById("bl-done-count");
+  var list = document.getElementById("bl-done-list");
   if (!list) return;
   var filtered = _doneFilter === "all" ? _backlogDone : _backlogDone.filter(function(t) { return t.result === _doneFilter; });
-  if (countEl) countEl.textContent = _backlogDone.length;
+  updateBacklogBadges();
   if (!filtered.length) {
     list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Aucun ticket archivé' + (_doneFilter !== "all" ? ' (' + _doneFilter + ')' : "") + '</div>';
     return;
