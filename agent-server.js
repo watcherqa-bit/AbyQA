@@ -767,7 +767,7 @@ var server = http.createServer(function(req, res) {
         }
 
         var prompt =
-          "Tu es expert QA chez Safran Group.\n\n" +
+          "Tu es Lead QA expert chez Safran Group, certifié ISTQB CTFL.\n\n" +
           "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
           "1. Tu ne génères QUE du contenu basé sur les données du ticket fourni. RIEN d'autre.\n" +
           "2. Si une information n'est PAS dans le ticket (URL, sélecteur, composant, valeur), tu écris [À préciser] — tu n'inventes JAMAIS.\n" +
@@ -801,34 +801,69 @@ var server = http.createServer(function(req, res) {
           " \"acceptanceCriteria\":[\"Étant donné... Lorsque... Alors...\"],\n" +
           " \"testCoverage\":{\"count\":5,\"types\":[\"e2e\"],\"notes\":\"...\"},\n" +
           " \"automationType\":\"auto|manual|mix\",\"automationJustification\":\"...\",\"priority\":\"Haute\",\n" +
+          " \"niveauxTest\":[\"Système\",\"Acceptation\"],\n" +
+          " \"risque\":\"Haut|Moyen|Faible\",\n" +
+          " \"risqueJustification\":\"Justification basée sur la complexité et l'impact métier du ticket.\",\n" +
+          " \"donneesTestRequises\":[\"Compte utilisateur avec rôle X\",\"Contenu de type Y en état Z\"],\n" +
           " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"...\"],\"expectedResult\":\"...\"}]}\n\n" +
+          "RÈGLES US — Niveaux de test ISTQB :\n" +
+          "- niveauxTest : sélectionner parmi [\"Composant\",\"Intégration\",\"Système\",\"Acceptation\"] selon la portée du ticket\n" +
+          "- risque : évaluer selon la criticité métier (Haut = fonctionnalité cœur ou données sensibles, Faible = cosmétique ou non-bloquant)\n" +
+          "- donneesTestRequises : lister les prérequis concrets (comptes, contenus Drupal, config env) extraits du ticket\n\n" +
           "Si TEST :\n" +
           "{\"ticketType\":\"TEST\",\"title\":\"Test - [Titre_US] - ...\",\n" +
           " \"description\":\"...\",\"testType\":\"auto|manual\",\"testTypeJustification\":\"...\",\n" +
-          " \"testCases\":[{\"id\":\"TC-01\",\"action\":\"Étant donné...\\nLorsque...\\nAlors...\",\"data\":\"• Clé: Valeur\",\"expected\":\"• Critère 1\\n• Critère 2\"}],\n" +
+          " \"techniqueConception\":\"EP|BVA|DT|ST|CE\",\n" +
+          " \"techniqueJustification\":\"Pourquoi cette technique est adaptée au ticket.\",\n" +
+          " \"niveauTest\":\"Système|Acceptation\",\n" +
+          " \"baseDeTest\":\"Description courte des exigences/spécifications utilisées comme base (tirées du ticket).\",\n" +
+          " \"preconditions\":[\"Être connecté en tant que [rôle]\",\"Le contenu [type] doit exister en base\"],\n" +
+          " \"testCases\":[{\"id\":\"TC-01\",\"categorie\":\"Nominal|Alternatif|Erreur|Limite\",\"action\":\"Étant donné...\\nLorsque...\\nAlors...\",\"data\":\"• Clé: Valeur\",\"expected\":\"• Critère 1\\n• Critère 2\"}],\n" +
           " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"...\"],\"expectedResult\":\"...\"}]}\n\n" +
+          "RÈGLES TEST — Techniques de conception ISTQB :\n" +
+          "- EP (Equivalence Partitioning) : si le ticket porte sur des valeurs de champs ou des états discrets\n" +
+          "- BVA (Boundary Value Analysis) : si le ticket mentionne des limites numériques, des longueurs max, des seuils\n" +
+          "- DT (Decision Table) : si le ticket comporte des règles métier avec conditions multiples (si A et B alors C)\n" +
+          "- ST (State Transition) : si le ticket décrit un workflow ou un changement d'état (statut, phase, cycle de vie)\n" +
+          "- CE (Cause-Effect) : si le ticket décrit des relations causales complexes entre entrées et sorties\n" +
+          "- categorie des testCases : 'Nominal' (chemin heureux), 'Alternatif' (variante valide), 'Erreur' (input invalide), 'Limite' (valeur frontière)\n\n" +
           "Si BUG :\n" +
           "{\"ticketType\":\"BUG\",\"title\":\"Bug - [Titre_US] - ...\",\n" +
           " \"description\":\"...\",\n" +
           " \"steps\":[\"1. Accéder à...\",\"2. Cliquer sur...\"],\n" +
           " \"actualResult\":\"...\",\"expectedResult\":\"...\",\n" +
-          " \"severity\":\"Critique|Majeur|Mineur|Cosmétique\",\n" +
+          " \"severity\":\"Bloquant|Critique|Majeur|Mineur|Cosmétique\",\n" +
+          " \"priority\":\"P1-Urgent|P2-Haut|P3-Moyen|P4-Bas\",\n" +
+          " \"environment\":\"Sophie|Paulo|Prod|[À préciser]\",\n" +
+          " \"rootCause\":\"Interface|Logique métier|Base de données|Configuration|Intégration|[À préciser]\",\n" +
+          " \"reproducibility\":\"Toujours|Intermittent|Rare\",\n" +
           " \"fixTests\":[\"Vérifier que...\",\"Tester le cas nominal...\"],\n" +
           " \"proposedTests\":[{\"name\":\"...\",\"type\":\"auto\",\"steps\":[\"Naviguer vers URL réelle\",\"Effectuer l'action précise\",\"Vérifier le comportement attendu\"],\"expectedResult\":\"...\"}]}\n\n" +
-          "Génère : 3-6 acceptanceCriteria (US), 3-6 testCases (TEST), 3-6 steps + 2-4 fixTests (BUG).\n" +
+          "RÈGLES BUG — Distinction ISTQB Sévérité vs Priorité :\n" +
+          "- severity (impact technique) : Bloquant=empêche toute utilisation, Critique=perte de données/sécurité, Majeur=fonctionnalité cassée, Mineur=dégradation partielle, Cosmétique=aspect visuel seul\n" +
+          "- priority (urgence métier) : P1=bloquer la release/prod immédiatement, P2=corriger dans le sprint, P3=planifier correction, P4=nice-to-have\n" +
+          "- environment : déduire depuis le contexte du ticket (Sophie/Paulo=staging, Prod=production)\n" +
+          "- rootCause : cause racine probable basée sur la description du bug\n\n" +
+          "Génère : 3-6 acceptanceCriteria (US), 3-6 testCases avec categories variées (TEST), 3-6 steps + 2-4 fixTests (BUG).\n" +
           "Pour proposedTests : 2 à 4 scénarios couvrant le cas nominal, le cas limite, et la régression.";
 
         var result = await leadQA.askJSON(prompt, "claude-sonnet-4-6");
 
-        // Générer CSV Xray pour les TEST
+        // Générer CSV Xray pour les TEST (avec colonne Catégorie si présente)
         if (result && result.ticketType === "TEST" && Array.isArray(result.testCases)) {
-          var csvLines = ['"Action","Données","Résultat Attendu"'];
+          var hasCat = result.testCases.some(function(tc) { return tc.categorie; });
+          var csvLines = hasCat
+            ? ['"Catégorie","Action","Données","Résultat Attendu"']
+            : ['"Action","Données","Résultat Attendu"'];
           result.testCases.forEach(function(tc) {
-            csvLines.push(
+            var row = hasCat
+              ? '"' + (tc.categorie || "").replace(/"/g, '""') + '",'
+              : "";
+            row +=
               '"' + (tc.action   || "").replace(/"/g, '""') + '",' +
               '"' + (tc.data     || "").replace(/"/g, '""') + '",' +
-              '"' + (tc.expected || "").replace(/"/g, '""') + '"'
-            );
+              '"' + (tc.expected || "").replace(/"/g, '""') + '"';
+            csvLines.push(row);
           });
           result.xrayCSV = csvLines.join("\n");
         }

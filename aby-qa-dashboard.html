@@ -6733,12 +6733,17 @@ function opsRenderGenResult(r) {
   var html = '<div style="border-radius:12px;overflow:hidden;border:1px solid ' + tc + '44;max-width:100%">';
 
   // En-tête
-  html += '<div style="background:' + tc + '18;padding:14px 16px;border-bottom:1px solid ' + tc + '33;display:flex;align-items:center;gap:10px">';
+  html += '<div style="background:' + tc + '18;padding:14px 16px;border-bottom:1px solid ' + tc + '33;display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
   html += '<span style="background:' + tc + ';color:#fff;border-radius:6px;padding:3px 10px;font-family:var(--mono);font-size:11px;font-weight:700">' + ico + ' ' + r.ticketType + '</span>';
   if (r.priority)  html += pill(r.priority, '#f59e0b');
   if (r.severity)  html += pill(r.severity, '#ef4444');
   if (r.automationType) html += pill(r.automationType.toUpperCase(), '#10b981');
   if (r.testType)  html += pill('Test ' + r.testType, '#3b6fff');
+  // Champs ISTQB dans l'en-tête
+  if (r.techniqueConception) html += pill('◆ ' + r.techniqueConception, '#8b5cf6');
+  if (r.niveauTest)          html += pill(r.niveauTest, '#06b6d4');
+  if (r.risque)              html += pill('Risque ' + r.risque, r.risque === 'Haut' ? '#ef4444' : r.risque === 'Moyen' ? '#f59e0b' : '#10b981');
+  if (r.reproducibility)    html += pill(r.reproducibility, '#6b7280');
   html += '<div style="flex:1"></div>';
   html += copyBtn('📋 Titre', r.title || '');
   html += '</div>';
@@ -6774,6 +6779,27 @@ function opsRenderGenResult(r) {
     if (r.automationJustification) {
       html += section('🤖 TYPE DE TEST RECOMMANDÉ', '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.automationJustification) + '</div>');
     }
+    // ── ISTQB US ─────────────────────────────────────────────────────────────
+    if (r.niveauxTest && r.niveauxTest.length) {
+      var nvHtml = '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+      r.niveauxTest.forEach(function(nv) { nvHtml += pill(nv, '#06b6d4'); });
+      nvHtml += '</div>';
+      html += section('🔬 NIVEAUX DE TEST (ISTQB)', nvHtml);
+    }
+    if (r.risque) {
+      var rColor = r.risque === 'Haut' ? '#ef4444' : r.risque === 'Moyen' ? '#f59e0b' : '#10b981';
+      var rHtml = '<div style="display:flex;align-items:center;gap:10px">' +
+        pill('Risque ' + r.risque, rColor) +
+        (r.risqueJustification ? '<span style="font-size:11px;color:var(--text3);font-style:italic">' + escHtml(r.risqueJustification) + '</span>' : '') +
+        '</div>';
+      html += section('⚠️ ANALYSE DE RISQUE', rHtml);
+    }
+    if (r.donneesTestRequises && r.donneesTestRequises.length) {
+      var dtrHtml = '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+      r.donneesTestRequises.forEach(function(d) { dtrHtml += '<li style="font-size:12px;color:var(--text2);font-family:var(--mono)">' + escHtml(d) + '</li>'; });
+      dtrHtml += '</ul>';
+      html += section('🗄️ DONNÉES DE TEST REQUISES', dtrHtml);
+    }
   }
 
   // ── TEST ──────────────────────────────────────────────────────────────────
@@ -6781,19 +6807,54 @@ function opsRenderGenResult(r) {
     if (r.testTypeJustification) {
       html += section('💡 JUSTIFICATION TYPE DE TEST', '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.testTypeJustification) + '</div>');
     }
+    // ── ISTQB TEST ─────────────────────────────────────────────────────────
+    if (r.techniqueConception || r.niveauTest) {
+      var techHtml = '<div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">';
+      if (r.techniqueConception) {
+        var techLabels = { EP:'Partitions d\'équivalence', BVA:'Analyse des valeurs limites', DT:'Table de décision', ST:'Transition d\'états', CE:'Cause-Effet' };
+        techHtml += '<div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">TECHNIQUE</div>' +
+          pill('◆ ' + r.techniqueConception + (techLabels[r.techniqueConception] ? ' — ' + techLabels[r.techniqueConception] : ''), '#8b5cf6') + '</div>';
+      }
+      if (r.niveauTest) {
+        techHtml += '<div><div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">NIVEAU</div>' + pill(r.niveauTest, '#06b6d4') + '</div>';
+      }
+      techHtml += '</div>';
+      if (r.techniqueJustification) {
+        techHtml += '<div style="margin-top:8px;font-size:11px;color:var(--text3);font-style:italic">' + escHtml(r.techniqueJustification) + '</div>';
+      }
+      html += section('🎯 TECHNIQUE DE CONCEPTION (ISTQB)', techHtml);
+    }
+    if (r.baseDeTest) {
+      html += section('📋 BASE DE TEST', '<div style="font-size:12px;color:var(--text2);font-style:italic">' + escHtml(r.baseDeTest) + '</div>');
+    }
+    if (r.preconditions && r.preconditions.length) {
+      var preHtml = '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
+      r.preconditions.forEach(function(p) { preHtml += '<li style="font-size:12px;color:var(--text2);font-family:var(--mono)">' + escHtml(p) + '</li>'; });
+      preHtml += '</ul>';
+      html += section('⚙️ PRÉCONDITIONS', preHtml);
+    }
     if (r.testCases && r.testCases.length) {
+      var catColors = { Nominal:'#10b981', Alternatif:'#3b6fff', Erreur:'#ef4444', Limite:'#f59e0b' };
+      var hasCat = r.testCases.some(function(tc) { return tc.categorie; });
       var tableHtml =
         '<div style="overflow-x:auto;border-radius:8px;border:1px solid var(--border)">' +
         '<table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono)">' +
         '<thead><tr>' +
-        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:38%">ACTION (GHERKIN)</th>' +
+        (hasCat ? '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:10%">CATÉGORIE</th>' : '') +
+        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:' + (hasCat ? '33%' : '38%') + '">ACTION (GHERKIN)</th>' +
         '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:22%">DONNÉES</th>' +
-        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:40%">RÉSULTAT ATTENDU</th>' +
+        '<th style="padding:8px 10px;background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;color:var(--text3);width:' + (hasCat ? '35%' : '40%') + '">RÉSULTAT ATTENDU</th>' +
         '</tr></thead><tbody>';
       r.testCases.forEach(function(tc, i) {
         var bg = i % 2 === 0 ? 'var(--bg2)' : 'var(--bg3)';
-        tableHtml += '<tr style="background:' + bg + '">' +
-          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' +
+        var catColor = catColors[tc.categorie] || '#6b7280';
+        tableHtml += '<tr style="background:' + bg + '">';
+        if (hasCat) {
+          tableHtml += '<td style="padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top">' +
+            (tc.categorie ? '<span style="display:inline-block;background:' + catColor + '22;border:1px solid ' + catColor + '55;color:' + catColor + ';border-radius:4px;padding:2px 6px;font-size:10px">' + escHtml(tc.categorie) + '</span>' : '') +
+            '</td>';
+        }
+        tableHtml += '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' +
           '<span style="color:var(--text3)">' + escHtml(tc.id || '') + '</span>\n' + escHtml(tc.action || '') + '</td>' +
           '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' + escHtml(tc.data || '') + '</td>' +
           '<td style="padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);white-space:pre-wrap;vertical-align:top">' + escHtml(tc.expected || '') + '</td>' +
@@ -6807,6 +6868,42 @@ function opsRenderGenResult(r) {
 
   // ── BUG ───────────────────────────────────────────────────────────────────
   if (r.ticketType === 'BUG') {
+    // ── ISTQB BUG : métadonnées ─────────────────────────────────────────────
+    if (r.severity || r.priority || r.environment || r.rootCause || r.reproducibility) {
+      var bugMetaHtml = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px">';
+      if (r.severity) {
+        var sevColors = { Bloquant:'#7c3aed', Critique:'#ef4444', Majeur:'#f97316', Mineur:'#f59e0b', Cosmétique:'#6b7280' };
+        bugMetaHtml += '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">SÉVÉRITÉ (technique)</div>' +
+          pill(r.severity, sevColors[r.severity] || '#ef4444') + '</div>';
+      }
+      if (r.priority) {
+        var prioColors = { 'P1-Urgent':'#ef4444', 'P2-Haut':'#f97316', 'P3-Moyen':'#f59e0b', 'P4-Bas':'#6b7280' };
+        var prioKey = r.priority.split('-')[0] + '-' + (r.priority.split('-')[1] || '');
+        bugMetaHtml += '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">PRIORITÉ (métier)</div>' +
+          pill(r.priority, prioColors[r.priority] || '#f59e0b') + '</div>';
+      }
+      if (r.environment) {
+        var envColors = { Sophie:'#3b6fff', Paulo:'#8b5cf6', Prod:'#ef4444' };
+        bugMetaHtml += '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">ENVIRONNEMENT</div>' +
+          pill(r.environment, envColors[r.environment] || '#06b6d4') + '</div>';
+      }
+      if (r.rootCause) {
+        bugMetaHtml += '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">CAUSE RACINE</div>' +
+          '<div style="font-size:12px;color:var(--text2)">' + escHtml(r.rootCause) + '</div></div>';
+      }
+      if (r.reproducibility) {
+        var reproColors = { Toujours:'#ef4444', Intermittent:'#f59e0b', Rare:'#6b7280' };
+        bugMetaHtml += '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:8px 12px">' +
+          '<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">REPRODUCTIBILITÉ</div>' +
+          pill(r.reproducibility, reproColors[r.reproducibility] || '#6b7280') + '</div>';
+      }
+      bugMetaHtml += '</div>';
+      html += section('🔍 QUALIFICATION DU DÉFAUT (ISTQB)', bugMetaHtml);
+    }
     if (r.steps && r.steps.length) {
       var stepsHtml = '<ol id="ops-gen-steps" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">';
       r.steps.forEach(function(s) {
