@@ -1429,6 +1429,27 @@
 
       </div>
 
+      <!-- ══ COUVERTURE US ══ -->
+      <div id="coverage-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+        <div style="min-width:90px">
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em;margin-bottom:4px">COUVERTURE US</div>
+          <div id="cov-pct" style="font-size:30px;font-weight:800;line-height:1;color:var(--text3)">—</div>
+        </div>
+        <div style="flex:1;min-width:140px">
+          <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-bottom:6px">
+            <div id="cov-bar" style="height:100%;width:0%;border-radius:3px;background:var(--text3);transition:width .4s ease,background .4s"></div>
+          </div>
+          <div style="display:flex;gap:14px;font-family:var(--mono);font-size:10px;flex-wrap:wrap">
+            <span style="color:var(--green)">🔗 <span id="cov-covered">—</span> US couvertes</span>
+            <span style="color:var(--red)">⚠️ <span id="cov-uncovered">—</span> sans test</span>
+            <span style="color:var(--text3)">📝 <span id="cov-total">—</span> US total</span>
+          </div>
+        </div>
+        <div>
+          <div id="cov-status" style="font-family:var(--mono);font-size:11px;font-weight:700;padding:4px 14px;border-radius:6px;border:1px solid var(--border);color:var(--text3);background:var(--bg3)">—</div>
+        </div>
+      </div>
+
       <!-- ══ VUE 360 — 3 CYCLES QA ══ -->
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px">
 
@@ -3191,7 +3212,17 @@
 
       <!-- 4+5. CONTENT — Pending -->
       <div id="bl-section-pending" style="padding:16px 28px;overflow-y:auto;flex:1">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:12px;letter-spacing:.05em">AFFICHAGE : <span id="bl-display-count">0</span> TICKET(S)</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.05em">AFFICHAGE : <span id="bl-display-count">0</span> TICKET(S)</div>
+          <div id="bl-bulk-bar" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);border-radius:8px;padding:6px 12px">
+            <span id="bl-bulk-count" style="font-family:var(--mono);font-size:11px;color:var(--cyan);margin-right:4px">0 sélectionné(s)</span>
+            <button onclick="blBulkAdvance('enrichissement')" style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.4);color:#10b981;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">→ Enrichissement</button>
+            <button onclick="blBulkAdvance('pret')" style="background:rgba(59,111,255,.15);border:1px solid rgba(59,111,255,.4);color:var(--blue);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">→ Prêts</button>
+            <button onclick="blBulkAdvance('en-test')" style="background:rgba(249,115,22,.15);border:1px solid rgba(249,115,22,.4);color:#f97316;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">→ En test</button>
+            <button onclick="blBulkIgnore()" style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#ef4444;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">🗑 Ignorer</button>
+            <button onclick="blBulkClear()" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Tout désélectionner</button>
+          </div>
+        </div>
         <div id="bl-pending-list" style="display:flex;flex-direction:column;gap:8px">
           <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
         </div>
@@ -3890,6 +3921,34 @@
         <div id="ops-tab-tickets" onclick="switchOpsTab('tickets')"
           style="flex:1;text-align:center;padding:10px 16px;background:#252f42;color:#a0aec0;font-family:var(--mono);font-size:12px;border-radius:7px;cursor:pointer;letter-spacing:.05em;border:1px solid #3a4a6b">
           🎫 Tickets
+        </div>
+      </div>
+
+      <!-- ── STEPPER WORKFLOW ── -->
+      <div id="ops-stepper" style="display:flex;align-items:center;padding:10px 4px 16px;gap:0">
+        <div class="ops-step active" data-step="1" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--blue);transition:all .3s">1</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--blue);white-space:nowrap">Ticket</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-1"></div>
+        <div class="ops-step" data-step="2" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">2</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Contexte</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-2"></div>
+        <div class="ops-step" data-step="3" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">3</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Analyser</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-3"></div>
+        <div class="ops-step" data-step="4" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">4</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Générer</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-4"></div>
+        <div class="ops-step" data-step="5" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">5</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Push / Tester</div>
         </div>
       </div>
 
@@ -6268,6 +6327,7 @@ function opsLoadTicket() {
       opsRenderPills();
       opsRenderLoadedTickets();
       showToast(key + ' chargé (' + ticket.type + ')', '🎫');
+      opsSetStep(2);
       switchOpsTab('commande');
       // Charger le ticket enrichi pour détecter les tests existants avant analyse
       fetch(SERVER + '/api/enriched/' + ticket.key).then(function(r2){return r2.json();}).then(function(enr) {
@@ -6372,6 +6432,7 @@ function opsAnalyze() {
   if (!text && !opsContext.length && !opsTickets.length) {
     showToast('Décris ta demande ou joint un fichier', '⚠️'); return;
   }
+  opsSetStep(3);
   var cfg = opsGetConfig();
   if (!cfg.envs.length)    { showToast('Sélectionne au moins un environnement dans ⚙️ Options', '⚠️'); return; }
   if (!cfg.browsers.length){ showToast('Sélectionne au moins un navigateur dans ⚙️ Options', '⚠️'); return; }
@@ -6565,8 +6626,35 @@ function opsReset() {
   if (badge) badge.style.display = 'none';
   _opsProgressState = { total: 0, done: 0, pass: 0, fail: 0, running: false };
   opsLastIntent = null;
+  opsSetStep(1);
   var input = document.getElementById('ops-input');
   if (input) input.focus();
+}
+
+// ── STEPPER OPÉRATIONS ────────────────────────────────────────────────────────
+function opsSetStep(n) {
+  var steps = document.querySelectorAll('#ops-stepper .ops-step');
+  steps.forEach(function(el) {
+    var sn   = parseInt(el.getAttribute('data-step'), 10);
+    var dot  = el.querySelector('.ops-step-dot');
+    var lbl  = el.querySelector('div:last-child');
+    if (sn < n) {
+      // Étape terminée
+      if (dot) { dot.style.background = '#10b981'; dot.style.borderColor = '#10b981'; dot.style.color = '#fff'; dot.textContent = '✓'; }
+      if (lbl) lbl.style.color = '#10b981';
+    } else if (sn === n) {
+      // Étape active
+      if (dot) { dot.style.background = 'var(--blue)'; dot.style.borderColor = 'var(--blue)'; dot.style.color = '#fff'; dot.textContent = sn; }
+      if (lbl) lbl.style.color = 'var(--blue)';
+    } else {
+      // Étape future
+      if (dot) { dot.style.background = 'var(--bg3)'; dot.style.borderColor = 'var(--border)'; dot.style.color = 'var(--text3)'; dot.textContent = sn; }
+      if (lbl) lbl.style.color = 'var(--text3)';
+    }
+    // Ligne de connexion après l'étape
+    var line = document.getElementById('ops-line-' + sn);
+    if (line) line.style.background = sn < n ? '#10b981' : 'var(--border)';
+  });
 }
 
 function opsExecute() {
@@ -6575,6 +6663,7 @@ function opsExecute() {
   var cfg   = opsLastIntent.cfg;
   var text  = opsLastIntent.text;
 
+  opsSetStep(4);
   document.getElementById('ops-confirm-block').style.display = 'none';
   // Réinitialiser le log d'erreurs pour cette exécution
   _opsLastFailLog = '';
@@ -7025,6 +7114,7 @@ function opsRenderGenResult(r) {
   block.innerHTML = html;
   block.style.display = 'block';
   block.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  opsSetStep(5);
   showToast(r.ticketType + ' généré', '✅');
 }
 
@@ -10894,6 +10984,50 @@ function updateDashBacklog() {
   }
 }
 
+// ── COVERAGE US — widget Dashboard ───────────────────────────────────────────
+function updateDashCoverage() {
+  var pctEl  = document.getElementById("cov-pct");
+  var barEl  = document.getElementById("cov-bar");
+  var covEl  = document.getElementById("cov-covered");
+  var uncEl  = document.getElementById("cov-uncovered");
+  var totEl  = document.getElementById("cov-total");
+  var stEl   = document.getElementById("cov-status");
+  if (!pctEl) return;
+
+  // Filtrer les User Stories uniquement
+  var stories = _backlogPending.filter(function(t) {
+    return t.type === "Story" || t.type === "User Story";
+  });
+  var total   = stories.length;
+  if (!total) {
+    pctEl.textContent = "—"; barEl.style.width = "0%";
+    if (covEl) covEl.textContent = "—";
+    if (uncEl) uncEl.textContent = "—";
+    if (totEl) totEl.textContent = "—";
+    if (stEl)  stEl.textContent  = "Pas de données";
+    return;
+  }
+
+  // Compter celles qui ont ≥1 lien en cache
+  var covered = stories.filter(function(t) {
+    var links = _blLinksCache[t.key];
+    return Array.isArray(links) && links.length > 0;
+  }).length;
+
+  var pct  = Math.round((covered / total) * 100);
+  var color = pct >= 80 ? "#10b981" : pct >= 50 ? "#f59e0b" : "#ef4444";
+  var label = pct >= 80 ? "✅ BONNE COUVERTURE" : pct >= 50 ? "⚠️ COUVERTURE PARTIELLE" : "❌ COUVERTURE FAIBLE";
+
+  pctEl.style.color = color;
+  pctEl.textContent = pct + "%";
+  barEl.style.width = pct + "%";
+  barEl.style.background = color;
+  if (covEl) covEl.textContent = covered;
+  if (uncEl) uncEl.textContent = total - covered;
+  if (totEl) totEl.textContent = total;
+  if (stEl)  { stEl.textContent = label; stEl.style.color = color; stEl.style.borderColor = color + "55"; stEl.style.background = color + "15"; }
+}
+
 // ── AUTO-DEBUG — affichage diagnostic + application correctif ────────────────
 function showErrorDiagnosis(data) {
   var d    = data.diagnosis  || {};
@@ -13131,6 +13265,7 @@ var _backlogSearchFilter   = "";
 var _blLinksCache          = {}; // key → tableau de liens (lazy-fetch)
 var _backlogSyncTime       = null; // timestamp de la dernière sync Jira réussie
 var _backlogDisplayMode    = "list"; // "list" | "kanban"
+var _blSelected            = []; // clés sélectionnées pour bulk actions
 
 function setBacklogView(view) {
   _backlogView = view;
@@ -13375,8 +13510,12 @@ function blRenderRow(t) {
     ? "background:rgba(0,212,255,.12);border-color:rgba(0,212,255,.3);color:var(--cyan)"
     : "background:transparent;border-color:var(--border);color:var(--text3)";
   var linkBtn = '<button onclick="blToggleLinks(\'' + safeKey + '\')" class="bl-action-btn" style="' + linkStyle + '" title="Voir les dépendances Jira">' + linkLabel + '</button>';
+  var isChecked = _blSelected.indexOf(safeKey) >= 0;
   return '<div id="bl-wrap-' + safeKey + '" style="display:flex;flex-direction:column">' +
-    '<div class="bl-row" style="border-left-color:' + prioColor + '">' +
+    '<div class="bl-row" style="border-left-color:' + prioColor + (isChecked ? ';background:rgba(59,111,255,.08);border-left-color:var(--blue);border-left-width:3px' : '') + '">' +
+      '<label style="display:flex;align-items:center;padding:0 6px 0 2px;cursor:pointer;flex-shrink:0" title="Sélectionner">' +
+        '<input type="checkbox" ' + (isChecked ? 'checked' : '') + ' onchange="blToggleCheck(\'' + safeKey + '\',this.checked)" style="width:14px;height:14px;accent-color:var(--blue);cursor:pointer">' +
+      '</label>' +
       '<span class="bl-row-id"><a href="https://' + CFG_JIRA_HOST + '/browse/' + t.key + '" target="_blank" style="color:var(--cyan);text-decoration:none">' + t.key + '</a></span>' +
       '<span class="bl-row-title" title="' + escHtml(t.summary||"") + '">' + escHtml(t.summary||"") + '</span>' +
       '<div class="bl-row-meta">' +
@@ -13396,6 +13535,58 @@ function blRenderRow(t) {
     '</div>' +
     '<div id="bl-links-' + safeKey + '" style="display:none"></div>' +
   '</div>';
+}
+
+// ── BULK ACTIONS ─────────────────────────────────────────────────────────────
+function blToggleCheck(key, checked) {
+  var idx = _blSelected.indexOf(key);
+  if (checked && idx < 0)  _blSelected.push(key);
+  if (!checked && idx >= 0) _blSelected.splice(idx, 1);
+  // Mettre à jour le style visuel de la row
+  var wrap = document.getElementById("bl-wrap-" + key);
+  if (wrap) {
+    var row = wrap.querySelector(".bl-row");
+    if (row) row.style.background = checked ? "rgba(59,111,255,.08)" : "";
+  }
+  blUpdateBulkBar();
+}
+
+function blUpdateBulkBar() {
+  var bar   = document.getElementById("bl-bulk-bar");
+  var count = document.getElementById("bl-bulk-count");
+  if (!bar) return;
+  if (_blSelected.length > 0) {
+    bar.style.display = "flex";
+    if (count) count.textContent = _blSelected.length + " sélectionné(s)";
+  } else {
+    bar.style.display = "none";
+  }
+}
+
+function blBulkAdvance(phase) {
+  if (!_blSelected.length) return;
+  var keys = _blSelected.slice();
+  keys.forEach(function(k) { blAdvancePhase(k, phase); });
+  blBulkClear();
+}
+
+function blBulkIgnore() {
+  if (!_blSelected.length) return;
+  var keys = _blSelected.slice();
+  keys.forEach(function(k) { blArchive(k, "SKIP"); });
+  blBulkClear();
+}
+
+function blBulkClear() {
+  _blSelected = [];
+  // Décocher toutes les checkboxes visibles
+  var checks = document.querySelectorAll("#bl-pending-list input[type=checkbox]");
+  checks.forEach(function(cb) { cb.checked = false; });
+  // Reset styles
+  document.querySelectorAll("#bl-pending-list .bl-row").forEach(function(row) {
+    row.style.background = "";
+  });
+  blUpdateBulkBar();
 }
 
 function blToggleLinks(key) {
@@ -13492,6 +13683,7 @@ function renderBacklogPending() {
   updateBacklogBadges();
   populateBacklogDropdowns();
   updateDashBacklog();
+  updateDashCoverage();
   if (isKanban) { renderBacklogKanban(filtered); return; }
   if (!filtered.length) {
     list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Aucun ticket trouvé</div>';
