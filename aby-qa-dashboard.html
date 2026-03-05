@@ -10515,6 +10515,7 @@ var _backlogPrioFilter     = "all";
 var _backlogAssigneeFilter = "all";
 var _backlogTypeFilter     = "all";
 var _backlogSearchFilter   = "";
+var _blLinksCache          = {}; // key → tableau de liens (lazy-fetch)
 var _backlogDisplayMode    = "list"; // "list" | "kanban"
 
 function setBacklogView(view) {
@@ -10733,23 +10734,108 @@ function blRenderRow(t) {
     ? '<button onclick="openCascadeModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">🔗 Cascade</button>' : '';
   var xrayBtn = (t.type === "Test Case" || t.type === "Test")
     ? '<button onclick="openXrayModal(\'' + t.key + '\',\'' + escHtml(t.summary||"").replace(/'/g,"") + '\')" class="bl-action-btn bl-action-xray">⚡ Xray</button>' : '';
-  return '<div class="bl-row" style="border-left-color:' + prioColor + '">' +
-    '<span class="bl-row-id"><a href="https://' + CFG_JIRA_HOST + '/browse/' + t.key + '" target="_blank" style="color:var(--cyan);text-decoration:none">' + t.key + '</a></span>' +
-    '<span class="bl-row-title" title="' + escHtml(t.summary||"") + '">' + escHtml(t.summary||"") + '</span>' +
-    '<div class="bl-row-meta">' +
-      '<span class="bl-pill ' + typeClass + '">' + typeLabel + '</span>' +
-      (t.priority  ? '<span class="bl-pill ' + prioClass  + '">' + t.priority  + '</span>' : '') +
-      (phaseLabel  ? '<span class="bl-pill ' + phaseClass + '">' + phaseLabel  + '</span>' : '') +
-      (t.assignee  ? '<div class="bl-avatar" style="background:' + avatarBg + ';color:#000" title="' + escHtml(t.assignee) + '">' + initials + '</div>' : '') +
-      '<div class="bl-row-actions">' +
-        '<button onclick="blOpenEnrich(\'' + t.key + '\')" class="bl-action-btn bl-action-enrich">✏️ Enrichir</button>' +
-        cascadeBtn + xrayBtn +
-        '<button onclick="openInPlaywright(\'' + t.key + '\')" class="bl-action-btn bl-action-test">▶ Tester</button>' +
-        advanceBtn +
-        '<button onclick="blArchive(\'' + t.key + '\',\'SKIP\')" class="bl-action-btn bl-action-ignore">🗑</button>' +
+  // Badge dépendances : si déjà en cache on affiche le compteur, sinon "🔗 ?"
+  var safeKey     = t.key;
+  var cachedLinks = _blLinksCache[safeKey];
+  var linkLabel   = typeof cachedLinks !== "undefined"
+    ? (cachedLinks.length > 0 ? "🔗 " + cachedLinks.length : "🔗 0")
+    : "🔗 ?";
+  var linkStyle   = typeof cachedLinks !== "undefined" && cachedLinks.length > 0
+    ? "background:rgba(0,212,255,.12);border-color:rgba(0,212,255,.3);color:var(--cyan)"
+    : "background:transparent;border-color:var(--border);color:var(--text3)";
+  var linkBtn = '<button onclick="blToggleLinks(\'' + safeKey + '\')" class="bl-action-btn" style="' + linkStyle + '" title="Voir les dépendances Jira">' + linkLabel + '</button>';
+  return '<div id="bl-wrap-' + safeKey + '" style="display:flex;flex-direction:column">' +
+    '<div class="bl-row" style="border-left-color:' + prioColor + '">' +
+      '<span class="bl-row-id"><a href="https://' + CFG_JIRA_HOST + '/browse/' + t.key + '" target="_blank" style="color:var(--cyan);text-decoration:none">' + t.key + '</a></span>' +
+      '<span class="bl-row-title" title="' + escHtml(t.summary||"") + '">' + escHtml(t.summary||"") + '</span>' +
+      '<div class="bl-row-meta">' +
+        '<span class="bl-pill ' + typeClass + '">' + typeLabel + '</span>' +
+        (t.priority  ? '<span class="bl-pill ' + prioClass  + '">' + t.priority  + '</span>' : '') +
+        (phaseLabel  ? '<span class="bl-pill ' + phaseClass + '">' + phaseLabel  + '</span>' : '') +
+        (t.assignee  ? '<div class="bl-avatar" style="background:' + avatarBg + ';color:#000" title="' + escHtml(t.assignee) + '">' + initials + '</div>' : '') +
+        linkBtn +
+        '<div class="bl-row-actions">' +
+          '<button onclick="blOpenEnrich(\'' + t.key + '\')" class="bl-action-btn bl-action-enrich">✏️ Enrichir</button>' +
+          cascadeBtn + xrayBtn +
+          '<button onclick="openInPlaywright(\'' + t.key + '\')" class="bl-action-btn bl-action-test">▶ Tester</button>' +
+          advanceBtn +
+          '<button onclick="blArchive(\'' + t.key + '\',\'SKIP\')" class="bl-action-btn bl-action-ignore">🗑</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
+    '<div id="bl-links-' + safeKey + '" style="display:none"></div>' +
   '</div>';
+}
+
+function blToggleLinks(key) {
+  var panel = document.getElementById("bl-links-" + key);
+  if (!panel) return;
+  // Fermer si déjà ouvert
+  if (panel.style.display !== "none") { panel.style.display = "none"; return; }
+  // Ouvrir : afficher depuis le cache ou lancer le fetch
+  if (_blLinksCache[key] !== undefined) {
+    blRenderLinksPanel(key, _blLinksCache[key]);
+    panel.style.display = "block";
+    return;
+  }
+  panel.style.display = "block";
+  panel.innerHTML = '<div style="padding:8px 16px 10px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">⏳ Chargement des dépendances…</div>';
+  fetch(SERVER + "/api/jira-ticket/" + encodeURIComponent(key))
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      _blLinksCache[key] = d.links || [];
+      blRenderLinksPanel(key, _blLinksCache[key]);
+      // Mettre à jour le badge sur la row
+      var wrap = document.getElementById("bl-wrap-" + key);
+      if (wrap) {
+        var btns = wrap.querySelectorAll(".bl-action-btn");
+        btns.forEach(function(b) {
+          if (b.title === "Voir les dépendances Jira") {
+            var n = _blLinksCache[key].length;
+            b.textContent = "🔗 " + n;
+            b.style.background    = n > 0 ? "rgba(0,212,255,.12)" : "transparent";
+            b.style.borderColor   = n > 0 ? "rgba(0,212,255,.3)"  : "var(--border)";
+            b.style.color         = n > 0 ? "var(--cyan)"          : "var(--text3)";
+          }
+        });
+      }
+    })
+    .catch(function() { _blLinksCache[key] = []; blRenderLinksPanel(key, []); });
+}
+
+function blRenderLinksPanel(key, links) {
+  var panel = document.getElementById("bl-links-" + key);
+  if (!panel) return;
+  var TYPE_ICONS = { "Story":"📋", "Bug":"🔴", "Test Case":"🧪", "Test":"🧪", "Sub-task":"🔧", "Task":"✅" };
+  var STATUS_COLOR = function(s) {
+    if (!s) return "var(--text3)";
+    s = s.toLowerCase();
+    if (s === "done" || s === "closed" || s.indexOf("pass") >= 0) return "var(--green)";
+    if (s.indexOf("test") >= 0 || s.indexOf("validation") >= 0)  return "var(--cyan)";
+    if (s === "in progress" || s.indexOf("progress") >= 0)        return "var(--orange)";
+    return "var(--text3)";
+  };
+  if (!links.length) {
+    panel.innerHTML = '<div style="padding:10px 16px 12px;border-top:1px solid var(--border);background:var(--bg);font-family:var(--mono);font-size:11px;color:var(--text3)">Aucune dépendance trouvée dans Jira</div>';
+    return;
+  }
+  panel.innerHTML =
+    '<div style="padding:10px 16px 12px;border-top:1px solid var(--border);background:var(--bg);border-radius:0 0 10px 10px">' +
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.05em;margin-bottom:8px">DÉPENDANCES (' + links.length + ')</div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px">' +
+      links.map(function(l) {
+        var icon   = TYPE_ICONS[l.type] || "🔗";
+        var sColor = STATUS_COLOR(l.status);
+        return '<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-radius:6px;background:var(--bg2);border:1px solid var(--border)">' +
+          '<span style="font-size:11px;flex-shrink:0">' + icon + '</span>' +
+          '<a href="https://' + CFG_JIRA_HOST + '/browse/' + l.key + '" target="_blank" style="font-family:var(--mono);font-size:10px;color:var(--cyan);text-decoration:none;font-weight:700;flex-shrink:0">' + l.key + '</a>' +
+          (l.relation ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text3);flex-shrink:0;background:var(--bg3);border-radius:4px;padding:1px 6px">' + escHtml(l.relation) + '</span>' : '') +
+          '<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + escHtml(l.summary||"") + '">' + escHtml(l.summary||"") + '</span>' +
+          (l.status ? '<span style="font-family:var(--mono);font-size:9px;color:' + sColor + ';background:rgba(0,0,0,.2);border-radius:4px;padding:1px 6px;flex-shrink:0">' + escHtml(l.status) + '</span>' : '') +
+        '</div>';
+      }).join("") +
+      '</div>' +
+    '</div>';
 }
 
 function renderBacklogPending() {
