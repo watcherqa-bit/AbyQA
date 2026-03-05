@@ -3202,6 +3202,7 @@
           <option value="Story">User Story</option>
         </select>
         <select id="bl-filter-assignee" onchange="filterBacklogAssignee(this.value)" class="bl-select"><option value="all">👤 Assignee : Tous</option></select>
+        <select id="bl-filter-release" onchange="filterBacklogRelease(this.value)" class="bl-select" style="min-width:140px"><option value="all">🚀 Release : Toutes</option></select>
         <div class="bl-toolbar-sep"></div>
         <div style="position:relative">
           <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;pointer-events:none">🔍</span>
@@ -13443,6 +13444,7 @@ var _blLinksCache          = {}; // key → tableau de liens (lazy-fetch)
 var _backlogSyncTime       = null; // timestamp de la dernière sync Jira réussie
 var _backlogDisplayMode    = "list"; // "list" | "kanban"
 var _blSelected            = []; // clés sélectionnées pour bulk actions
+var _backlogReleaseFilter  = "all"; // filtre par fixVersion
 
 function setBacklogView(view) {
   _backlogView = view;
@@ -13609,6 +13611,7 @@ function renderBacklogKanban(filtered) {
 
 function filterBacklogPrio(val)     { _backlogPrioFilter     = val; renderBacklogPending(); }
 function filterBacklogAssignee(val) { _backlogAssigneeFilter = val; renderBacklogPending(); }
+function filterBacklogRelease(val)  { _backlogReleaseFilter  = val; renderBacklogPending(); }
 
 function updateBacklogBadges() {
   ["all","entrant","enrichissement","pret","en-test"].forEach(function(p) {
@@ -13631,21 +13634,33 @@ function updateBacklogBadges() {
 function populateBacklogDropdowns() {
   var prioSel     = document.getElementById("bl-filter-prio");
   var assigneeSel = document.getElementById("bl-filter-assignee");
+  var releaseSel  = document.getElementById("bl-filter-release");
   if (!prioSel || !assigneeSel) return;
-  var prios = [], assignees = [];
+  var prios = [], assignees = [], releases = [];
   _backlogPending.forEach(function(t) {
     if (t.priority && prios.indexOf(t.priority) === -1)     prios.push(t.priority);
     if (t.assignee && assignees.indexOf(t.assignee) === -1) assignees.push(t.assignee);
+    // fixVersions est une chaîne "v1.25.0, v1.26.0"
+    if (t.fixVersions && typeof t.fixVersions === "string") {
+      t.fixVersions.split(",").map(function(v) { return v.trim(); }).forEach(function(v) {
+        if (v && releases.indexOf(v) === -1) releases.push(v);
+      });
+    }
   });
   var PRIO_ORDER = ["Highest","High","Medium","Low","Lowest"];
   prios.sort(function(a, b) {
     return (PRIO_ORDER.indexOf(a)+1||99) - (PRIO_ORDER.indexOf(b)+1||99);
   });
   assignees.sort();
+  releases.sort(function(a, b) { return b.localeCompare(a); }); // plus récent en premier
   prioSel.innerHTML = '<option value="all">🔥 Priorité : Toutes</option>' +
     prios.map(function(p) { return '<option value="' + p + '"' + (_backlogPrioFilter === p ? ' selected':'') + '>' + p + '</option>'; }).join("");
   assigneeSel.innerHTML = '<option value="all">👤 Assignee : Tous</option>' +
     assignees.map(function(a) { return '<option value="' + escHtml(a) + '"' + (_backlogAssigneeFilter === a ? ' selected':'') + '>' + escHtml(a) + '</option>'; }).join("");
+  if (releaseSel) {
+    releaseSel.innerHTML = '<option value="all">🚀 Release : Toutes</option>' +
+      releases.map(function(r) { return '<option value="' + escHtml(r) + '"' + (_backlogReleaseFilter === r ? ' selected':'') + '>' + escHtml(r) + '</option>'; }).join("");
+  }
 }
 
 function blAvatarColor(name) {
@@ -13699,6 +13714,7 @@ function blRenderRow(t) {
         '<span class="bl-pill ' + typeClass + '">' + typeLabel + '</span>' +
         (t.priority  ? '<span class="bl-pill ' + prioClass  + '">' + t.priority  + '</span>' : '') +
         (phaseLabel  ? '<span class="bl-pill ' + phaseClass + '">' + phaseLabel  + '</span>' : '') +
+        (t.fixVersions ? '<span style="font-family:var(--mono);font-size:9px;color:var(--text3);background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:4px;padding:1px 6px;white-space:nowrap">🚀 ' + escHtml(t.fixVersions) + '</span>' : '') +
         (t.assignee  ? '<div class="bl-avatar" style="background:' + avatarBg + ';color:#000" title="' + escHtml(t.assignee) + '">' + initials + '</div>' : '') +
         linkBtn +
         '<div class="bl-row-actions">' +
@@ -13852,6 +13868,13 @@ function renderBacklogPending() {
   if (_backlogPrioFilter     !== "all") filtered = filtered.filter(function(t){ return t.priority === _backlogPrioFilter; });
   if (_backlogAssigneeFilter !== "all") filtered = filtered.filter(function(t){ return t.assignee === _backlogAssigneeFilter; });
   if (_backlogTypeFilter     !== "all") filtered = filtered.filter(function(t){ return t.type === _backlogTypeFilter; });
+  if (_backlogReleaseFilter  !== "all") filtered = filtered.filter(function(t){
+    if (!t.fixVersions) return false;
+    var versions = (typeof t.fixVersions === "string")
+      ? t.fixVersions.split(",").map(function(v) { return v.trim(); })
+      : (Array.isArray(t.fixVersions) ? t.fixVersions : []);
+    return versions.indexOf(_backlogReleaseFilter) >= 0;
+  });
   if (_backlogSearchFilter)             filtered = filtered.filter(function(t){
     return (t.key||"").toLowerCase().indexOf(_backlogSearchFilter) >= 0 ||
            (t.summary||"").toLowerCase().indexOf(_backlogSearchFilter) >= 0;
