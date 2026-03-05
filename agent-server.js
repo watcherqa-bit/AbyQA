@@ -615,7 +615,7 @@ var server = http.createServer(function(req, res) {
 
         // Mapping priorité → Jira
         var prioMap = { Critique:"Highest", Majeur:"High", Mineur:"Low", Cosmétique:"Lowest",
-                        Haute:"High", Haute:"High", Moyenne:"Medium", Basse:"Low" };
+                        Haute:"High", Moyenne:"Medium", Basse:"Low" };
         var priority = prioMap[body.priority] || "Medium";
 
         // Conversion texte → ADF (Atlassian Document Format) pour description

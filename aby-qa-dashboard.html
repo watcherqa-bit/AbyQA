@@ -3530,7 +3530,7 @@
         </div>
 
         <!-- ─── BLOC INSPECTEUR ─── -->
-        <div id="ops-inspect-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:12px;overflow:hidden">
+        <div id="ops-inspect-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:12px;overflow:visible">
           <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border)">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">🔍 INSPECTEUR DOM</div>
             <button onclick="document.getElementById('ops-inspect-block').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">✕</button>
@@ -5748,9 +5748,6 @@ function opsRenderGenResult(r) {
     html += section('🎯 SCÉNARIOS DE TEST PROPOSÉS (' + r.proposedTests.length + ')', ptHtml);
   }
 
-  // Stocker la donnée pour opsPushJira
-  html += '<script>window._opsGenData=' + JSON.stringify(r) + ';<\/script>';
-
   // Actions finales
   html += '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center">';
   html += '<button onclick="opsPushJira()" id="ops-push-btn" ' +
@@ -5766,6 +5763,7 @@ function opsRenderGenResult(r) {
   html += '<div id="ops-workflow-chain"></div>';
 
   html += '</div></div>';
+  window._opsGenData = r;
   block.innerHTML = html;
   block.style.display = 'block';
   block.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -5937,9 +5935,6 @@ function opsShowWorkflowActions(pushResult, genData) {
   // Boutons d'action
   html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
 
-  // Stocker la clé du ticket créé pour les boutons de workflow
-  html += '<script>window._opsCreatedKey=' + JSON.stringify(key) + ';<\/script>';
-
   if (type === 'BUG' || type === 'US') {
     html += '<button onclick="opsGenerateLinkedTest(window._opsCreatedKey)" ' +
       'style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
@@ -5947,8 +5942,6 @@ function opsShowWorkflowActions(pushResult, genData) {
   }
 
   if (type === 'TEST') {
-    // Préparer les steps pour Xray depuis les testCases générés
-    html += '<script>window._opsPendingTestKey=' + JSON.stringify(key) + ';window._opsPendingTestCases=' + JSON.stringify(genData.testCases || []) + ';<\/script>';
     html += '<button onclick="opsPushXraySteps(window._opsPendingTestKey)" ' +
       'style="background:#8b5cf6;color:#fff;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:600">' +
       '🔮 Push Xray</button>';
@@ -5965,6 +5958,12 @@ function opsShowWorkflowActions(pushResult, genData) {
   // Zone de résultat pour le TEST généré depuis ce ticket
   html += '<div id="ops-linked-test-result" style="margin-top:12px"></div>';
   html += '</div>';
+  // Variables globales pour les boutons de workflow (doit être avant innerHTML)
+  window._opsCreatedKey = key;
+  if (type === 'TEST') {
+    window._opsPendingTestKey   = key;
+    window._opsPendingTestCases = genData.testCases || [];
+  }
   container.innerHTML = html;
 }
 
