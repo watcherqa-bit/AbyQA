@@ -3514,19 +3514,13 @@
         <div id="ops-pane-tickets" style="display:none">
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉFÉRENCER UN TICKET JIRA (US · BUG · TEST)</div>
-            <div style="display:flex;gap:8px;margin-bottom:12px">
+            <div style="margin-bottom:12px">
               <input type="text" id="ops-ticket-key" placeholder="Ex: 2706 ou SAFWBST-2706" oninput="this.value=this.value.toUpperCase()"
-                style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)"
+                style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)"
                 onkeydown="if(event.key==='Enter'){event.preventDefault();opsLoadTicket();}">
-              <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:13px">Charger</button>
             </div>
             <div id="ops-ticket-preview" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:14px"></div>
             <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px"></div>
-            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:10px">
-              <button class="btn btn-primary" onclick="switchOpsTab('commande')" style="font-size:13px">
-                ✅ Utiliser ces tickets
-              </button>
-            </div>
           </div>
         </div>
 
@@ -5349,12 +5343,16 @@ function opsLoadTicket() {
       opsRenderPills();
       opsRenderLoadedTickets();
       showToast(key + ' chargé (' + ticket.type + ')', '🎫');
+      switchOpsTab('commande');
+      opsAnalyze();
     })
     .catch(function(e) {
       opsTickets.push({ key: key, summary: key, type: 'ticket', description: '' });
       opsRenderPills();
       opsRenderLoadedTickets();
       if (preview) preview.textContent = '⚠️ ' + key + ' ajouté sans détails Jira';
+      switchOpsTab('commande');
+      opsAnalyze();
     });
 }
 
