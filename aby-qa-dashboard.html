@@ -3515,8 +3515,9 @@
           <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
             <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉFÉRENCER UN TICKET JIRA (US · BUG · TEST)</div>
             <div style="display:flex;gap:8px;margin-bottom:12px">
-              <input type="text" id="ops-ticket-key" placeholder="Ex: SAFWBST-123" oninput="this.value=this.value.toUpperCase()"
-                style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)">
+              <input type="text" id="ops-ticket-key" placeholder="Ex: 2706 ou SAFWBST-2706" oninput="this.value=this.value.toUpperCase()"
+                style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();opsLoadTicket();}">
               <button class="btn btn-primary" onclick="opsLoadTicket()" style="font-size:13px">Charger</button>
             </div>
             <div id="ops-ticket-preview" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:14px"></div>
@@ -4988,6 +4989,8 @@ document.addEventListener("click", function(e) {
 // Le dropdown est injecté dans le <body> (position:fixed) → aucune modification HTML requise.
 
 var _jiraAC = {}; // état par inputId
+var JIRA_PROJECT = "SAFWBST"; // préfixe projet — auto-ajouté si l'utilisateur tape juste un numéro
+var JIRA_HOST    = "eurelis.atlassian.net"; // hôte Jira pour les liens
 
 function initJiraAutocomplete(inputId, onSelectFn) {
   var input = document.getElementById(inputId);
@@ -5014,16 +5017,23 @@ function initJiraAutocomplete(inputId, onSelectFn) {
 
   // ── Recherche avec debounce ──
   input.addEventListener("input", function() {
-    var val = input.value.trim();
+    var raw = input.value.trim();
+    input.value = raw.toUpperCase(); // forcer majuscule
+    raw = input.value;
     var st  = _jiraAC[inputId];
     clearTimeout(st.timer);
-    if (!val || val.length < 2) { _jiraACHide(inputId); return; }
+    if (!raw) { _jiraACHide(inputId); return; }
+    // Si l'utilisateur tape juste un numéro (ex: 123) → chercher SAFWBST-123
+    var isNumeric   = /^\d+$/.test(raw);
+    var searchQuery = isNumeric ? (JIRA_PROJECT + "-" + raw) : raw;
+    var minLen      = isNumeric ? 1 : 2;
+    if (raw.length < minLen) { _jiraACHide(inputId); return; }
     st.timer = setTimeout(function() {
-      fetch((typeof SERVER !== "undefined" ? SERVER : "") + "/api/jira-search?q=" + encodeURIComponent(val))
+      fetch((typeof SERVER !== "undefined" ? SERVER : "") + "/api/jira-search?q=" + encodeURIComponent(searchQuery))
         .then(function(r) { return r.json(); })
         .then(function(d) { _jiraACShow(inputId, d.issues || d || []); })
         .catch(function() {});
-    }, 350);
+    }, 300);
   });
 
   // ── Navigation clavier ──
@@ -5088,14 +5098,20 @@ function _jiraACShow(inputId, issues) {
   st.dd.style.width = r.width + "px";
 
   st.dd.innerHTML = issues.map(function(item, i) {
-    var key  = item.key || item.id || "";
-    var sum  = _jiraACSummary(item);
-    var type = (item.fields && item.fields.issuetype && item.fields.issuetype.name) || "";
-    var icon = type === "Bug" ? "🐛" : type === "Story" ? "📖" : type === "Test" ? "🧪" : type === "Task" ? "✅" : "🎫";
-    return '<div data-i="' + i + '" style="padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--border,rgba(255,255,255,.07));font-size:11px;display:flex;gap:8px;align-items:baseline">' +
+    var key    = item.key || item.id || "";
+    var sum    = _jiraACSummary(item);
+    var type   = (item.fields && item.fields.issuetype && item.fields.issuetype.name) || item.type || "";
+    var status = (item.fields && item.fields.status && item.fields.status.name) || item.status || "";
+    var icon   = type === "Bug" ? "🐛" : type === "Story" ? "📖" : type === "Test" ? "🧪" : type === "Task" ? "✅" : "🎫";
+    var sColor = status === "Done" ? "#10b981" : status === "In Progress" ? "#f59e0b" : "#6b7280";
+    return '<div data-i="' + i + '" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border,rgba(255,255,255,.07));font-size:11px;display:flex;gap:8px;align-items:center">' +
       '<span style="font-size:13px;flex-shrink:0">' + icon + '</span>' +
-      '<span style="font-family:var(--mono,monospace);color:#a78bfa;flex-shrink:0;font-size:10px">' + key + '</span>' +
-      (sum ? '<span style="color:var(--text2,#ccc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sum + '</span>' : '') +
+      '<span style="font-family:var(--mono,monospace);color:#a78bfa;flex-shrink:0;font-size:11px;font-weight:600">' + key + '</span>' +
+      (sum ? '<span style="color:var(--text2,#ccc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">' + sum + '</span>' : '<span style="flex:1"></span>') +
+      (status ? '<span style="font-family:var(--mono,monospace);font-size:9px;color:' + sColor + ';flex-shrink:0;padding:1px 6px;border:1px solid ' + sColor + '40;border-radius:4px">' + status + '</span>' : '') +
+      '<a href="https://' + JIRA_HOST + '/browse/' + key + '" target="_blank" onclick="event.stopPropagation()" ' +
+        'style="flex-shrink:0;color:#6b7280;font-size:10px;text-decoration:none;padding:1px 4px;border-radius:3px" ' +
+        'title="Ouvrir dans Jira">↗</a>' +
       '</div>';
   }).join("");
   st.dd.style.display = "block";
@@ -5167,6 +5183,17 @@ function initAllJiraAutocompletes() {
   initJiraAutocomplete("jira-import-key", function(key) {
     // Pas d'auto-import : l'utilisateur peut ajuster le type avant de cliquer "↓ Importer"
   });
+
+  // Panel Opérations — onglet Tickets
+  initJiraAutocomplete("ops-ticket-key", function(key) {
+    opsLoadTicket(); // charge automatiquement à la sélection
+  });
+
+  // CSS Audit — attach ticket
+  initJiraAutocomplete("css-attach-input", function(key) {});
+
+  // Drupal — clé Jira
+  initJiraAutocomplete("drupal-jira-key", function(key) {});
 }
 
 // Charger au clic sur le panel
@@ -5252,8 +5279,9 @@ function opsRenderLoadedTickets() {
   if (!c) return;
   if (!opsTickets.length) { c.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:12px">Aucun ticket chargé</div>'; return; }
   c.innerHTML = opsTickets.map(function(t,i){
+    var jiraUrl = 'https://' + JIRA_HOST + '/browse/' + t.key;
     return '<div style="display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">'+
-      '<span style="font-family:var(--mono);font-size:11px;color:var(--blue)">'+escHtml(t.key)+'</span>'+
+      '<a href="'+jiraUrl+'" target="_blank" style="font-family:var(--mono);font-size:11px;color:var(--blue);text-decoration:none;font-weight:600" title="Ouvrir dans Jira">'+escHtml(t.key)+' ↗</a>'+
       '<span style="font-size:12px;color:var(--text);flex:1">'+escHtml(t.summary)+'</span>'+
       '<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">'+escHtml(t.type)+'</span>'+
       '<button onclick="opsRemoveTicket('+i+')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:12px;padding:0">🗑</button>'+
