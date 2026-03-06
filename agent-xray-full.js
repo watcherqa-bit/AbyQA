@@ -36,6 +36,7 @@ const CONFIG = CFG;
 
 const REPORTS_DIR     = CFG.paths.reports;
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
+const reporterUtils   = require("./reporter-utils");
 
 // Variable globale remplie au démarrage depuis les args
 var instructions = "";
@@ -848,11 +849,13 @@ function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
   };
 
   var resultsRows = playwrightResults.map(function(r) {
-    return "<tr><td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-size:12px'>" +
-      (r.test.key||"—") + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;font-size:12px'>" +
-      (r.test.koItem.page||"—").substring(0,50) + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee'>" +
-      rowsBadge(r.status) + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;font-size:11px;color:#666'>" +
-      (r.issues.join(", ")||"—").substring(0,80) + "</td></tr>";
+    var shotHtml = reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"100px", zoomWidth:"500px" });
+    return "<tr><td style='padding:8px 12px;border-bottom:1px solid #eee;font-family:monospace;font-size:12px;vertical-align:top'>" +
+      (r.test.key||"—") + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;font-size:12px;vertical-align:top'>" +
+      (r.test.koItem.page||"—").substring(0,50) + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top'>" +
+      rowsBadge(r.status) + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;font-size:11px;color:#666;vertical-align:top'>" +
+      (r.issues.join(", ")||"—").substring(0,80) + "</td><td style='padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top'>" +
+      shotHtml + "</td></tr>";
   }).join("");
 
   var bugsSection = bugs.length > 0 ? "<h3 style='color:#ff1744;margin:24px 0 12px'>🐛 Bugs créés (" + bugs.length + ")</h3><ul>" +
@@ -896,7 +899,7 @@ function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
 </div>
 <div class="section">
   <h2>📋 Résultats des tests</h2>
-  <table><thead><tr><th>Ticket Test</th><th>Page</th><th>Statut</th><th>Anomalies</th></tr></thead>
+  <table><thead><tr><th>Ticket Test</th><th>Page</th><th>Statut</th><th>Anomalies</th><th>Screenshot</th></tr></thead>
   <tbody>${resultsRows}</tbody></table>
 </div>
 ${bugsSection}

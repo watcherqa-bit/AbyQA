@@ -18,6 +18,7 @@ CFG.paths.init();
 const REPORTS_DIR     = CFG.paths.reports;
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
 const BASE_DIR        = __dirname;
+const reporterUtils   = require("./reporter-utils");
 
 var args = process.argv.slice(2);
 function arg(name) {
@@ -677,16 +678,6 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
   var date=new Date().toLocaleString("fr-FR");
   var pctColor=pct>=80?"#00e87a":pct>=50?"#ff9500":"#ff3b5c";
 
-  // Fonction utilitaire : screenshot en base64 (embarqué dans le rapport)
-  function screenshotToBase64(screenshotPath) {
-    try {
-      if (!screenshotPath) return null;
-      var absPath = path.isAbsolute(screenshotPath) ? screenshotPath : path.join(SCREENSHOTS_DIR, path.basename(screenshotPath));
-      if (!fs.existsSync(absPath)) return null;
-      return "data:image/png;base64," + fs.readFileSync(absPath).toString("base64");
-    } catch(e) { return null; }
-  }
-
   var rows = allResults.map(function(r) {
     var stepsDetail = (r.steps||[]).map(function(s) {
       var ico = s.status === "PASS" ? "✅" : "❌";
@@ -695,10 +686,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
         (s.label || "—") + (s.detail && s.status !== "PASS" ? " <span style='color:#8892a4;font-size:10px'>— " + (s.detail||"").substring(0,60) + "</span>" : "") + "</div>";
     }).join("");
     if (!stepsDetail) stepsDetail = "<span style='color:#4a5568;font-size:10px'>—</span>";
-    var shotB64 = screenshotToBase64(r.screenshot);
-    var shotCell = shotB64
-      ? "<img src='"+shotB64+"' style='max-width:120px;max-height:80px;border-radius:4px;border:1px solid #1e2536;display:block;cursor:zoom-in' onclick='this.style.maxWidth=this.style.maxWidth===\"120px\"?\"600px\":\"120px\"'>"
-      : "<span style='color:#4a5568;font-size:10px'>—</span>";
+    var shotCell = reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"120px", zoomWidth:"600px" });
     return "<tr style='border-bottom:1px solid #1e2536'>" +
       "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='font-size:10px;color:#4a5568;margin-top:2px'>"+(r.url||"").substring(0,60)+"</div></td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
@@ -776,7 +764,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
           "</div>" +
           devHtml +
           "</div>" +
-          (function(){ var b64=screenshotToBase64(r.screenshot); return b64 ? "<img src='"+b64+"' style='max-width:220px;border-radius:6px;border:1px solid rgba(255,59,92,.3);cursor:zoom-in' onclick='this.style.maxWidth=this.style.maxWidth===\"220px\"?\"600px\":\"220px\"'>" : "<span></span>"; })() +
+          reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"220px", zoomWidth:"600px" }) +
           "</div></div>";
       }).join("") + "</div>";
   }
@@ -861,7 +849,8 @@ function generateComparisonReport(allEnvResults, mode) {
       var issue   = failR && failR.issues[0] ? "<br><span style='font-size:10px;color:#8892a4'>" + failR.issues[0].substring(0,50) + "</span>" : "";
       var color   = hasFail ? "#ff3b5c" : "#00e87a";
       var label   = hasFail ? "❌ FAIL" : "✅ PASS";
-      return "<td style='padding:10px 14px;color:" + color + ";font-family:monospace;font-weight:700;font-size:12px'>" + label + badge + issue + "</td>";
+      var shotHtml = failR && failR.screenshot ? "<br>" + reporterUtils.buildScreenshotHtml(failR.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"90px", zoomWidth:"500px" }) : "";
+      return "<td style='padding:10px 14px;color:" + color + ";font-family:monospace;font-weight:700;font-size:12px;vertical-align:top'>" + label + badge + issue + shotHtml + "</td>";
     });
 
     var deltaCell = isDelta
