@@ -218,7 +218,7 @@ function remapTargetForEnv(target, envName) {
 }
 
 async function runCustomStep(page, step) {
-  var s = { label: step.label || step.action, status: "PASS", detail: "" };
+  var s = { label: step.label || step.action, status: "PASS", detail: "", selector: step.selector || null };
   try {
     switch(step.action) {
       case "expect-visible":
@@ -246,6 +246,82 @@ async function runCustomStep(page, step) {
     }
   } catch(e) { s.status="FAIL"; s.detail="Erreur : " + e.message.substring(0,80); }
   return s;
+}
+
+// Injecte des encadrés vert/rouge + badges sur les éléments testés avant le screenshot
+async function annotateScreenshot(page, steps) {
+  try {
+    await page.evaluate(function(stepsData) {
+      // Nettoyer une éventuelle annotation précédente
+      var old = document.getElementById("__aby-qa-overlay__");
+      if (old) old.remove();
+
+      var overlay = document.createElement("div");
+      overlay.id = "__aby-qa-overlay__";
+      overlay.style.cssText = "position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2147483647";
+      document.body.appendChild(overlay);
+
+      stepsData.forEach(function(step) {
+        if (!step.selector) return;
+        try {
+          var el = document.querySelector(step.selector);
+          if (!el) return;
+          var rect = el.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) return; // élément invisible/hors viewport
+
+          var isPass  = step.status === "PASS";
+          var color   = isPass ? "#00e87a" : "#ff3b5c";
+          var bgColor = isPass ? "rgba(0,232,122,0.10)" : "rgba(255,59,92,0.10)";
+
+          // Encadré coloré sur l'élément
+          var box = document.createElement("div");
+          box.style.cssText = [
+            "position:fixed", "pointer-events:none", "box-sizing:border-box",
+            "border:2px solid " + color,
+            "background:" + bgColor,
+            "border-radius:4px",
+            "top:"    + rect.top    + "px",
+            "left:"   + rect.left   + "px",
+            "width:"  + rect.width  + "px",
+            "height:" + rect.height + "px",
+            "z-index:2147483647"
+          ].join(";");
+          overlay.appendChild(box);
+
+          // Badge label en haut à gauche de l'encadré
+          var badge = document.createElement("div");
+          badge.style.cssText = [
+            "position:fixed", "pointer-events:none",
+            "background:" + color, "color:#fff",
+            "font-size:9px", "font-family:monospace", "font-weight:700",
+            "padding:1px 5px", "border-radius:3px", "white-space:nowrap",
+            "top:"  + Math.max(2, rect.top - 18) + "px",
+            "left:" + rect.left + "px",
+            "z-index:2147483648"
+          ].join(";");
+          badge.textContent = (isPass ? "✓ " : "✗ ") + step.label;
+          overlay.appendChild(badge);
+        } catch(e) {}
+      });
+
+      // Bandeau récapitulatif en bas de page
+      var pass = stepsData.filter(function(s){ return s.status === "PASS"; }).length;
+      var fail = stepsData.filter(function(s){ return s.status === "FAIL"; }).length;
+      var bar  = document.createElement("div");
+      bar.style.cssText = [
+        "position:fixed", "bottom:0", "left:0", "right:0",
+        "background:rgba(10,13,20,0.88)", "color:#fff",
+        "font-family:monospace", "font-size:11px", "font-weight:700",
+        "padding:6px 16px", "display:flex", "gap:16px", "align-items:center",
+        "z-index:2147483648", "border-top:1px solid rgba(255,255,255,.15)"
+      ].join(";");
+      bar.innerHTML = "<span style='color:#8892a4'>AbyQA</span>" +
+        "<span style='color:#00e87a'>✅ " + pass + " PASS</span>" +
+        (fail > 0 ? "<span style='color:#ff3b5c'>❌ " + fail + " FAIL</span>" : "") +
+        "<span style='color:#8892a4;margin-left:auto;font-size:9px'>" + new Date().toLocaleString("fr-FR") + "</span>";
+      overlay.appendChild(bar);
+    }, steps);
+  } catch(e) { /* annotations non critiques — ne pas bloquer le screenshot */ }
 }
 
 async function runTest(target, BT, device, browserName, mode, envNameOverride) {
@@ -401,11 +477,14 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
     result.steps.push({ label: "Navigation", status: "FAIL", detail: e.message.substring(0,80) });
   }
 
-  // Screenshot
+  // Screenshot annoté (encadrés vert/rouge sur les éléments testés)
   if (page) {
     try {
       var shotName = [mode, thisEnv, device.name, browserName, (target.label||"page").replace(/[^a-z0-9]/gi,"-")].join("_") + "_" + Date.now() + ".png";
       result.screenshot = path.join(SCREENSHOTS_DIR, shotName);
+      // Annoter les éléments ayant un sélecteur avant le screenshot
+      var annotableSteps = result.steps.filter(function(s) { return s.selector; });
+      if (annotableSteps.length > 0) await annotateScreenshot(page, annotableSteps);
       await page.screenshot({ path: result.screenshot, fullPage: false });
     } catch(e) {}
   }
