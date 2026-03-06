@@ -98,6 +98,15 @@ function jiraRequest(method, apiPath, body) {
   });
 }
 
+function mimeFromExt(filePath) {
+  var ext = path.extname(filePath).toLowerCase();
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".html") return "text/html";
+  if (ext === ".json") return "application/json";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  return "image/png";
+}
+
 function uploadAttachment(issueKey, filePath) {
   return new Promise(function(resolve) {
     if (!fs.existsSync(filePath)) { resolve(null); return; }
@@ -105,7 +114,7 @@ function uploadAttachment(issueKey, filePath) {
     var fileData = fs.readFileSync(filePath);
     var fileName = path.basename(filePath);
     var boundary = "----AbyQABoundary" + Date.now();
-    var header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: image/png\r\n\r\n";
+    var header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mimeFromExt(filePath) + "\r\n\r\n";
     var footer = "\r\n--" + boundary + "--\r\n";
     var bodyBuf = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
     var options = {
@@ -947,9 +956,37 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
 
   var prefix = fail===0 ? "RAPPORT-OK-PW-DIRECT-" : "RAPPORT-FAIL-PW-DIRECT-";
   var keySuffix = (KEY && /^[A-Z]+-\d+$/i.test(KEY)) ? "-" + KEY.toUpperCase() : "";
-  var reportPath = path.join(REPORTS_DIR, prefix + mode.toUpperCase() + "-" + Date.now() + keySuffix + ".html");
+  var ts = Date.now();
+  var reportPath = path.join(REPORTS_DIR, prefix + mode.toUpperCase() + "-" + ts + keySuffix + ".html");
   fs.writeFileSync(reportPath, html, "utf8");
   return reportPath;
+}
+
+/**
+ * Convertit un rapport HTML en PDF via Playwright.
+ * @param {string} htmlPath — chemin absolu du fichier HTML
+ * @returns {string|null} chemin du PDF généré, ou null en cas d'erreur
+ */
+async function convertHtmlToPdf(htmlPath) {
+  var pdfPath = htmlPath.replace(/\.html$/, ".pdf");
+  try {
+    console.log("[PDF] Conversion du rapport en PDF...");
+    var browser = await chromium.launch();
+    var page = await browser.newPage();
+    await page.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+    await page.pdf({
+      path: pdfPath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" }
+    });
+    await browser.close();
+    console.log("[PDF] " + path.basename(pdfPath));
+    return pdfPath;
+  } catch(e) {
+    console.log("[PDF] Erreur conversion : " + e.message.substring(0, 80));
+    return null;
+  }
 }
 
 function generateComparisonReport(allEnvResults, mode) {
@@ -1211,7 +1248,10 @@ async function main() {
 
   var sourceLabel = SOURCE==="jira-key"&&KEY?KEY : SOURCE==="xml"?(XML_FILE||"xml") : SOURCE==="text"?"texte libre" : (URLS_RAW||"url");
   var reportPath = generateHTMLReport(allResults, MODE, sourceLabel);
-  console.log("\n[RAPPORT] " + path.basename(reportPath));
+  console.log("\n[RAPPORT HTML] " + path.basename(reportPath));
+
+  // Conversion HTML → PDF pour Jira
+  var pdfPath = await convertHtmlToPdf(reportPath);
 
   var bugKeys = [];
   var fails = allResults.filter(function(r){return r.status==="FAIL";});
@@ -1243,7 +1283,7 @@ async function main() {
     }
   }
 
-  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null }));
+  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null }));
   var fullForDashboard = allResults.map(function(r) {
     return { label:r.label, url:r.url, status:r.status, device:r.device, browser:r.browser, issues:r.issues, steps:r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
   });

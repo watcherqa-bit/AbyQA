@@ -2376,15 +2376,21 @@ var server = http.createServer(function(req, res) {
         var arBody2   = JSON.parse(Buffer.concat(arChunks).toString());
         var arFname   = arBody2.filename || "";
         var arJiraKey = (arBody2.jiraKey || "").trim().toUpperCase();
-        if (!/^RAPPORT-(OK|FAIL)-PW-DIRECT-.*\.html$/.test(arFname) && !/^AUDIT-CSS-.*\.md$/.test(arFname)) {
+        if (!/^RAPPORT-(OK|FAIL)-PW-DIRECT-.*\.(html|pdf)$/.test(arFname) && !/^RAPPORT-(OK|FAIL)-.*\.(html|pdf)$/.test(arFname) && !/^AUDIT-CSS-.*\.md$/.test(arFname)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Fichier non autorisÃ©" })); return;
+          res.end(JSON.stringify({ error: "Fichier non autoris\u00e9" })); return;
         }
         if (!/^[A-Z]+-\d+$/.test(arJiraKey)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "ClÃ© Jira invalide (ex : SAFE-1234)" })); return;
+          res.end(JSON.stringify({ error: "Cl\u00e9 Jira invalide (ex : SAFE-1234)" })); return;
         }
+        // Si HTML fourni, préférer le PDF correspondant s'il existe
         var arPath2 = path.join(REPORTS_DIR, arFname);
+        if (/\.html$/.test(arFname)) {
+          var pdfAlt = arFname.replace(/\.html$/, ".pdf");
+          var pdfAltPath = path.join(REPORTS_DIR, pdfAlt);
+          if (fs.existsSync(pdfAltPath)) { arFname = pdfAlt; arPath2 = pdfAltPath; }
+        }
         if (!fs.existsSync(arPath2)) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Fichier introuvable" })); return;
@@ -2394,7 +2400,8 @@ var server = http.createServer(function(req, res) {
         var arHttps    = require("https");
         var arBoundary = "----AbyQABound" + Date.now();
         var CRLF2      = "\r\n";
-        var hPart2     = Buffer.from("--" + arBoundary + CRLF2 + 'Content-Disposition: form-data; name="file"; filename="' + arFname + '"' + CRLF2 + "Content-Type: text/html" + CRLF2 + CRLF2);
+        var arMime     = /\.pdf$/i.test(arFname) ? "application/pdf" : /\.md$/i.test(arFname) ? "text/markdown" : "text/html";
+        var hPart2     = Buffer.from("--" + arBoundary + CRLF2 + 'Content-Disposition: form-data; name="file"; filename="' + arFname + '"' + CRLF2 + "Content-Type: " + arMime + CRLF2 + CRLF2);
         var fPart2     = Buffer.from(CRLF2 + "--" + arBoundary + "--" + CRLF2);
         var arPayload  = Buffer.concat([hPart2, fdata2, fPart2]);
 

@@ -88,7 +88,15 @@ function jiraRequest(method, apiPath, body, isMultipart, contentType) {
   });
 }
 
-// Upload binaire (screenshot)
+// Upload binaire (screenshot, PDF, HTML)
+function mimeFromExt(fp) {
+  var ext = path.extname(fp).toLowerCase();
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".html") return "text/html";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  return "image/png";
+}
+
 function uploadAttachment(issueKey, filePath) {
   return new Promise(function(resolve, reject) {
     var auth      = Buffer.from(CONFIG.jira.email + ":" + CONFIG.jira.token).toString("base64");
@@ -99,7 +107,7 @@ function uploadAttachment(issueKey, filePath) {
 
     var header = "--" + boundary + CRLF +
       "Content-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"" + CRLF +
-      "Content-Type: image/png" + CRLF + CRLF;
+      "Content-Type: " + mimeFromExt(filePath) + CRLF + CRLF;
     var footer = CRLF + "--" + boundary + "--" + CRLF;
 
     var body = Buffer.concat([
@@ -980,17 +988,45 @@ ${bugsSection}
   return { path: reportPath, allPass: allPass };
 }
 
-// ── Upload rapport HTML en PJ Jira — PJ uniquement, pas de commentaire ──────
+/**
+ * Convertit un rapport HTML en PDF via Playwright.
+ */
+async function convertHtmlToPdf(htmlPath) {
+  var pdfPath = htmlPath.replace(/\.html$/, ".pdf");
+  try {
+    console.log("[PDF] Conversion du rapport en PDF...");
+    var browser = await chromium.launch();
+    var pg = await browser.newPage();
+    await pg.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+    await pg.pdf({
+      path: pdfPath,
+      format: "A4",
+      printBackground: true,
+      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" }
+    });
+    await browser.close();
+    console.log("[PDF] " + path.basename(pdfPath));
+    return pdfPath;
+  } catch(e) {
+    console.log("[PDF] Erreur conversion : " + e.message.substring(0, 80));
+    return null;
+  }
+}
+
+// ── Upload rapport PDF en PJ Jira (fallback HTML si PDF KO) ─────────────────
 async function uploadReportToJira(testKey, reportPath, allPass) {
   if (!testKey || !fs.existsSync(reportPath)) return;
+  // Convertir en PDF
+  var pdfPath = await convertHtmlToPdf(reportPath);
+  var uploadPath = pdfPath || reportPath; // fallback HTML si PDF échoue
   var label = allPass ? "✅ PASS" : "⚠️ FAIL";
-  console.log("  [PJ JIRA] " + label + " → upload rapport en PJ sur " + testKey + "...");
-  var ok = await uploadAttachment(testKey, reportPath).catch(function(e) {
+  console.log("  [PJ JIRA] " + label + " → upload " + path.extname(uploadPath).toUpperCase() + " sur " + testKey + "...");
+  var ok = await uploadAttachment(testKey, uploadPath).catch(function(e) {
     console.log("  [WARN] Upload PJ : " + e.message.substring(0, 60));
     return null;
   });
   if (ok) {
-    console.log("  [OK] Rapport joint en PJ sur " + testKey + " (pas de commentaire)");
+    console.log("  [OK] Rapport joint en PJ sur " + testKey);
   }
 }
 
