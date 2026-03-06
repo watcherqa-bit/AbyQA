@@ -124,9 +124,18 @@ async function getUrlsFromJiraKey(key) {
     ((issue.fields.comment && issue.fields.comment.comments) ? issue.fields.comment.comments.map(function(c){return c.body||"";}).join(" ") : "");
   var urlMatches = desc.match(/https?:\/\/[^\s<"'\]]+/g) || [];
   var seen = {};
-  var urls = urlMatches.filter(function(u) {
-    return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);
-  }).map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket " + key }; });
+  var urls = urlMatches
+    .reduce(function(acc, raw) {
+      // Séparer les URLs collées par pipe, virgule ou point-virgule
+      return acc.concat(raw.split(/[|,;]/).map(function(u) { return u.trim(); }));
+    }, [])
+    .filter(function(u) {
+      if (!u || !/^https?:\/\//i.test(u)) return false;
+      try { var p = new URL(u); return p.hostname && p.hostname.includes("."); } catch(e) { return false; }
+    })
+    .filter(function(u) {
+      return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);
+    }).map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket " + key }; });
   if (urls.length === 0) urls = [{ url: ENV_URL + "/fr", label: "Accueil (fallback)", context: "ticket " + key }];
   console.log("  [OK] " + urls.length + " URL(s) extraite(s) de " + key);
   return urls;
