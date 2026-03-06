@@ -677,22 +677,36 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
   var date=new Date().toLocaleString("fr-FR");
   var pctColor=pct>=80?"#00e87a":pct>=50?"#ff9500":"#ff3b5c";
 
+  // Fonction utilitaire : screenshot en base64 (embarqué dans le rapport)
+  function screenshotToBase64(screenshotPath) {
+    try {
+      if (!screenshotPath) return null;
+      var absPath = path.isAbsolute(screenshotPath) ? screenshotPath : path.join(SCREENSHOTS_DIR, path.basename(screenshotPath));
+      if (!fs.existsSync(absPath)) return null;
+      return "data:image/png;base64," + fs.readFileSync(absPath).toString("base64");
+    } catch(e) { return null; }
+  }
+
   var rows = allResults.map(function(r) {
-    var badges = (r.steps||[]).map(function(s) {
-      return "<span style='font-size:10px;padding:2px 6px;border-radius:4px;margin:1px;display:inline-block;background:"+(s.status==="PASS"?"rgba(0,232,122,.15)":"rgba(255,59,92,.15)")+";color:"+(s.status==="PASS"?"#00e87a":"#ff3b5c")+"'>"+s.label+"</span>";
-    }).join(" ");
-    var shotCell = r.screenshot
-      ? "<a href='/screenshots/"+path.basename(r.screenshot)+"' target='_blank'>" +
-        "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:90px;max-height:60px;border-radius:4px;border:1px solid #1e2536;display:block' loading='lazy'></a>"
+    var stepsDetail = (r.steps||[]).map(function(s) {
+      var ico = s.status === "PASS" ? "✅" : "❌";
+      var col = s.status === "PASS" ? "#00e87a" : "#ff3b5c";
+      return "<div style='font-size:11px;padding:3px 0;color:" + col + ";font-family:monospace'>" + ico + " " +
+        (s.label || "—") + (s.detail && s.status !== "PASS" ? " <span style='color:#8892a4;font-size:10px'>— " + (s.detail||"").substring(0,60) + "</span>" : "") + "</div>";
+    }).join("");
+    if (!stepsDetail) stepsDetail = "<span style='color:#4a5568;font-size:10px'>—</span>";
+    var shotB64 = screenshotToBase64(r.screenshot);
+    var shotCell = shotB64
+      ? "<img src='"+shotB64+"' style='max-width:120px;max-height:80px;border-radius:4px;border:1px solid #1e2536;display:block;cursor:zoom-in' onclick='this.style.maxWidth=this.style.maxWidth===\"120px\"?\"600px\":\"120px\"'>"
       : "<span style='color:#4a5568;font-size:10px'>—</span>";
     return "<tr style='border-bottom:1px solid #1e2536'>" +
-      "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff'>"+((r.label||r.url).substring(0,40))+"</td>" +
-      "<td style='padding:10px 14px;font-size:11px;color:#8892a4'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
-      "<td style='padding:10px 14px;text-align:center;font-family:monospace;font-weight:700;color:"+(r.status==="PASS"?"#00e87a":"#ff3b5c")+"'>"+(r.status==="PASS"?"✅ PASS":"❌ FAIL")+"</td>" +
-      "<td style='padding:10px 14px;text-align:center'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
-      "<td style='padding:10px 14px'>"+badges+"</td>" +
-      "<td style='padding:10px 14px;font-size:11px;color:#8892a4'>"+(r.issues&&r.issues[0]?r.issues[0].substring(0,60):"—")+"</td>" +
-      "<td style='padding:6px 10px;text-align:center'>"+shotCell+"</td>" +
+      "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='font-size:10px;color:#4a5568;margin-top:2px'>"+(r.url||"").substring(0,60)+"</div></td>" +
+      "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
+      "<td style='padding:10px 14px;text-align:center;font-family:monospace;font-weight:700;color:"+(r.status==="PASS"?"#00e87a":"#ff3b5c")+";vertical-align:top'>"+(r.status==="PASS"?"✅ PASS":"❌ FAIL")+"</td>" +
+      "<td style='padding:10px 14px;text-align:center;vertical-align:top'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
+      "<td style='padding:10px 14px;vertical-align:top'>"+stepsDetail+"</td>" +
+      "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.issues&&r.issues[0]?r.issues[0].substring(0,60):"—")+"</td>" +
+      "<td style='padding:6px 10px;text-align:center;vertical-align:top'>"+shotCell+"</td>" +
       "</tr>";
   }).join("");
 
@@ -762,8 +776,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
           "</div>" +
           devHtml +
           "</div>" +
-          (r.screenshot ? "<a href='/screenshots/"+path.basename(r.screenshot)+"' target='_blank'>" +
-            "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:180px;border-radius:6px;border:1px solid rgba(255,59,92,.3)' loading='lazy'></a>" : "<span></span>") +
+          (function(){ var b64=screenshotToBase64(r.screenshot); return b64 ? "<img src='"+b64+"' style='max-width:220px;border-radius:6px;border:1px solid rgba(255,59,92,.3);cursor:zoom-in' onclick='this.style.maxWidth=this.style.maxWidth===\"220px\"?\"600px\":\"220px\"'>" : "<span></span>"; })() +
           "</div></div>";
       }).join("") + "</div>";
   }
