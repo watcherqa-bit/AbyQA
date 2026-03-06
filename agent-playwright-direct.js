@@ -471,6 +471,10 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     var badges = (r.steps||[]).map(function(s) {
       return "<span style='font-size:10px;padding:2px 6px;border-radius:4px;margin:1px;display:inline-block;background:"+(s.status==="PASS"?"rgba(0,232,122,.15)":"rgba(255,59,92,.15)")+";color:"+(s.status==="PASS"?"#00e87a":"#ff3b5c")+"'>"+s.label+"</span>";
     }).join(" ");
+    var shotCell = r.screenshot
+      ? "<a href='/screenshots/"+path.basename(r.screenshot)+"' target='_blank'>" +
+        "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:90px;max-height:60px;border-radius:4px;border:1px solid #1e2536;display:block' loading='lazy'></a>"
+      : "<span style='color:#4a5568;font-size:10px'>—</span>";
     return "<tr style='border-bottom:1px solid #1e2536'>" +
       "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff'>"+((r.label||r.url).substring(0,40))+"</td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
@@ -478,6 +482,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
       "<td style='padding:10px 14px;text-align:center'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
       "<td style='padding:10px 14px'>"+badges+"</td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4'>"+(r.issues&&r.issues[0]?r.issues[0].substring(0,60):"—")+"</td>" +
+      "<td style='padding:6px 10px;text-align:center'>"+shotCell+"</td>" +
       "</tr>";
   }).join("");
 
@@ -486,15 +491,17 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     failsSection = "<div style='margin-top:24px;padding:16px 20px;background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25);border-radius:10px'>" +
       "<h2 style='font-size:13px;color:#ff3b5c;margin:0 0 12px'>❌ ANOMALIES (" + fail + ")</h2>" +
       allResults.filter(function(r){return r.status==="FAIL";}).map(function(r) {
-        return "<div style='margin-bottom:12px;padding:12px;background:#111520;border-radius:8px'>" +
+        return "<div style='margin-bottom:12px;padding:12px;background:#111520;border-radius:8px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start'>" +
+          "<div>" +
           "<div style='font-family:monospace;font-size:12px;font-weight:700;color:#ff3b5c;margin-bottom:6px'>"+(r.label||r.url)+"</div>" +
           (r.issues||[]).map(function(i){return "<div style='font-size:12px;color:#8892a4;margin-bottom:3px'>• "+i+"</div>";}).join("") +
           "<div style='margin-top:8px'>" +
           (r.steps||[]).filter(function(s){return s.status==="FAIL";}).map(function(s){
             return "<div style='font-size:11px;color:#ff9500;font-family:monospace'>  ❌ "+s.label+" : "+s.detail+"</div>";
           }).join("") +
-          "</div>" +
-          (r.screenshot ? "<div style='font-size:11px;color:#4a5568;margin-top:6px;font-family:monospace'>📸 "+path.basename(r.screenshot)+"</div>" : "") +
+          "</div></div>" +
+          (r.screenshot ? "<a href='/screenshots/"+path.basename(r.screenshot)+"' target='_blank'>" +
+            "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:160px;border-radius:6px;border:1px solid rgba(255,59,92,.3)' loading='lazy'></a>" : "<span></span>") +
           "</div>";
       }).join("") + "</div>";
   }
@@ -516,13 +523,14 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
     "</div>" +
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
-    "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th></tr></thead><tbody>"+rows+"</tbody></table>" +
+    "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
     "<p style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js</p>" +
     "</div></body></html>";
 
   var prefix = fail===0 ? "RAPPORT-OK-PW-DIRECT-" : "RAPPORT-FAIL-PW-DIRECT-";
-  var reportPath = path.join(REPORTS_DIR, prefix + mode.toUpperCase() + "-" + Date.now() + ".html");
+  var keySuffix = (KEY && /^[A-Z]+-\d+$/i.test(KEY)) ? "-" + KEY.toUpperCase() : "";
+  var reportPath = path.join(REPORTS_DIR, prefix + mode.toUpperCase() + "-" + Date.now() + keySuffix + ".html");
   fs.writeFileSync(reportPath, html, "utf8");
   return reportPath;
 }
@@ -797,7 +805,7 @@ async function main() {
     }
   }
 
-  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), bugs:bugKeys, dryRun:DRY_RUN }));
+  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null }));
   var fullForDashboard = allResults.map(function(r) {
     return { label:r.label, url:r.url, status:r.status, device:r.device, browser:r.browser, issues:r.issues, steps:r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
   });

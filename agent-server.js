@@ -600,6 +600,123 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── API : Push ticket vers Jira (après édition) ──────────────────────────────
+  // ── API : Intégrer contenu généré dans un ticket Jira existant ───────────────
+  if (method === "PUT" && /^\/api\/jira-update\/[A-Z0-9-]+$/.test(url)) {
+    var updateKey = url.split("/").pop();
+    var updChunks = [];
+    req.on("data", function(c) { updChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(updChunks).toString());
+        var CFGu = require("./config");
+        var authu = Buffer.from(CFGu.jira.email + ":" + CFGu.jira.token).toString("base64");
+        var https_u = require("https");
+
+        // 1. Récupérer la description ADF actuelle
+        var currentIssue = await new Promise(function(resolve, reject) {
+          var gr = https_u.request({
+            hostname: CFGu.jira.host,
+            path: "/rest/api/3/issue/" + updateKey + "?fields=description",
+            method: "GET",
+            headers: { "Authorization": "Basic " + authu, "Accept": "application/json" }
+          }, function(gRes) {
+            var gData = ""; gRes.on("data", function(d) { gData += d; });
+            gRes.on("end", function() { try { resolve(JSON.parse(gData)); } catch(e) { resolve({}); } });
+          });
+          gr.on("error", reject); gr.end();
+        });
+
+        // 2. Construire les sections ADF à ajouter
+        var appendSections = [];
+        if (body.ticketType === "BUG") {
+          if (body.steps && body.steps.length) {
+            appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Étapes de reproduction" }] });
+            body.steps.forEach(function(s, i) {
+              appendSections.push({ type: "paragraph", content: [{ type: "text", text: (i + 1) + ". " + s }] });
+            });
+            if (body.actualResult) {
+              appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Résultat obtenu" }] });
+              appendSections.push({ type: "paragraph", content: [{ type: "text", text: body.actualResult }] });
+            }
+            if (body.expectedResult) {
+              appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Résultat attendu" }] });
+              appendSections.push({ type: "paragraph", content: [{ type: "text", text: body.expectedResult }] });
+            }
+          }
+          if (body.fixTests && body.fixTests.length) {
+            appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Tests de correction" }] });
+            body.fixTests.forEach(function(t) {
+              appendSections.push({ type: "paragraph", content: [{ type: "text", text: "• " + t }] });
+            });
+          }
+        }
+        if (body.ticketType === "US" && body.acceptanceCriteria && body.acceptanceCriteria.length) {
+          appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Critères d'acceptation" }] });
+          body.acceptanceCriteria.forEach(function(ac) {
+            appendSections.push({ type: "paragraph", content: [{ type: "text", text: "• " + ac }] });
+          });
+        }
+        if (body.ticketType === "TEST" && body.testCases && body.testCases.length) {
+          appendSections.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: "Cas de test" }] });
+          body.testCases.forEach(function(tc, i) {
+            appendSections.push({ type: "paragraph", content: [{ type: "text", text: (tc.id || ("TC-" + (i + 1))) }] });
+            if (tc.action)   appendSections.push({ type: "paragraph", content: [{ type: "text", text: "Action : " + tc.action }] });
+            if (tc.data)     appendSections.push({ type: "paragraph", content: [{ type: "text", text: "Données : " + tc.data }] });
+            if (tc.expected) appendSections.push({ type: "paragraph", content: [{ type: "text", text: "Attendu : " + tc.expected }] });
+          });
+        }
+
+        if (!appendSections.length) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Aucun contenu à intégrer" }));
+          return;
+        }
+
+        // 3. Fusionner avec la description existante
+        var existingContent = [];
+        if (currentIssue.fields && currentIssue.fields.description && currentIssue.fields.description.content) {
+          existingContent = currentIssue.fields.description.content;
+        }
+        // Séparateur horizontal si description existante
+        if (existingContent.length) appendSections.unshift({ type: "rule" });
+
+        var newDesc = { version: 1, type: "doc", content: existingContent.concat(appendSections) };
+
+        // 4. PUT mise à jour Jira
+        var updatePayload = JSON.stringify({ fields: { description: newDesc } });
+        var updateStatus = await new Promise(function(resolve, reject) {
+          var ur = https_u.request({
+            hostname: CFGu.jira.host,
+            path: "/rest/api/3/issue/" + updateKey,
+            method: "PUT",
+            headers: {
+              "Authorization": "Basic " + authu,
+              "Content-Type": "application/json",
+              "Accept": "application/json",
+              "Content-Length": Buffer.byteLength(updatePayload)
+            }
+          }, function(uRes) { uRes.resume(); resolve(uRes.statusCode); });
+          ur.on("error", reject);
+          ur.write(updatePayload); ur.end();
+        });
+
+        if (updateStatus === 204) {
+          console.log("[jira-update] Intégré dans : " + updateKey);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: updateKey }));
+        } else {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Jira PUT status : " + updateStatus }));
+        }
+      } catch(e) {
+        console.error("[jira-update] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (method === "POST" && url === "/api/jira-push") {
     var jpChunks = [];
     req.on("data", function(c) { jpChunks.push(c); });
@@ -1189,10 +1306,11 @@ var server = http.createServer(function(req, res) {
                 var result;
                 try { result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:", "")); }
                 catch(e) { return; }
-                result.mode    = result.mode    || pdParams.mode    || "ui";
-                result.env     = result.env     || pdParams.env     || "sophie";
-                result.source  = result.source  || pdParams.source  || "url";
-                result.runDate = new Date().toISOString();
+                result.mode      = result.mode      || pdParams.mode    || "ui";
+                result.env       = result.env       || pdParams.env     || "sophie";
+                result.source    = result.source    || pdParams.source  || "url";
+                result.ticketKey = result.ticketKey || pdParams.key     || null;
+                result.runDate   = new Date().toISOString();
 
                 function broadcastReport(resultObj, diag) {
                   var evt = { type: "playwright-report-ready", result: resultObj };
@@ -1201,20 +1319,22 @@ var server = http.createServer(function(req, res) {
                   if (pdClientId !== "default") sendSSE("default", evt);
                 }
 
+                // Toujours �crire le diag.json (PASS = minimal, FAIL = avec diagnostic IA)
+                function saveDiag(diagContent) {
+                  if (!result.reportPath) return;
+                  var dName = path.basename(result.reportPath).replace(".html", "-diag.json");
+                  try { fs.writeFileSync(path.join(BASE_DIR, "reports", dName), JSON.stringify(diagContent, null, 2), "utf8"); } catch(e) {}
+                }
                 if (result.fail > 0) {
-                  // Analyse IA du fail
                   leadQA.analyzePlaywrightFail(logs, result).then(function(diag) {
-                    // Sauvegarder le diagnostic JSON Ã  cÃ´tÃ© du rapport HTML
-                    if (result.reportPath) {
-                      var diagName = path.basename(result.reportPath).replace(".html", "-diag.json");
-                      try {
-                        fs.writeFileSync(path.join(BASE_DIR, "reports", diagName),
-                          JSON.stringify({ result: result, diagnostic: diag, generatedAt: new Date().toISOString() }, null, 2), "utf8");
-                      } catch(e) {}
-                    }
+                    saveDiag({ result: result, diagnostic: diag, generatedAt: new Date().toISOString() });
                     broadcastReport(result, diag);
-                  }).catch(function() { broadcastReport(result, null); });
+                  }).catch(function() {
+                    saveDiag({ result: result, generatedAt: new Date().toISOString() });
+                    broadcastReport(result, null);
+                  });
                 } else {
+                  saveDiag({ result: result, generatedAt: new Date().toISOString() });
                   broadcastReport(result, null);
                 }
               }
@@ -1924,14 +2044,18 @@ var server = http.createServer(function(req, res) {
             try { diag = JSON.parse(fs.readFileSync(path.join(rDir, diagFile), "utf8")); }
             catch(e) {}
           }
+          // Extraire la clé ticket : depuis diag.json en priorité, sinon depuis le nom de fichier
+          var ticketKey = (diag && diag.result && diag.result.ticketKey) || null;
+          if (!ticketKey) { var km = f.match(/-([A-Z]+-\d+)\.html$/i); if (km) ticketKey = km[1].toUpperCase(); }
           return {
             filename:   f,
             type:       "playwright",
             status:     status,
-            mode:       mode.replace(/COMPARE/,"").replace(/^-/,"") || mode,
+            mode:       (diag && diag.result && diag.result.mode) || mode.replace(/COMPARE/,"").replace(/^-/,"") || mode,
             isCompare:  f.includes("-COMPARE-"),
             date:       stat.mtime,
             size:       stat.size,
+            ticketKey:  ticketKey,
             diagnostic: diag ? diag.diagnostic : null,
             result:     diag ? diag.result     : null
           };

@@ -3394,6 +3394,35 @@
 </div>
 
 <!-- MODAL : Sélection URLs depuis ticket enrichi -->
+<!-- ══ MODALE PRÉVISUALISATION RAPPORT ══════════════════════════════════════ -->
+<div id="modal-report-preview" style="display:none;position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.88);backdrop-filter:blur(6px);flex-direction:column" onkeydown="if(event.key==='Escape')closeReportPreview()">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--bg2);border-bottom:1px solid var(--border2);flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+      <span id="rpt-preview-status" style="font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:5px;flex-shrink:0"></span>
+      <span id="rpt-preview-mode"   style="font-family:var(--mono);font-size:10px;padding:2px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--cyan);flex-shrink:0"></span>
+      <span id="rpt-preview-name"   style="font-family:var(--mono);font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    </div>
+    <!-- Zone attachement Jira -->
+    <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+      <span style="font-size:12px;color:var(--text3)">Attacher à :</span>
+      <input id="rpt-preview-jira-key" type="text" placeholder="SAF-1234"
+        style="width:110px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:12px;text-transform:uppercase"
+        oninput="this.value=this.value.toUpperCase()">
+      <button onclick="previewAttachToJira()" id="rpt-preview-attach-btn"
+        style="background:rgba(0,102,204,.2);border:1px solid rgba(0,102,204,.4);color:#4da6ff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600;white-space:nowrap">
+        📎 Attacher
+      </button>
+      <span id="rpt-preview-attach-status" style="font-size:11px;font-family:var(--mono);color:var(--text3)"></span>
+    </div>
+    <button onclick="closeReportPreview()"
+      style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;flex-shrink:0">✕ Fermer</button>
+  </div>
+  <!-- Iframe rapport -->
+  <iframe id="rpt-preview-iframe" src="" style="flex:1;border:none;background:#fff"></iframe>
+  <div id="rpt-preview-filename" style="display:none"></div>
+</div>
+
 <div id="modal-ticket-urls" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:min(600px,96vw);max-height:86vh;display:flex;flex-direction:column;gap:14px">
 
@@ -5825,10 +5854,15 @@ function opsRenderGenResult(r) {
 
   // ── Scénarios de test proposés (tous types) ──────────────────────────────
   if (r.proposedTests && r.proposedTests.length) {
+    var _autoTests   = r.proposedTests.filter(function(p) { return p.type !== 'manual'; });
+    var _manualTests = r.proposedTests.filter(function(p) { return p.type === 'manual'; });
+    // Stocker pour opsLaunchPlaywright (filtre auto uniquement)
+    window._opsAutoTests = _autoTests;
+
     var ptHtml = '<div style="display:flex;flex-direction:column;gap:10px">';
     r.proposedTests.forEach(function(pt, i) {
-      var ptColor = pt.type === 'auto' ? '#3b6fff' : '#f97316';
-      var ptLabel = pt.type === 'auto' ? '🤖 AUTO' : '👤 MANUEL';
+      var ptColor = pt.type !== 'manual' ? '#3b6fff' : '#f97316';
+      var ptLabel = pt.type !== 'manual' ? '🤖 AUTO' : '✋ MANUEL';
       ptHtml +=
         '<div style="background:var(--bg3);border:1px solid var(--border2);border-left:3px solid ' + ptColor + ';border-radius:8px;padding:12px">' +
         '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
@@ -5844,17 +5878,52 @@ function opsRenderGenResult(r) {
         ptHtml += '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:6px 10px;font-size:11px;color:#10b981">' +
           '✅ ' + escHtml(pt.expectedResult) + '</div>';
       }
+      // Checklist interactive pour les tests manuels
+      if (pt.type === 'manual') {
+        ptHtml += '<div style="margin-top:8px;padding:8px 10px;background:rgba(249,115,22,.06);border-radius:6px;border:1px solid rgba(249,115,22,.2)">' +
+          '<div style="font-size:10px;color:#f97316;font-family:var(--mono);margin-bottom:6px;font-weight:700">✋ VÉRIFICATION MANUELLE REQUISE</div>' +
+          (pt.steps || []).map(function(s, si) {
+            var cbId = 'manual-check-' + i + '-' + si;
+            return '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:4px">' +
+              '<input type="checkbox" id="' + cbId + '" onchange="this.parentElement.style.opacity=this.checked?\'0.5\':\'1\'" ' +
+              'style="margin-top:2px;accent-color:#f97316;flex-shrink:0">' +
+              '<span style="font-size:11px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</span></label>';
+          }).join('') +
+          '</div>';
+      }
       ptHtml += '</div>';
     });
+
+    // Résumé auto vs manuel
+    var ptTitle = '🎯 SCÉNARIOS DE TEST (' + r.proposedTests.length + ')';
+    if (_autoTests.length && _manualTests.length) {
+      ptTitle += ' — <span style="color:#3b6fff">' + _autoTests.length + ' 🤖 auto</span> · <span style="color:#f97316">' + _manualTests.length + ' ✋ manuel</span>';
+    } else if (_autoTests.length) {
+      ptTitle += ' — <span style="color:#3b6fff">' + _autoTests.length + ' 🤖 auto</span>';
+    } else {
+      ptTitle += ' — <span style="color:#f97316">' + _manualTests.length + ' ✋ manuel</span>';
+    }
     ptHtml += '</div>';
-    html += section('🎯 SCÉNARIOS DE TEST PROPOSÉS (' + r.proposedTests.length + ')', ptHtml);
+    html += section(ptTitle, ptHtml);
   }
 
-  // Actions finales
+  // Actions finales — si ticket source chargé : proposer intégration OU nouveau ticket
   html += '<div style="display:flex;gap:8px;padding-top:12px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center">';
-  html += '<button onclick="opsPushJira()" id="ops-push-btn" ' +
-    'style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">' +
-    '📤 Push Jira</button>';
+  if (opsTickets.length) {
+    var _srcKey = opsTickets[0].key;
+    html += '<button onclick="opsIntegrateJira(\'' + escHtml(_srcKey) + '\')" id="ops-integrate-btn" ' +
+      'style="background:#10b981;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px" ' +
+      'title="Ajoute le contenu généré à la description du ticket existant">' +
+      '⬆️ Intégrer dans ' + escHtml(_srcKey) + '</button>';
+    html += '<button onclick="opsPushJira()" id="ops-push-btn" ' +
+      'style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px" ' +
+      'title="Crée un nouveau ticket Jira indépendant">' +
+      '📄 Créer nouveau ticket</button>';
+  } else {
+    html += '<button onclick="opsPushJira()" id="ops-push-btn" ' +
+      'style="background:var(--blue);color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px">' +
+      '📤 Push Jira</button>';
+  }
   html += '<span id="ops-push-status" style="font-size:12px;font-family:var(--mono);color:var(--text3)"></span>';
   html += '<div style="flex:1"></div>';
   html += copyBtn('📋 Titre', r.title || '');
@@ -5995,6 +6064,60 @@ function opsPushJira() {
   })
   .catch(function(e) {
     if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
+    if (st) st.textContent = '❌ ' + e.message;
+  });
+}
+
+// ── Intégrer contenu généré dans un ticket Jira existant ─────────────────────
+function opsIntegrateJira(key) {
+  var base = window._opsGenData || {};
+  var btn  = document.getElementById('ops-integrate-btn');
+  var st   = document.getElementById('ops-push-status');
+
+  function getText(id) { var el = document.getElementById(id); return el ? el.innerText.trim() : ''; }
+  function getList(containerId) {
+    var container = document.getElementById(containerId);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('li [contenteditable]'))
+      .map(function(el) { return el.innerText.trim(); }).filter(function(v) { return v; });
+  }
+
+  var payload = { ticketType: base.ticketType, description: getText('ops-gen-desc') || base.description };
+  if (base.ticketType === 'BUG') {
+    payload.steps          = getList('ops-gen-steps');
+    payload.actualResult   = getText('ops-gen-actual')   || base.actualResult;
+    payload.expectedResult = getText('ops-gen-expected') || base.expectedResult;
+    payload.fixTests       = base.fixTests || [];
+  }
+  if (base.ticketType === 'US')   { payload.acceptanceCriteria = getList('ops-gen-ac'); }
+  if (base.ticketType === 'TEST') { payload.testCases = base.testCases || []; }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Intégration…'; }
+  if (st)  st.textContent = '';
+
+  fetch(SERVER + '/api/jira-update/' + encodeURIComponent(key), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '⬆️ Intégrer dans ' + key; }
+    if (d.ok) {
+      var url = 'https://' + (window.CFG_JIRA_HOST || 'eurelis.atlassian.net') + '/browse/' + key;
+      if (st) st.innerHTML =
+        '✅ Intégré dans <a href="' + url + '" target="_blank" style="color:var(--blue);font-weight:600">' + escHtml(key) + '</a>' +
+        ' &nbsp;<button onclick="opsLaunchPlaywright(\'' + escHtml(key) + '\')" ' +
+          'style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600;margin-left:4px">' +
+          '▶ Tester maintenant</button>';
+      showToast('Contenu intégré dans ' + key, '✅');
+    } else {
+      if (st) st.textContent = '❌ ' + (d.error || 'Erreur Jira');
+      showToast('Erreur intégration', '❌');
+    }
+  })
+  .catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '⬆️ Intégrer dans ' + key; }
     if (st) st.textContent = '❌ ' + e.message;
   });
 }
@@ -6243,9 +6366,17 @@ function opsPushXraySteps(testKey) {
 
 // ── Lancer Playwright Direct depuis un ticket TEST ────────────────────────────
 function opsLaunchPlaywright(testKey) {
+  // Filtrer les scénarios auto uniquement
+  var autoTests = window._opsAutoTests || [];
+  var hasAuto   = autoTests.length > 0;
+
+  if (!hasAuto) {
+    showToast('Aucun test automatisé — vérification manuelle uniquement', '✋');
+    return;
+  }
+
   // Basculer vers le panel Playwright Direct et pré-remplir le ticket
   showPanel('playwright-direct');
-  // Sélectionner la source "jira-key" et remplir la clé
   var srcJira = document.getElementById('pwd-src-jira-key');
   if (srcJira) srcJira.click();
   var pwdTicketInput = document.getElementById('pwd-jira-key');
@@ -6253,9 +6384,16 @@ function opsLaunchPlaywright(testKey) {
     pwdTicketInput.value = testKey;
     pwdTicketInput.dispatchEvent(new Event('input'));
   }
-  // Déclencher la vérification du ticket
+  // Pré-remplir les instructions avec les étapes des tests auto
+  var instrEl = document.getElementById('pwd-instructions');
+  if (instrEl && autoTests.length) {
+    instrEl.value = autoTests.map(function(pt, i) {
+      return (i + 1) + '. ' + pt.name + '\n' + (pt.steps || []).join('\n');
+    }).join('\n\n').substring(0, 800);
+  }
   if (typeof checkPWDTicket === 'function') checkPWDTicket();
-  showToast('Ticket ' + testKey + ' chargé dans Playwright Direct', '▶');
+  showToast('Lancement de ' + autoTests.length + ' test(s) auto pour ' + testKey + '…', '▶');
+  setTimeout(function() { if (typeof runPWDirect === 'function') runPWDirect(); }, 700);
 }
 
 // ── INSPECTEUR DOM ────────────────────────────────────────────────────────────
@@ -8849,10 +8987,12 @@ function loadPlaywrightReports() {
         var statusBg     = isOk ? "rgba(0,232,122,.1)"  : "rgba(255,59,92,.1)";
         var statusBorder = isOk ? "rgba(0,232,122,.3)"  : "rgba(255,59,92,.3)";
         var dateStr      = r.date ? new Date(r.date).toLocaleString("fr-FR", {day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "—";
+        var _rKey = r.ticketKey ? escHtml(r.ticketKey) : '';
+        var _rStatus = r.status || '?';
+        var _rMode   = r.mode   || '?';
         var actionButtons =
-          '<button onclick="copyReportLink(\'' + escHtml(r.filename) + '\')" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" title="Copier le lien">📋 Copier lien</button>' +
-          '<button onclick="attachReportToJira(\'' + escHtml(r.filename) + '\')" style="background:rgba(0,102,204,.12);border:1px solid rgba(0,102,204,.3);color:#4da6ff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">🔗 Jira</button>' +
-          '<button onclick="window.open(\'/api/download/' + encodeURIComponent(r.filename) + '\',\'_blank\')" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px">📄 Voir rapport</button>' +
+          '<button onclick="previewReport(\'' + escHtml(r.filename) + '\',\'' + _rKey + '\',\'' + _rStatus + '\',\'' + _rMode + '\')" style="background:rgba(59,111,255,.15);border:1px solid rgba(59,111,255,.35);color:var(--blue);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">👁️ Prévisualiser</button>' +
+          '<button onclick="copyReportLink(\'' + escHtml(r.filename) + '\')" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px" title="Copier le lien">📋</button>' +
           '<button onclick="deleteReport(\'' + escHtml(r.filename) + '\', this)" style="background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25);color:var(--red);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:12px" title="Supprimer">🗑️</button>';
 
         // ── Carte CSS Audit ──────────────────────────────────────────────────
@@ -8922,6 +9062,7 @@ function loadPlaywrightReports() {
             '</div>' +
             '<div style="font-family:var(--mono);font-size:11px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--cyan)">' + escHtml(r.mode) + '</div>' +
             (r.isCompare ? '<div style="font-family:var(--mono);font-size:10px;padding:2px 6px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);border-radius:4px;color:#a78bfa">COMPARE</div>' : '') +
+            (r.ticketKey ? '<a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(r.ticketKey) + '" target="_blank" style="font-family:var(--mono);font-size:11px;padding:3px 8px;background:rgba(59,111,255,.12);border:1px solid rgba(59,111,255,.35);border-radius:4px;color:var(--blue);text-decoration:none;font-weight:700" title="Ouvrir ticket Jira">🎫 ' + escHtml(r.ticketKey) + '</a>' : '') +
             '<div style="font-family:var(--mono);font-size:11px;color:var(--text2)">' + escHtml(env) + '</div>' +
             '<div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-left:auto">' + dateStr + '</div>' +
           '</div>' +
@@ -8986,6 +9127,86 @@ function copyReportLink(filename) {
     document.execCommand("copy"); document.body.removeChild(ta);
     showToast("Lien copié !", "📋");
   }
+}
+
+// ── Prévisualisation rapport ──────────────────────────────────────────────────
+function previewReport(filename, ticketKey, status, mode) {
+  var modal  = document.getElementById('modal-report-preview');
+  var iframe = document.getElementById('rpt-preview-iframe');
+  var fnEl   = document.getElementById('rpt-preview-filename');
+  var nameEl = document.getElementById('rpt-preview-name');
+  var stEl   = document.getElementById('rpt-preview-status');
+  var modeEl = document.getElementById('rpt-preview-mode');
+  var keyEl  = document.getElementById('rpt-preview-jira-key');
+  var stAtEl = document.getElementById('rpt-preview-attach-status');
+
+  if (fnEl)   fnEl.textContent   = filename;
+  if (nameEl) nameEl.textContent = filename;
+  if (modeEl) modeEl.textContent = (mode || '?').toUpperCase();
+  if (stAtEl) stAtEl.textContent = '';
+
+  // Badge statut
+  if (stEl) {
+    var isOk = status === 'OK';
+    stEl.textContent = isOk ? '✅ OK' : '❌ KO';
+    stEl.style.background = isOk ? 'rgba(0,232,122,.15)' : 'rgba(255,59,92,.15)';
+    stEl.style.color      = isOk ? 'var(--green)' : 'var(--red)';
+    stEl.style.border     = '1px solid ' + (isOk ? 'rgba(0,232,122,.3)' : 'rgba(255,59,92,.3)');
+  }
+
+  // Pré-remplir la clé Jira si connue
+  if (keyEl) keyEl.value = ticketKey || '';
+
+  // Charger l'iframe
+  if (iframe) iframe.src = '/api/download/' + encodeURIComponent(filename);
+
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeReportPreview() {
+  var modal  = document.getElementById('modal-report-preview');
+  var iframe = document.getElementById('rpt-preview-iframe');
+  if (modal)  modal.style.display = 'none';
+  if (iframe) iframe.src = '';
+  document.body.style.overflow = '';
+}
+
+function previewAttachToJira() {
+  var fnEl  = document.getElementById('rpt-preview-filename');
+  var keyEl = document.getElementById('rpt-preview-jira-key');
+  var btn   = document.getElementById('rpt-preview-attach-btn');
+  var stEl  = document.getElementById('rpt-preview-attach-status');
+
+  var filename = fnEl ? fnEl.textContent.trim() : '';
+  var key      = keyEl ? keyEl.value.trim().toUpperCase() : '';
+
+  if (!filename) { showToast('Nom de fichier manquant', '❌'); return; }
+  if (!key || !/^[A-Z]+-\d+$/.test(key)) { showToast('Clé Jira invalide (ex : SAF-123)', '⚠️'); return; }
+
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  if (stEl) stEl.textContent = '';
+
+  fetch(SERVER + '/api/attach-report-jira', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: filename, jiraKey: key })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Attacher'; }
+    if (d.ok) {
+      if (stEl) stEl.innerHTML = '✅ Attaché à <a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(key) + '" target="_blank" style="color:var(--blue)">' + escHtml(key) + '</a>';
+      showToast('Rapport attaché à ' + key, '✅');
+    } else {
+      if (stEl) stEl.textContent = '❌ ' + (d.error || 'Erreur Jira');
+      showToast('Erreur Jira : ' + (d.error || '?'), '❌');
+    }
+  })
+  .catch(function() {
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Attacher'; }
+    showToast('Serveur inaccessible', '🔴');
+  });
 }
 
 function attachReportToJira(filename) {
