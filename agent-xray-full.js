@@ -829,6 +829,72 @@ async function uploadCSVToXray(testKey, csvPath) {
   return false;
 }
 
+// ── Contexte ticket dans le rapport ──────────────────────────────────────────
+function buildXrayTicketContextHtml(ticket) {
+  var desc = ticket.description || "";
+  // Essayer de charger le ticket enrichi
+  var enrichedPath = path.join(__dirname, "inbox", "enriched", ticket.key + ".json");
+  if (fs.existsSync(enrichedPath)) {
+    try {
+      var enriched = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
+      if (enriched.enrichedMarkdown) desc = enriched.enrichedMarkdown;
+      else if (enriched.originalMarkdown) desc = enriched.originalMarkdown;
+    } catch(e) { /* fallback */ }
+  }
+  if (!desc.trim()) return "";
+
+  // Extraire les sections par headings markdown ou wiki
+  var sections = [];
+  var headingRe = /^#{1,3}\s+(.+)$/gm;
+  var match, lastIdx = 0, lastTitle = null;
+  while ((match = headingRe.exec(desc)) !== null) {
+    if (lastTitle !== null) sections.push({ title: lastTitle, body: desc.substring(lastIdx, match.index).trim() });
+    lastTitle = match[1].trim(); lastIdx = match.index + match[0].length;
+  }
+  if (lastTitle !== null) sections.push({ title: lastTitle, body: desc.substring(lastIdx).trim() });
+  if (sections.length === 0) {
+    var wikiRe = /^h[1-3]\.\s+(.+)$/gm;
+    lastIdx = 0; lastTitle = null;
+    while ((match = wikiRe.exec(desc)) !== null) {
+      if (lastTitle !== null) sections.push({ title: lastTitle, body: desc.substring(lastIdx, match.index).trim() });
+      lastTitle = match[1].trim(); lastIdx = match.index + match[0].length;
+    }
+    if (lastTitle !== null) sections.push({ title: lastTitle, body: desc.substring(lastIdx).trim() });
+  }
+  if (sections.length === 0) sections.push({ title: "Description", body: desc });
+  sections = sections.filter(function(s) { return s.body.trim().length > 0; });
+  if (sections.length === 0) return "";
+
+  function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function sectionIcon(title) {
+    var t = title.toLowerCase();
+    if (t.includes("reproduction") || t.includes("étape")) return "📋";
+    if (t.includes("attendu")) return "✅";
+    if (t.includes("obtenu") || t.includes("actuel")) return "❌";
+    if (t.includes("correction") || t.includes("fix")) return "🔧";
+    if (t.includes("dépendance")) return "🔗";
+    return "📄";
+  }
+  function sectionBorder(title) {
+    var t = title.toLowerCase();
+    if (t.includes("reproduction") || t.includes("étape")) return "#1a237e";
+    if (t.includes("attendu")) return "#00c853";
+    if (t.includes("obtenu") || t.includes("actuel")) return "#ff1744";
+    if (t.includes("correction") || t.includes("fix")) return "#ff9100";
+    return "#9e9e9e";
+  }
+
+  var html = '<div class="meta" style="margin-bottom:24px"><h2 style="margin:0 0 12px">🎫 Cas de test — ' + esc(ticket.key) + '</h2>';
+  sections.forEach(function(s) {
+    var bc = sectionBorder(s.title);
+    html += '<div style="margin-bottom:10px;padding:10px 14px;border-left:3px solid ' + bc + ';background:#f8f9fa;border-radius:4px">' +
+      '<div style="font-weight:700;font-size:12px;color:' + bc + ';margin-bottom:4px">' + sectionIcon(s.title) + ' ' + esc(s.title) + '</div>' +
+      '<div style="font-size:12px;color:#444;white-space:pre-wrap;line-height:1.5">' + esc(s.body).replace(/\n/g,"<br>") + '</div></div>';
+  });
+  html += '</div>';
+  return html;
+}
+
 // ── Rapport PDF simple (HTML converti) ────────────────────────────────────────
 function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
   var date  = new Date().toLocaleString("fr-FR");
@@ -897,6 +963,7 @@ function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
   <div class="stat"><div class="num todo-num">${todo}</div><div class="lbl">TODO</div></div>
   <div class="stat"><div class="num pct-num">${pct}%</div><div class="lbl">Taux de succès</div></div>
 </div>
+${buildXrayTicketContextHtml(ticket)}
 <div class="section">
   <h2>📋 Résultats des tests</h2>
   <table><thead><tr><th>Ticket Test</th><th>Page</th><th>Statut</th><th>Anomalies</th><th>Screenshot</th></tr></thead>

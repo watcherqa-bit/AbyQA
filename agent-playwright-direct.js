@@ -40,6 +40,7 @@ var KEY      = arg("key")     || null;
 var XML_FILE = arg("xml")     || null;
 var TEXT     = arg("text")    || null;
 var URLS_RAW = arg("urls")    || null;
+var TICKET_INFO = null; // Enrichi par getUrlsFromJiraKey si --key fourni
 
 // Support --urls-file= (fichier temporaire, évite les problèmes shell Windows avec &quot;)
 var URLS_FILE_ARG = args.find(function(a) { return a.startsWith("--urls-file="); });
@@ -119,8 +120,36 @@ function uploadAttachment(issueKey, filePath) {
 
 async function getUrlsFromJiraKey(key) {
   console.log("[->] Lecture du ticket " + key + " dans Jira...");
-  var issue = await jiraRequest("GET", "/rest/api/2/issue/" + key + "?fields=summary,description,comment");
+  var issue = await jiraRequest("GET", "/rest/api/2/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks");
   if (!issue.key) { return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
+  // Stocker les infos du ticket pour le rapport
+  TICKET_INFO = {
+    key: issue.key,
+    summary: issue.fields.summary || "",
+    description: issue.fields.description || "",
+    type: (issue.fields.issuetype && issue.fields.issuetype.name) || ""
+  };
+  // Si ticket Test, remonter au ticket parent (Bug/US) pour avoir le cas de test complet
+  if (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case") {
+    var links = (issue.fields.issuelinks || []);
+    var parentKey = null;
+    for (var li = 0; li < links.length; li++) {
+      var lk = links[li];
+      // "tests" / "is test of" → outwardIssue est le parent
+      if (lk.outwardIssue && lk.outwardIssue.key) { parentKey = lk.outwardIssue.key; break; }
+      if (lk.inwardIssue && lk.inwardIssue.key) { parentKey = lk.inwardIssue.key; break; }
+    }
+    if (parentKey) {
+      console.log("  [TEST] Ticket Test détecté — chargement du parent " + parentKey + "...");
+      var parent = await jiraRequest("GET", "/rest/api/2/issue/" + parentKey + "?fields=summary,description,issuetype");
+      if (parent && parent.key) {
+        TICKET_INFO.parentKey = parent.key;
+        TICKET_INFO.parentSummary = parent.fields.summary || "";
+        TICKET_INFO.parentDescription = parent.fields.description || "";
+        TICKET_INFO.parentType = (parent.fields.issuetype && parent.fields.issuetype.name) || "";
+      }
+    }
+  }
   var desc = (issue.fields.description || "") + " " +
     ((issue.fields.comment && issue.fields.comment.comments) ? issue.fields.comment.comments.map(function(c){return c.body||"";}).join(" ") : "");
   var urlMatches = desc.match(/https?:\/\/[^\s<"'\]]+/g) || [];
@@ -670,6 +699,130 @@ function failTypeBadge(ft) {
   return "<span style='font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:monospace;background:" + c.bg + ";color:" + c.color + "'>" + c.label + "</span>";
 }
 
+/**
+ * Construit le HTML "Contexte du ticket" pour le rapport.
+ * Parse la description Jira (wiki/texte) pour extraire les sections structurées.
+ */
+function buildTicketContextHtml(ticketInfo) {
+  if (!ticketInfo) return "";
+  // Pour un ticket Test, utiliser la description du parent (Bug/US) qui contient le vrai cas de test
+  var contextKey, contextSummary, desc, contextType;
+  if (ticketInfo.parentKey && ticketInfo.parentDescription) {
+    contextKey = ticketInfo.parentKey;
+    contextSummary = ticketInfo.parentSummary;
+    contextType = ticketInfo.parentType || "Parent";
+    desc = ticketInfo.parentDescription;
+  } else {
+    contextKey = ticketInfo.key;
+    contextSummary = ticketInfo.summary;
+    contextType = ticketInfo.type || "";
+    desc = ticketInfo.description || "";
+  }
+  if (!desc) return "";
+  // Essayer de charger le ticket enrichi (enrichedMarkdown plus lisible)
+  var enrichedPath = path.join(BASE_DIR, "inbox", "enriched", contextKey + ".json");
+  if (fs.existsSync(enrichedPath)) {
+    try {
+      var enriched = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
+      if (enriched.enrichedMarkdown) desc = enriched.enrichedMarkdown;
+      else if (enriched.originalMarkdown) desc = enriched.originalMarkdown;
+    } catch(e) { /* fallback sur description Jira brute */ }
+  }
+
+  // Sections connues à extraire (titres Jira / markdown)
+  var sections = [];
+  var headingRe = /^#{1,3}\s+(.+)$/gm;
+  var match;
+  var lastIdx = 0, lastTitle = null;
+  while ((match = headingRe.exec(desc)) !== null) {
+    if (lastTitle !== null) {
+      sections.push({ title: lastTitle, body: desc.substring(lastIdx, match.index).trim() });
+    }
+    lastTitle = match[1].trim();
+    lastIdx = match.index + match[0].length;
+  }
+  if (lastTitle !== null) {
+    sections.push({ title: lastTitle, body: desc.substring(lastIdx).trim() });
+  }
+  // Si pas de headings markdown, tenter le format wiki Jira (h3. Titre)
+  if (sections.length === 0) {
+    var wikiRe = /^h[1-3]\.\s+(.+)$/gm;
+    lastIdx = 0; lastTitle = null;
+    while ((match = wikiRe.exec(desc)) !== null) {
+      if (lastTitle !== null) {
+        sections.push({ title: lastTitle, body: desc.substring(lastIdx, match.index).trim() });
+      }
+      lastTitle = match[1].trim();
+      lastIdx = match.index + match[0].length;
+    }
+    if (lastTitle !== null) {
+      sections.push({ title: lastTitle, body: desc.substring(lastIdx).trim() });
+    }
+  }
+  // Si toujours rien, afficher la description brute
+  if (sections.length === 0) {
+    sections.push({ title: "Description", body: desc });
+  }
+
+  // Filtrer les sections vides
+  sections = sections.filter(function(s) { return s.body.trim().length > 0; });
+  if (sections.length === 0) return "";
+
+  // Fonction d'échappement HTML
+  function esc(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  // Convertir markdown basique en HTML
+  function mdToHtml(text) {
+    return text.split("\n").map(function(line) {
+      line = line.trim();
+      if (!line) return "";
+      // Listes à puces
+      if (/^[-*]\s+/.test(line)) {
+        return "<div style='padding:2px 0 2px 16px;font-size:12px;color:#cbd5e1'>• " + esc(line.replace(/^[-*]\s+/, "")) + "</div>";
+      }
+      // Listes numérotées
+      if (/^\d+[.)]\s+/.test(line)) {
+        return "<div style='padding:2px 0 2px 16px;font-size:12px;color:#cbd5e1'>" + esc(line) + "</div>";
+      }
+      // Gras **text**
+      var html = esc(line).replace(/\*\*(.+?)\*\*/g, "<strong style='color:#e2e8f0'>$1</strong>");
+      return "<div style='font-size:12px;color:#94a3b8;padding:1px 0'>" + html + "</div>";
+    }).filter(Boolean).join("");
+  }
+
+  // Couleurs par type de section
+  function sectionColor(title) {
+    var t = title.toLowerCase();
+    if (t.includes("reproduction") || t.includes("étape")) return { border: "#3b82f6", bg: "rgba(59,130,246,.06)", icon: "📋" };
+    if (t.includes("attendu")) return { border: "#10b981", bg: "rgba(16,185,129,.06)", icon: "✅" };
+    if (t.includes("obtenu") || t.includes("actuel")) return { border: "#ef4444", bg: "rgba(239,68,68,.06)", icon: "❌" };
+    if (t.includes("correction") || t.includes("fix")) return { border: "#f59e0b", bg: "rgba(245,158,11,.06)", icon: "🔧" };
+    if (t.includes("dépendance") || t.includes("link")) return { border: "#8b5cf6", bg: "rgba(139,92,246,.06)", icon: "🔗" };
+    return { border: "#64748b", bg: "rgba(100,116,139,.06)", icon: "📄" };
+  }
+
+  var sectionsHtml = sections.map(function(s) {
+    var c = sectionColor(s.title);
+    return "<div style='margin-bottom:10px;padding:12px 16px;background:" + c.bg + ";border:1px solid " + c.border + "30;border-left:3px solid " + c.border + ";border-radius:6px'>" +
+      "<div style='font-family:monospace;font-size:11px;font-weight:700;color:" + c.border + ";margin-bottom:6px;text-transform:uppercase'>" + c.icon + " " + esc(s.title) + "</div>" +
+      mdToHtml(s.body) +
+      "</div>";
+  }).join("");
+
+  // Sous-titre adapté : Bug direct vs Test → parent
+  var subtitle = ticketInfo.parentKey
+    ? "Cas de test du ticket parent " + esc(contextType) + " (source : " + esc(ticketInfo.key) + " " + esc(ticketInfo.type) + ")"
+    : "Cas de test source du ticket " + esc(contextType);
+
+  return "<div style='margin-bottom:28px;padding:20px;background:#111520;border:1px solid #1e2536;border-radius:10px'>" +
+    "<h2 style='font-size:14px;margin:0 0 6px;color:#00d4ff;font-family:monospace'>" + esc(contextKey) + " — " + esc(contextSummary) + "</h2>" +
+    "<p style='font-size:11px;color:#4a5568;margin:0 0 14px;font-family:monospace'>" + subtitle + "</p>" +
+    sectionsHtml +
+    "</div>";
+}
+
 function generateHTMLReport(allResults, mode, sourceLabel) {
   var pass=allResults.filter(function(r){return r.status==="PASS";}).length;
   var fail=allResults.filter(function(r){return r.status==="FAIL";}).length;
@@ -785,6 +938,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+(fail>0?"#ff3b5c":"#00e87a")+"'><div style='font-family:monospace;font-size:28px;font-weight:700;color:"+(fail>0?"#ff3b5c":"#00e87a")+"'>"+fail+"</div><div style='font-size:12px;color:#8892a4'>FAIL</div></div>" +
     "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
     "</div>" +
+    buildTicketContextHtml(TICKET_INFO) +
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
     "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
