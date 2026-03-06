@@ -3010,8 +3010,16 @@ var server = http.createServer(function(req, res) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
       var ccProc = spawn("claude", ["--print", ccPrompt], { cwd: BASE_DIR, shell: true, env: Object.assign({}, process.env) });
-      ccProc.stdout.on("data", function(d) { sendSSE(ccClientId, { type: "chat-token", token: d.toString() }); });
-      ccProc.on("close", function() { sendSSE(ccClientId, { type: "chat-done" }); });
+      var ccHasOutput = false;
+      var ccStderr = "";
+      ccProc.stdout.on("data", function(d) { ccHasOutput = true; sendSSE(ccClientId, { type: "chat-token", token: d.toString() }); });
+      ccProc.stderr.on("data", function(d) { ccStderr += d.toString(); });
+      ccProc.on("close", function(code) {
+        if (!ccHasOutput && ccStderr) {
+          sendSSE(ccClientId, { type: "chat-token", token: "❌ Erreur Claude Code:\n" + ccStderr });
+        }
+        sendSSE(ccClientId, { type: "chat-done" });
+      });
       ccProc.on("error", function(err) { sendSSE(ccClientId, { type: "chat-error", message: "claude CLI non disponible : " + err.message }); });
     });
     return;
