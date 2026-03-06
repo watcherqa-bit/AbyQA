@@ -38,6 +38,25 @@
     flex-direction: column;
   }
 
+  /* ── FIX : labels ops-results — empêcher le CSS global label{display:block} d'écraser ── */
+  #ops-results-block label {
+    display: flex !important;
+    align-items: flex-start;
+    gap: 8px;
+    height: auto;
+    min-height: unset;
+    margin-bottom: 4px;
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: 11px;
+    cursor: pointer;
+  }
+  #ops-results-block { overflow:hidden; max-width:100%; }
+  #ops-results-block * { max-width:100%; overflow-wrap:break-word; }
+  #ops-results-block [contenteditable]:empty { min-height:0 !important; padding:2px 8px !important; }
+  #ops-results-block img[src=""], #ops-results-block img:not([src]),
+  #ops-results-block img[src="undefined"], #ops-results-block img[src="null"] { display:none !important; }
+
   /* ── GRID BG ── */
   body::before {
     content: '';
@@ -487,7 +506,17 @@
 
   .form-row.full { grid-template-columns: 1fr; }
 
-  label {
+  .form-row label,
+  .panel-settings label,
+  #ops-pane-config label,
+  #panel-drupal label,
+  #panel-css label,
+  #panel-playwright-direct label,
+  #panel-releases label,
+  #panel-matrix label,
+  #backlog-add-modal label,
+  #xray-modal label,
+  #cascade-modal label {
     display: block;
     font-size: 11px;
     font-family: var(--mono);
