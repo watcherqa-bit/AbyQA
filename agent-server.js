@@ -1259,13 +1259,17 @@ var server = http.createServer(function(req, res) {
 
           // â"€â"€ PLAYWRIGHT DIRECT (nouveau) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
           case "playwright-direct":
+            // Normaliser envs : string JSON → tableau
+            var pdEnvs = params.envs || [];
+            if (typeof pdEnvs === "string") { try { pdEnvs = JSON.parse(pdEnvs); } catch(e) { pdEnvs = pdEnvs.split(","); } }
+            if (!Array.isArray(pdEnvs)) pdEnvs = [pdEnvs];
             var pdArgs = [
               "agent-playwright-direct.js",
               "--mode="    + (params.mode    || "ui"),
               "--source="  + (params.source  || "url"),
-              (params.envs && params.envs.length > 1
-                ? "--envs=" + params.envs.join(",")
-                : "--env="  + (params.env || (Array.isArray(params.envs) && params.envs[0]) || "sophie"))
+              (pdEnvs.length > 1
+                ? "--envs=" + pdEnvs.join(",")
+                : "--env="  + (params.env || pdEnvs[0] || "sophie"))
             ];
             if (params.urls) {
               // Ã‰crire les URLs dans un fichier temporaire pour Ã©viter toute

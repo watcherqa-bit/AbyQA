@@ -3898,7 +3898,8 @@ function handleSSE(data) {
   if (data.type === "start") {
     var termEl = document.getElementById(termId);
     if (termEl) {
-      termEl.innerHTML = "";
+      // Ne pas vider ops-log si le panel Ops l'a déjà pré-rempli
+      if (!(opsActive && termId === 'ops-log')) termEl.innerHTML = "";
       if (isLLM) {
         // Create a stream span for token-by-token rendering
         var spanId = termId + "-stream";
@@ -5949,23 +5950,39 @@ function opsExecute() {
   log('ops-log', '  Env: ' + cfg.envs.join(', ') + ' | Browsers: ' + cfg.browsers.join(', '), 'log-dim');
   if (opsTickets.length) log('ops-log', '  Tickets: ' + opsTickets.map(function(t){return t.key;}).join(', '), 'log-dim');
 
-  var fd = new FormData();
-  fd.append('agent',   opsAgentId(route.agent));
-  fd.append('mode',    cfg.mode !== 'auto' ? cfg.mode : (route.mode || 'ui'));
-  fd.append('source',  opsTickets.length ? 'jira-key' : (opsContext.filter(function(c){return c.kind==='file';}).length ? 'xml' : 'text'));
-  fd.append('envs',    JSON.stringify(cfg.envs));
-  fd.append('browsers',JSON.stringify(cfg.browsers));
-  fd.append('devices', JSON.stringify(cfg.devices));
-  fd.append('release', cfg.release);
-  if (text)              fd.append('instructions', text);
-  if (opsTickets.length) fd.append('jiraKey', opsTickets.map(function(t){return t.key;}).join(','));
-  opsContext.forEach(function(item) {
-    if (item.kind === 'file') {
-      fd.append('xmlFile', new Blob([item.content], {type:'text/plain'}), item.name);
-    }
-  });
+  var agentId = opsAgentId(route.agent);
+  var hasXml = opsContext.some(function(c){return c.kind==='file';});
 
-  callAgent({}, fd);
+  // Si XML uploadé → FormData, sinon JSON
+  if (hasXml) {
+    var fd = new FormData();
+    fd.append('agent',   agentId);
+    fd.append('mode',    cfg.mode !== 'auto' ? cfg.mode : (route.mode || 'ui'));
+    fd.append('source',  'xml');
+    fd.append('envs',    JSON.stringify(cfg.envs));
+    fd.append('browsers',JSON.stringify(cfg.browsers));
+    fd.append('devices', JSON.stringify(cfg.devices));
+    fd.append('release', cfg.release);
+    if (text) fd.append('instructions', text);
+    if (opsTickets.length) fd.append('key', opsTickets[0].key);
+    opsContext.forEach(function(item) {
+      if (item.kind === 'file') fd.append('xmlFile', new Blob([item.content], {type:'text/plain'}), item.name);
+    });
+    callAgent({}, fd);
+  } else {
+    var params = {
+      agent:    agentId,
+      mode:     cfg.mode !== 'auto' ? cfg.mode : (route.mode || 'ui'),
+      source:   opsTickets.length ? 'jira-key' : 'text',
+      envs:     cfg.envs,
+      browsers: JSON.stringify(cfg.browsers),
+      devices:  JSON.stringify(cfg.devices),
+      release:  cfg.release
+    };
+    if (text) params.instructions = text;
+    if (opsTickets.length) params.key = opsTickets[0].key;
+    callAgent(params);
+  }
   showToast('Opération lancée', '🚀');
 }
 
@@ -6709,24 +6726,24 @@ function opsLaunchPlaywrightDirect(inline) {
     log('ops-log', '  Env: ' + cfg.envs.join(', ') + ' | Browsers: ' + cfg.browsers.join(', '), 'log-dim');
     if (autoTests.length) log('ops-log', '  ' + autoTests.length + ' test(s) auto chargés', 'log-dim');
 
-    var fd = new FormData();
-    fd.append('agent',    'playwright-direct');
-    fd.append('mode',     ticket.type === 'Bug' ? 'fix' : (cfg.mode !== 'auto' ? cfg.mode : 'ui'));
-    fd.append('source',   'jira-key');
-    fd.append('jiraKey',  ticket.key);
-    fd.append('envs',     JSON.stringify(cfg.envs));
-    fd.append('browsers', JSON.stringify(cfg.browsers));
-    fd.append('devices',  JSON.stringify(cfg.devices));
-    fd.append('release',  cfg.release);
+    var pwParams = {
+      agent:    'playwright-direct',
+      mode:     ticket.type === 'Bug' ? 'fix' : (cfg.mode !== 'auto' ? cfg.mode : 'ui'),
+      source:   'jira-key',
+      key:      ticket.key,
+      envs:     cfg.envs,
+      browsers: JSON.stringify(cfg.browsers),
+      devices:  JSON.stringify(cfg.devices),
+      release:  cfg.release
+    };
     if (autoTests.length) {
-      var instrText = autoTests.map(function(pt, i) {
+      pwParams.instructions = autoTests.map(function(pt, i) {
         return (i + 1) + '. ' + pt.name + '\n' + (pt.steps || []).join('\n');
       }).join('\n\n').substring(0, 800);
-      fd.append('instructions', instrText);
     } else if (ticket.description) {
-      fd.append('instructions', ticket.summary + '\n\n' + (ticket.description || '').substring(0, 600));
+      pwParams.instructions = ticket.summary + '\n\n' + (ticket.description || '').substring(0, 600);
     }
-    callAgent({}, fd);
+    callAgent(pwParams);
     showToast('Playwright lancé pour ' + ticket.key, '🎭');
     return;
   }
