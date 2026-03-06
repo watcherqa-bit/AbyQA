@@ -154,12 +154,32 @@ async function resolveTargets() {
       .map(function(u) { return u.trim(); })
       .filter(Boolean)
       .reduce(function(acc, chunk) {
+        // Séparateur pipe : "path|https://full" ou "label|url" → prendre la partie URL complète si présente, sinon le chunk
+        if (chunk.includes("|")) {
+          var pipeParts = chunk.split("|").map(function(p) { return p.trim(); }).filter(Boolean);
+          // Prendre la partie qui ressemble à une URL complète (https://) en priorité, sinon la première partie
+          var fullUrl = pipeParts.find(function(p) { return /^https?:\/\//i.test(p); });
+          chunk = fullUrl || pipeParts[0];
+        }
+        // Nettoyer les caractères parasites en fin d'URL (virgule, point, espace, guillemets)
+        chunk = chunk.replace(/[,.\s"']+$/, "");
         // Gérer les URLs complètes collées (https://a.comhttps://b.com)
         var parts = chunk.split(/(?=https?:\/\/)/);
-        return acc.concat(parts.map(function(p) { return p.trim(); }).filter(Boolean));
+        return acc.concat(parts.map(function(p) { return p.trim().replace(/[,.\s]+$/, ""); }).filter(Boolean));
       }, []);
-    return splitUrls.filter(function(url) {
-      return url && !seenUrls[url] && (seenUrls[url] = true);
+    // Pour les chemins relatifs, préfixer avec ENV_URL
+    var normalized = splitUrls.map(function(url) {
+      if (!/^https?:\/\//i.test(url)) {
+        var p = url.replace(/^\/+/, "");
+        url = ENV_URL + "/" + p;
+      }
+      return url;
+    });
+    return normalized.filter(function(url) {
+      // Rejeter les URLs malformées (domaine vide, contenant virgule dans le host, etc.)
+      try { var u = new URL(url); return u.hostname && !u.hostname.includes(","); } catch(e) { return false; }
+    }).filter(function(url) {
+      return !seenUrls[url] && (seenUrls[url] = true);
     }).map(function(url) {
       return { url: url, label: url.split("/").slice(3).join("/") || url, context: "url directe" };
     });

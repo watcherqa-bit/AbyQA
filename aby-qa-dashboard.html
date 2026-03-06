@@ -7567,7 +7567,17 @@ function launchPWDTest() {
       })
       .replace(/['"[\]<>]/g, "")
       .replace(/\n/g, ",")
-      .split(",").map(function(u){return u.trim();}).filter(Boolean).join(",");
+      .split(",")
+      .map(function(u) {
+        u = u.trim();
+        // Pipe "path|full_url" → garder la partie URL complète
+        if (u.includes("|")) {
+          var parts = u.split("|").map(function(p){return p.trim();});
+          u = parts.find(function(p){return /^https?:\/\//i.test(p);}) || parts[0];
+        }
+        return u.replace(/[,.\s]+$/, ""); // nettoyer ponctuation finale
+      })
+      .filter(Boolean).join(",");
     callAgent(params);
   } else if (pwdSource === "jira-key") {
     params.key = document.getElementById("pwd-jira-key").value.trim().toUpperCase();
