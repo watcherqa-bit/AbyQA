@@ -64,10 +64,10 @@ const { spawn } = require("child_process");
 const CFG         = require("./config");
 CFG.paths.init();
 
-// â”€â”€ SINGLETON LEAD QA IA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ SINGLETON LEAD QA IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const leadQA = require("./agent-lead-qa");
 
-// â”€â”€ CLIENT ANTHROPIC (chat) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ CLIENT ANTHROPIC (chat) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 var _chatAnthropicClient = null;
 var _AnthropicCtor = null;
 
@@ -110,14 +110,14 @@ const BASE_DIR    = __dirname;
 const REPORTS_DIR = CFG.paths.reports;
 const UPLOADS_DIR = CFG.paths.uploads;
 
-// â”€â”€ ROUTER LLM (ajout V2 Lead QA IA) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ ROUTER LLM (ajout V2 Lead QA IA) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const router          = require("./agent-router");
 const AVAILABLE_AGENTS = router.AVAILABLE_AGENTS;
 
-// â”€â”€ POLLER JIRA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ POLLER JIRA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const poller = require("./agent-poller");
 
-// â”€â”€ ORCHESTRATEUR CYCLES QA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ ORCHESTRATEUR CYCLES QA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const cycle = require("./agent-cycle");
 
 var sseClients   = {};
@@ -126,7 +126,7 @@ var runningProcs = {};
 // Protection anti-double run : Map agent â†’ true si en cours
 var agentLocks = {};
 
-// â”€â”€ Surveillance Jira Queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Surveillance Jira Queue â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 var queueProc  = null;
 var queueStats = { count: 0, lastCheck: null, running: false };
 
@@ -141,7 +141,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   opts = opts || {};
   // Protection anti-double run
   if (agentLocks[agentId]) {
-    sendSSE(clientId, { type: "warn", agent: agentId, line: "[SKIP] " + agentId + " dÃ©jÃ  en cours â€” ignorÃ©" });
+    sendSSE(clientId, { type: "warn", agent: agentId, line: "[SKIP] " + agentId + " dÃ©jÃ  en cours  —  ignorÃ©" });
     return;
   }
   if (runningProcs[agentId]) {
@@ -153,7 +153,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   sendSSE(clientId, { type: "start", agent: agentId, cmd: dryPrefix + cmd + " " + args.join(" ") });
 
   agentLocks[agentId] = true;
-  // Buffer universel â€” toujours actif pour permettre l'auto-debug
+  // Buffer universel  —  toujours actif pour permettre l'auto-debug
   var logBuf = [];
 
   var proc = spawn(cmd, args, {
@@ -196,7 +196,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   });
 }
 
-// â”€â”€ AUTO-DEBUG â€” dÃ©tecte et analyse les erreurs d'agent â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AUTO-DEBUG  —  dÃ©tecte et analyse les erreurs d'agent â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 function triggerAutoDebug(agentId, logs, clientId) {
   // 1. VÃ©rifier qu'il y a des lignes d'erreur exploitables
   var errorLines = logs.filter(function(l) {
@@ -231,7 +231,7 @@ function triggerAutoDebug(agentId, logs, clientId) {
 
   // 4. Notifier le dashboard que l'analyse est en cours
   sendSSE(clientId, { type: "log", agent: agentId,
-    line: "ðŸ”§ [AUTO-DEBUG] Erreur dÃ©tectÃ©e â€” analyse IA en cours..." });
+    line: "ðŸ§ [AUTO-DEBUG] Erreur dÃ©tectÃ©e  —  analyse IA en cours..." });
 
   // 5. Appeler Claude
   leadQA.analyzeAgentError({
@@ -277,7 +277,7 @@ function parseMultipart(body, boundary) {
   return result;
 }
 
-// â”€â”€ HELPER : construire les args d'un agent depuis les params du router â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ HELPER : construire les args d'un agent depuis les params du router â"€â"€â"€â"€â"€â"€â"€â"€
 function buildAgentArgs(agentName, params) {
   var env = params.env || "sophie";
   switch(agentName) {
@@ -286,7 +286,7 @@ function buildAgentArgs(agentName, params) {
     case "css-audit":
       return ["agent-css-audit.js", env];
     case "jira-reader":
-      // NÃ©cessite un XML â€” skip si absent
+      // NÃ©cessite un XML  —  skip si absent
       var xmlPathJR = path.join(BASE_DIR, "uploads", "ticket.xml");
       if (!fs.existsSync(xmlPathJR)) return null;
       return ["agent-jira-reader.js", "uploads/ticket.xml", "--env=" + env];
@@ -340,7 +340,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Release tracker JSON â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Release tracker JSON â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url === "/api/release-tracker") {
     var trackerPath = path.join(BASE_DIR, "reports", "release-tracker.json");
     if (fs.existsSync(trackerPath)) {
@@ -353,7 +353,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : TÃ©lÃ©charger un fichier du dossier reports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : TÃ©lÃ©charger un fichier du dossier reports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url.startsWith("/api/download/")) {
     var fname = decodeURIComponent(url.replace("/api/download/", ""));
     var fpath = path.join(BASE_DIR, "reports", fname);
@@ -368,7 +368,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Chercher un ticket Jira â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Chercher un ticket Jira â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url.startsWith("/api/jira-ticket/")) {
     var ticketKey = url.replace("/api/jira-ticket/", "").toUpperCase();
     var CFG2 = require("./config");
@@ -434,7 +434,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Suggestion donnÃ©es de test Drupal par IA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Suggestion donnÃ©es de test Drupal par IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   // ── API : Inspecteur DOM Playwright ───────────────────────────────────────
   if (method === "POST" && url === "/api/inspect") {
     var inspChunks = [];
@@ -979,7 +979,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Import Jira â€” ticket complet avec dÃ©pendances â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Import Jira  —  ticket complet avec dÃ©pendances â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/jira-import") {
     var importBody = "";
     req.on("data", function(c) { importBody += c; });
@@ -1061,13 +1061,13 @@ var server = http.createServer(function(req, res) {
               createdAt: f.created || new Date().toISOString(),
               score:   null,
               issues:  [],
-              originalMarkdown: "# " + importKey + " â€” " + (f.summary || "") + "\n\n" +
+              originalMarkdown: "# " + importKey + "  —  " + (f.summary || "") + "\n\n" +
                 "**Type :** " + (f.issuetype ? f.issuetype.name : "Story") + "  \n" +
                 "**Statut :** " + (f.status ? f.status.name : "") + "  \n" +
                 "**PrioritÃ© :** " + (f.priority ? f.priority.name : "") + "  \n\n" +
                 "## Description\n" + (descText.trim() || "_Aucune description_") + "\n\n" +
                 (links.length > 0 ? "## DÃ©pendances\n" + links.map(function(l) {
-                  return "- **" + l.key + "** (" + l.type + ") â€” " + l.summary + " [" + l.status + "]";
+                  return "- **" + l.key + "** (" + l.type + ")  —  " + l.summary + " [" + l.status + "]";
                 }).join("\n") : ""),
               enrichedMarkdown: "",
               status: "pending",
@@ -1257,7 +1257,7 @@ var server = http.createServer(function(req, res) {
             runAgent("update-ticket", "node", uArgs, clientId);
             break;
 
-          // â”€â”€ PLAYWRIGHT DIRECT (nouveau) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+          // â"€â"€ PLAYWRIGHT DIRECT (nouveau) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
           case "playwright-direct":
             var pdArgs = [
               "agent-playwright-direct.js",
@@ -1372,7 +1372,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : LLM Router â€” Lead QA IA â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : LLM Router  —  Lead QA IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/route") {
     var routeChunks = [];
     req.on("data", function(c) { routeChunks.push(c); });
@@ -1445,7 +1445,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : LLM Playground â€” proxy Ollama streaming â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : LLM Playground  —  proxy Ollama streaming â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/llm") {
     var llmChunks = [];
     req.on("data", function(c) { llmChunks.push(c); });
@@ -1477,7 +1477,7 @@ var server = http.createServer(function(req, res) {
       var tokenCount = 0;
 
       sendSSE(clientId, { type: "start", agent: agentLabel,
-        cmd: model + " â€” " + prompt.substring(0, 60) });
+        cmd: model + "  —  " + prompt.substring(0, 60) });
 
       var ollamaReq = http.request({
         hostname: CFG.ollama.host, port: CFG.ollama.port,
@@ -1518,7 +1518,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Chat Claude (streaming SSE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Chat Claude (streaming SSE) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/chat") {
     var chatChunks = [];
     req.on("data", function(c) { chatChunks.push(c); });
@@ -1597,7 +1597,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : ModÃ¨les Ollama disponibles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : ModÃ¨les Ollama disponibles â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url === "/api/ollama-models") {
     var modelsReq = http.request({
       hostname: CFG.ollama.host, port: CFG.ollama.port,
@@ -1630,7 +1630,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Analyse de fichier (Claude Vision / extraction HTML / texte) â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Analyse de fichier (Claude Vision / extraction HTML / texte) â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/analyze-file") {
     var afChunks = [];
     req.on("data", function(c) { afChunks.push(c); });
@@ -1688,7 +1688,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Attacher des fichiers locaux Ã  un ticket Jira â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Attacher des fichiers locaux Ã  un ticket Jira â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url.startsWith("/api/attach-jira/")) {
     var ajKey = url.replace("/api/attach-jira/", "").split("/")[0];
     var ajDir = path.join(BASE_DIR, "inbox", "enriched", "attachments", ajKey);
@@ -1765,7 +1765,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : US Enrichies â€” stockage + Ã©diteur â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : US Enrichies  —  stockage + Ã©diteur â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   var ENRICHED_DIR = path.join(BASE_DIR, "inbox", "enriched");
   if (!fs.existsSync(ENRICHED_DIR)) fs.mkdirSync(ENRICHED_DIR, { recursive: true });
 
@@ -1923,7 +1923,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : File des tests prÃªts Ã  lancer dans Playwright Direct â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : File des tests prÃªts Ã  lancer dans Playwright Direct â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   var TESTS_DIR2 = path.join(BASE_DIR, "inbox", "tests");
   if (!fs.existsSync(TESTS_DIR2)) fs.mkdirSync(TESTS_DIR2, { recursive: true });
 
@@ -1975,7 +1975,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : ActivitÃ© Jira (todo list) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : ActivitÃ© Jira (todo list) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url === "/api/jira-activity") {
     var https3   = require("https");
     var auth3    = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
@@ -2019,7 +2019,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : RÃ©ception SSE depuis agent-jira-queue â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : RÃ©ception SSE depuis agent-jira-queue â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/queue-sse") {
     var qsseChunks = [];
     req.on("data", function(c) { qsseChunks.push(c); });
@@ -2040,13 +2040,13 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Liste des rapports (Playwright Direct + Audit CSS) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Liste des rapports (Playwright Direct + Audit CSS) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url === "/api/playwright-reports") {
     try {
       var rDir   = path.join(BASE_DIR, "reports");
       var rFiles = fs.existsSync(rDir) ? fs.readdirSync(rDir) : [];
 
-      // â”€â”€ Rapports Playwright Direct â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // â"€â"€ Rapports Playwright Direct â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
       var pwReports = rFiles
         .filter(function(f) { return /^RAPPORT-(OK|FAIL)-PW-DIRECT-.*\.html$/.test(f); })
         .map(function(f) {
@@ -2078,7 +2078,7 @@ var server = http.createServer(function(req, res) {
           };
         });
 
-      // â”€â”€ Rapports Audit CSS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // â"€â"€ Rapports Audit CSS â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
       var cssReports = rFiles
         .filter(function(f) { return /^AUDIT-CSS-.*\.md$/.test(f); })
         .map(function(f) {
@@ -2139,135 +2139,135 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── API : Liste des logs de tests ──────────────────────────────────────────
-  if (method === “GET” && url === “/api/test-logs”) {
-    var tlDir = path.join(BASE_DIR, “inbox”, “logs”);
-    if (!fs.existsSync(tlDir)) { res.writeHead(200, { “Content-Type”: “application/json” }); res.end(“[]”); return; }
-    var tlFiles = fs.readdirSync(tlDir).filter(function(f) { return f.endsWith(“.json”); })
+  if (method === "GET" && url === "/api/test-logs") {
+    var tlDir = path.join(BASE_DIR, "inbox", "logs");
+    if (!fs.existsSync(tlDir)) { res.writeHead(200, { "Content-Type": "application/json" }); res.end("[]"); return; }
+    var tlFiles = fs.readdirSync(tlDir).filter(function(f) { return f.endsWith(".json"); })
       .sort().reverse().slice(0, 100);
     var tlItems = tlFiles.map(function(f) {
-      try { return JSON.parse(fs.readFileSync(path.join(tlDir, f), “utf8”)); } catch(e) { return null; }
+      try { return JSON.parse(fs.readFileSync(path.join(tlDir, f), "utf8")); } catch(e) { return null; }
     }).filter(Boolean);
-    res.writeHead(200, { “Content-Type”: “application/json” });
+    res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(tlItems));
     return;
   }
 
   // ── API : Détail d'un log ──────────────────────────────────────────────────
-  if (method === “GET” && url.startsWith(“/api/test-logs/”) && !url.endsWith(“/push-jira”)) {
-    var tlId = decodeURIComponent(url.replace(“/api/test-logs/”, “”));
-    if (tlId.includes(“..”)) { res.writeHead(400); res.end(“Invalid”); return; }
-    var tlPath = path.join(BASE_DIR, “inbox”, “logs”, tlId + “.json”);
-    if (!fs.existsSync(tlPath)) { res.writeHead(404, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ error: “Not found” })); return; }
-    try { res.writeHead(200, { “Content-Type”: “application/json” }); res.end(fs.readFileSync(tlPath, “utf8”)); }
+  if (method === "GET" && url.startsWith("/api/test-logs/") && !url.endsWith("/push-jira")) {
+    var tlId = decodeURIComponent(url.replace("/api/test-logs/", ""));
+    if (tlId.includes("..")) { res.writeHead(400); res.end("Invalid"); return; }
+    var tlPath = path.join(BASE_DIR, "inbox", "logs", tlId + ".json");
+    if (!fs.existsSync(tlPath)) { res.writeHead(404, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: "Not found" })); return; }
+    try { res.writeHead(200, { "Content-Type": "application/json" }); res.end(fs.readFileSync(tlPath, "utf8")); }
     catch(e) { res.writeHead(500); res.end(e.message); }
     return;
   }
 
   // ── API : Supprimer un log ─────────────────────────────────────────────────
-  if (method === “DELETE” && url.startsWith(“/api/test-logs/”) && !url.endsWith(“/push-jira”)) {
-    var dlId = decodeURIComponent(url.replace(“/api/test-logs/”, “”));
-    if (dlId.includes(“..”)) { res.writeHead(400); res.end(“Invalid”); return; }
-    var dlPath = path.join(BASE_DIR, “inbox”, “logs”, dlId + “.json”);
-    try { if (fs.existsSync(dlPath)) fs.unlinkSync(dlPath); res.writeHead(200, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: true })); }
-    catch(e) { res.writeHead(500, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: false, error: e.message })); }
+  if (method === "DELETE" && url.startsWith("/api/test-logs/") && !url.endsWith("/push-jira")) {
+    var dlId = decodeURIComponent(url.replace("/api/test-logs/", ""));
+    if (dlId.includes("..")) { res.writeHead(400); res.end("Invalid"); return; }
+    var dlPath = path.join(BASE_DIR, "inbox", "logs", dlId + ".json");
+    try { if (fs.existsSync(dlPath)) fs.unlinkSync(dlPath); res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: true })); }
+    catch(e) { res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: e.message })); }
     return;
   }
 
   // ── API : Intégrer log dans Jira (commentaire) ─────────────────────────────
-  if (method === “POST” && url.match(/^\/api\/test-logs\/[^/]+\/push-jira$/)) {
-    var pjId     = decodeURIComponent(url.replace(“/api/test-logs/”, “”).replace(“/push-jira”, “”));
-    var pjChunks = []; req.on(“data”, function(c) { pjChunks.push(c); });
-    req.on(“end”, async function() {
+  if (method === "POST" && url.match(/^\/api\/test-logs\/[^/]+\/push-jira$/)) {
+    var pjId     = decodeURIComponent(url.replace("/api/test-logs/", "").replace("/push-jira", ""));
+    var pjChunks = []; req.on("data", function(c) { pjChunks.push(c); });
+    req.on("end", async function() {
       try {
-        var body    = JSON.parse(Buffer.concat(pjChunks).toString() || “{}”);
-        var pjPath  = path.join(BASE_DIR, “inbox”, “logs”, pjId + “.json”);
-        var logItem = JSON.parse(fs.readFileSync(pjPath, “utf8”));
+        var body    = JSON.parse(Buffer.concat(pjChunks).toString() || "{}");
+        var pjPath  = path.join(BASE_DIR, "inbox", "logs", pjId + ".json");
+        var logItem = JSON.parse(fs.readFileSync(pjPath, "utf8"));
         var jiraKey = body.jiraKey || logItem.ticketKey;
-        if (!jiraKey) { res.writeHead(400, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: false, error: “Clé Jira manquante” })); return; }
+        if (!jiraKey) { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: false, error: "Clé Jira manquante" })); return; }
 
-        var CFGpj  = require(“./config”);
-        var authpj = Buffer.from(CFGpj.jira.email + “:” + CFGpj.jira.token).toString(“base64”);
-        var https_pj = require(“https”);
+        var CFGpj  = require("./config");
+        var authpj = Buffer.from(CFGpj.jira.email + ":" + CFGpj.jira.token).toString("base64");
+        var https_pj = require("https");
 
         // Construire le commentaire Jira (wiki markup)
         var sections = body.sections || {};  // { jsExceptions, consoleErrors, networkFails, domSnippets, steps }
-        var comment  = “h3. 🔬 Rapport de test — “ + logItem.testLabel + “\n”;
-        comment += “*Date* : “ + new Date(logItem.timestamp).toLocaleString(“fr-FR”) +
-          “ | *Env* : “ + (logItem.env||”?”) +
-          “ | *Browser* : “ + (logItem.browser||”?”) +
-          “ | *Device* : “ + (logItem.device||”?”) + “\n”;
-        comment += “*URL* : “ + logItem.url + “\n\n”;
+        var comment  = "h3. 🔬 Rapport de test — " + logItem.testLabel + "\n";
+        comment += "*Date* : " + new Date(logItem.timestamp).toLocaleString("fr-FR") +
+          " | *Env* : " + (logItem.env||"?") +
+          " | *Browser* : " + (logItem.browser||"?") +
+          " | *Device* : " + (logItem.device||"?") + "\n";
+        comment += "*URL* : " + logItem.url + "\n\n";
 
         // Étapes FAIL
         var steps = sections.steps !== undefined ? sections.steps : (logItem.steps||[]);
         if (steps && steps.length) {
-          comment += “h3. ❌ Étapes en échec\n{noformat}\n”;
-          steps.forEach(function(s) { comment += “❌ “ + s.label + “ : “ + (s.detail||””) + (s.selector ? “ [“ + s.selector + “]” : “”) + “\n”; });
-          comment += “{noformat}\n\n”;
+          comment += "h3. ❌ Étapes en échec\n{noformat}\n";
+          steps.forEach(function(s) { comment += "❌ " + s.label + " : " + (s.detail||"") + (s.selector ? " [" + s.selector + "]" : "") + "\n"; });
+          comment += "{noformat}\n\n";
         }
 
         // JS Exceptions
         var jsEx = sections.jsExceptions !== undefined ? sections.jsExceptions : (logItem.jsExceptions||[]);
         if (jsEx && jsEx.length) {
-          comment += “h3. ⚡ Exceptions JavaScript\n”;
+          comment += "h3. ⚡ Exceptions JavaScript\n";
           jsEx.forEach(function(ex, i) {
-            comment += “*Exception “ + (i+1) + “* : “ + ex.message + “\n”;
-            if (ex.stack) comment += “{noformat:title=Stack trace}\n” + ex.stack + “\n{noformat}\n”;
+            comment += "*Exception " + (i+1) + "* : " + ex.message + "\n";
+            if (ex.stack) comment += "{noformat:title=Stack trace}\n" + ex.stack + "\n{noformat}\n";
           });
-          comment += “\n”;
+          comment += "\n";
         }
 
         // Console errors
         var ceList = sections.consoleErrors !== undefined ? sections.consoleErrors : (logItem.consoleErrors||[]);
         if (ceList && ceList.length) {
-          comment += “h3. 🖥️ Erreurs Console\n{noformat}\n”;
+          comment += "h3. 🖥️ Erreurs Console\n{noformat}\n";
           ceList.forEach(function(ce) {
-            var loc = ce.file ? “[“ + ce.file + (ce.line != null ? “:” + ce.line : “”) + “]  “ : “”;
-            comment += loc + ce.text + “\n”;
+            var loc = ce.file ? "[" + ce.file + (ce.line != null ? ":" + ce.line : "") + "]  " : "";
+            comment += loc + ce.text + "\n";
           });
-          comment += “{noformat}\n\n”;
+          comment += "{noformat}\n\n";
         }
 
         // Network fails
         var nfList = sections.networkFails !== undefined ? sections.networkFails : (logItem.networkFails||[]);
         if (nfList && nfList.length) {
-          comment += “h3. 🌐 Requêtes KO\n{noformat}\n”;
-          nfList.forEach(function(nf) { comment += nf.method + “  “ + nf.status + “  “ + nf.url + “\n”; });
-          comment += “{noformat}\n\n”;
+          comment += "h3. 🌐 Requêtes KO\n{noformat}\n";
+          nfList.forEach(function(nf) { comment += nf.method + "  " + nf.status + "  " + nf.url + "\n"; });
+          comment += "{noformat}\n\n";
         }
 
         // DOM snippets
         var domList = sections.domSnippets !== undefined ? sections.domSnippets : (logItem.domSnippets||[]);
         if (domList && domList.length) {
-          comment += “h3. 🔍 Contexte DOM\n”;
+          comment += "h3. 🔍 Contexte DOM\n";
           domList.forEach(function(ds) {
-            comment += “*” + ds.label + “* — {{“ + ds.selector + “}}”;
-            if (!ds.visible) comment += “ — *ABSENT / CACHÉ*”;
-            comment += “\n{noformat}\n” + ds.outerHTML + “\n{noformat}\n”;
+            comment += "*" + ds.label + "* — {{" + ds.selector + "}}";
+            if (!ds.visible) comment += " — *ABSENT / CACHÉ*";
+            comment += "\n{noformat}\n" + ds.outerHTML + "\n{noformat}\n";
           });
-          comment += “\n”;
+          comment += "\n";
         }
 
-        comment += “_Généré par AbyQA — agent-playwright-direct.js_”;
+        comment += "_Généré par AbyQA — agent-playwright-direct.js_";
 
         // POST commentaire Jira
         var commentPayload = JSON.stringify({ body: comment });
         var commentResult  = await new Promise(function(resolve, reject) {
           var cr = https_pj.request({
             hostname: CFGpj.jira.host,
-            path:     “/rest/api/2/issue/” + jiraKey + “/comment”,
-            method:   “POST”,
+            path:     "/rest/api/2/issue/" + jiraKey + "/comment",
+            method:   "POST",
             headers: {
-              “Authorization”:  “Basic “ + authpj,
-              “Content-Type”:   “application/json”,
-              “Accept”:         “application/json”,
-              “Content-Length”: Buffer.byteLength(commentPayload)
+              "Authorization":  "Basic " + authpj,
+              "Content-Type":   "application/json",
+              "Accept":         "application/json",
+              "Content-Length": Buffer.byteLength(commentPayload)
             }
           }, function(cRes) {
-            var cData = “”; cRes.on(“data”, function(d) { cData += d; });
-            cRes.on(“end”, function() { resolve({ status: cRes.statusCode, body: cData }); });
+            var cData = ""; cRes.on("data", function(d) { cData += d; });
+            cRes.on("end", function() { resolve({ status: cRes.statusCode, body: cData }); });
           });
-          cr.on(“error”, reject);
+          cr.on("error", reject);
           cr.write(commentPayload); cr.end();
         });
 
@@ -2275,26 +2275,26 @@ var server = http.createServer(function(req, res) {
           // Marquer le log comme intégré
           logItem.pushedToJira = jiraKey;
           logItem.pushedAt     = new Date().toISOString();
-          fs.writeFileSync(pjPath, JSON.stringify(logItem, null, 2), “utf8”);
-          console.log(“[test-log] Intégré dans “ + jiraKey);
-          res.writeHead(200, { “Content-Type”: “application/json” });
+          fs.writeFileSync(pjPath, JSON.stringify(logItem, null, 2), "utf8");
+          console.log("[test-log] Intégré dans " + jiraKey);
+          res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, jiraKey: jiraKey }));
         } else {
           var errBody = commentResult.body.substring(0, 200);
-          res.writeHead(400, { “Content-Type”: “application/json” });
-          res.end(JSON.stringify({ ok: false, error: “Jira “ + commentResult.status + “ : “ + errBody }));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Jira " + commentResult.status + " : " + errBody }));
         }
       } catch(e) {
-        console.error(“[test-log] Erreur push-jira:”, e.message);
-        res.writeHead(500, { “Content-Type”: “application/json” });
+        console.error("[test-log] Erreur push-jira:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: e.message }));
       }
     });
     return;
   }
 
-  // â”€â”€ API : Analyser un screenshot CSS avec Claude Vision â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  if (method === “POST” && url === “/api/analyze-screenshot”) {
+  // â"€â"€ API : Analyser un screenshot CSS avec Claude Vision â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  if (method === "POST" && url === "/api/analyze-screenshot") {
     var ssChunks = [];
     req.on("data", function(c) { ssChunks.push(c); });
     req.on("end", function() {
@@ -2347,7 +2347,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Supprimer un rapport Playwright â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Supprimer un rapport Playwright â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "DELETE" && url.startsWith("/api/delete-report/")) {
     var drFname = decodeURIComponent(url.replace("/api/delete-report/", ""));
     if (!/^RAPPORT-(OK|FAIL)-PW-DIRECT-.*\.html$/.test(drFname) && !/^AUDIT-CSS-.*\.md$/.test(drFname)) {
@@ -2369,7 +2369,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Attacher un rapport HTML Ã  un ticket Jira â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Attacher un rapport HTML Ã  un ticket Jira â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/attach-report-jira") {
     var arChunks = [];
     req.on("data", function(c) { arChunks.push(c); });
@@ -2416,7 +2416,7 @@ var server = http.createServer(function(req, res) {
           arRes.on("end", function() {
             res.writeHead(200, { "Content-Type": "application/json" });
             if (arRes.statusCode < 300) res.end(JSON.stringify({ ok: true, key: arJiraKey }));
-            else res.end(JSON.stringify({ error: "Jira HTTP " + arRes.statusCode + " â€” " + arRaw2.slice(0, 200) }));
+            else res.end(JSON.stringify({ error: "Jira HTTP " + arRes.statusCode + "  —  " + arRaw2.slice(0, 200) }));
           });
         });
         arReq.on("error", function(e) {
@@ -2433,7 +2433,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Logs router â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Logs router â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url === "/api/router-log") {
     var logPath = path.join(BASE_DIR, "reports", "router-log.jsonl");
     if (fs.existsSync(logPath)) {
@@ -2448,7 +2448,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ API : Appliquer un correctif proposÃ© par l'auto-debug â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ API : Appliquer un correctif proposÃ© par l'auto-debug â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/apply-fix") {
     var afixChunks = [];
     req.on("data", function(c) { afixChunks.push(c); });
@@ -2494,7 +2494,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/settings â€” lecture settings.json (+ infos config non-sensibles)
+  // GET /api/settings  —  lecture settings.json (+ infos config non-sensibles)
   if (method === "GET" && url === "/api/settings") {
     var settingsFile = path.join(BASE_DIR, "settings.json");
     try {
@@ -2510,7 +2510,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // PUT /api/settings â€” Ã©criture settings.json
+  // PUT /api/settings  —  Ã©criture settings.json
   if (method === "PUT" && url === "/api/settings") {
     var settingsFile2 = path.join(BASE_DIR, "settings.json");
     var settingsBody = "";
@@ -2535,14 +2535,14 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/cycle/state â€” Ã©tat des 3 cycles
+  // GET /api/cycle/state  —  Ã©tat des 3 cycles
   if (method === "GET" && url === "/api/cycle/state") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(cycle.getState()));
     return;
   }
 
-  // POST /api/cycle/tnr â€” dÃ©clencher TNR Complet manuellement
+  // POST /api/cycle/tnr  —  dÃ©clencher TNR Complet manuellement
   if (method === "POST" && url === "/api/cycle/tnr") {
     try {
       var tnrSettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8"));
@@ -2556,7 +2556,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/cycle/tnr-release â€” dÃ©clencher TNR par release
+  // POST /api/cycle/tnr-release  —  dÃ©clencher TNR par release
   if (method === "POST" && url === "/api/cycle/tnr-release") {
     var tnrReleaseBody = "";
     req.on("data", function(c) { tnrReleaseBody += c; });
@@ -2576,7 +2576,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/cycle/stop/:id â€” arrÃªter un cycle TNR en cours (2 ou 3)
+  // POST /api/cycle/stop/:id  —  arrÃªter un cycle TNR en cours (2 ou 3)
   if (method === "POST" && url.startsWith("/api/cycle/stop/")) {
     var stopId = url.replace("/api/cycle/stop/", "").trim();
     try {
@@ -2608,7 +2608,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/cycle/ticket/:key/run â€” lancer test Playwright sur un ticket validÃ©
+  // POST /api/cycle/ticket/:key/run  —  lancer test Playwright sur un ticket validÃ©
   if (method === "POST" && url.startsWith("/api/cycle/ticket/") && url.endsWith("/run")) {
     var ticketKey = url.replace("/api/cycle/ticket/", "").replace("/run", "");
     try {
@@ -2640,8 +2640,8 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/css-report â€” dernier rapport d'audit CSS (JSON)
-  // GET /api/css-report/download â€” tÃ©lÃ©charger le .md brut
+  // GET /api/css-report  —  dernier rapport d'audit CSS (JSON)
+  // GET /api/css-report/download  —  tÃ©lÃ©charger le .md brut
   if (method === "GET" && (url === "/api/css-report" || url === "/api/css-report/download")) {
     try {
       var reportsDir2 = path.join(BASE_DIR, "reports");
@@ -2677,7 +2677,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/jira-search?q=... â€” recherche tickets Jira via JQL
+  // GET /api/jira-search?q=...  —  recherche tickets Jira via JQL
   if (method === "GET" && url.startsWith("/api/jira-search")) {
     var qRaw   = req.url.split("?")[1] || "";
     var qParam = qRaw.replace(/^.*q=([^&]*).*$/, "$1");
@@ -2727,7 +2727,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/css-report/attach â€” attacher le rapport CSS Ã  un ticket Jira
+  // POST /api/css-report/attach  —  attacher le rapport CSS Ã  un ticket Jira
   if (method === "POST" && url === "/api/css-report/attach") {
     var attachBody = "";
     req.on("data", function(c) { attachBody += c; });
@@ -2826,7 +2826,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /screenshots/:filename â€” servir un screenshot PNG
+  // GET /screenshots/:filename  —  servir un screenshot PNG
   if (method === "GET" && url.startsWith("/screenshots/")) {
     var shotFile = url.replace("/screenshots/", "").split("?")[0];
     // SÃ©curitÃ© : interdire les traversÃ©es de rÃ©pertoire
@@ -2841,14 +2841,14 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/polling/status â€” Ã©tat du poller
+  // GET /api/polling/status  —  Ã©tat du poller
   if (method === "GET" && url === "/api/polling/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(poller.getStatus()));
     return;
   }
 
-  // POST /api/polling/toggle â€” activer/dÃ©sactiver le poller
+  // POST /api/polling/toggle  —  activer/dÃ©sactiver le poller
   if (method === "POST" && url === "/api/polling/toggle") {
     var st = poller.getStatus();
     var settingsFilePoll = path.join(BASE_DIR, "settings.json");
@@ -2873,7 +2873,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/github-file?url= â€” rÃ©cupÃ©rer un fichier depuis GitHub (raw)
+  // GET /api/github-file?url=  —  rÃ©cupÃ©rer un fichier depuis GitHub (raw)
   if (method === "GET" && url.startsWith("/api/github-file")) {
     var httpsGH = require("https");
     var qsGH    = (url.split("?")[1] || "");
@@ -2900,7 +2900,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/websearch?q= â€” recherche web via DuckDuckGo instant answers
+  // GET /api/websearch?q=  —  recherche web via DuckDuckGo instant answers
   if (method === "GET" && url.startsWith("/api/websearch")) {
     var httpsWS = require("https");
     var qsWS    = (url.split("?")[1] || "");
@@ -2932,7 +2932,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â”€â”€ Chat Projects â€” CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Chat Projects  —  CRUD â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   var CHAT_PROJECTS_DIR = path.join(BASE_DIR, "inbox", "chat-projects");
   if (!fs.existsSync(CHAT_PROJECTS_DIR)) fs.mkdirSync(CHAT_PROJECTS_DIR, { recursive: true });
 
@@ -2998,7 +2998,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/claude-code â€” exÃ©cuter claude --print <prompt>
+  // POST /api/claude-code  —  exÃ©cuter claude --print <prompt>
   if (method === "POST" && url === "/api/claude-code") {
     var ccChunks = [];
     req.on("data", function(c) { ccChunks.push(c); });
@@ -3447,7 +3447,7 @@ server.listen(PORT, "0.0.0.0", function() {
   console.log("  Form      : http://localhost:" + PORT + "/form");
   console.log("==================================================");
 
-  // â”€â”€ Health check Ollama (non bloquant) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ Health check Ollama (non bloquant) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   var ollamaCheck = http.request({
     hostname: "127.0.0.1",
     port:     11434,
@@ -3461,33 +3461,33 @@ server.listen(PORT, "0.0.0.0", function() {
         var parsed  = JSON.parse(data);
         var models  = (parsed.models || []).map(function(m) { return m.name; });
         if (models.length > 0) {
-          console.log("  ðŸ¤– Ollama     : OK â€” modÃ¨les : " + models.join(", "));
+          console.log("  ðŸ¤– Ollama     : OK  —  modÃ¨les : " + models.join(", "));
         } else {
-          console.log("  ðŸ¤– Ollama     : OK â€” aucun modÃ¨le chargÃ© (lancer : ollama pull mistral)");
+          console.log("  ðŸ¤– Ollama     : OK  —  aucun modÃ¨le chargÃ© (lancer : ollama pull mistral)");
         }
       } catch(e) {
         console.log("  ðŸ¤– Ollama     : OK (rÃ©ponse non parseable)");
       }
-      console.log("  ðŸ“‹ Router     : LLM actif");
+      console.log("  ðŸ‹ Router     : LLM actif");
       console.log("==================================================");
     });
   });
   ollamaCheck.setTimeout(3000, function() {
     ollamaCheck.destroy();
     console.log("  ðŸ¤– Ollama     : indisponible â†’ fallback rule-based actif");
-    console.log("  ðŸ“‹ Router     : mode dÃ©gradÃ© (rÃ¨gles mÃ©tier)");
+    console.log("  ðŸ‹ Router     : mode dÃ©gradÃ© (rÃ¨gles mÃ©tier)");
     console.log("==================================================");
   });
   ollamaCheck.on("error", function() {
     console.log("  ðŸ¤– Ollama     : indisponible â†’ fallback rule-based actif");
-    console.log("  ðŸ“‹ Router     : mode dÃ©gradÃ© (rÃ¨gles mÃ©tier)");
+    console.log("  ðŸ‹ Router     : mode dÃ©gradÃ© (rÃ¨gles mÃ©tier)");
     console.log("==================================================");
   });
   ollamaCheck.end();
 
   require("child_process").exec("start http://localhost:" + PORT);
 
-  // â”€â”€ DÃ©marrage du poller Jira â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ DÃ©marrage du poller Jira â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   var startupSettings = {};
   try {
     var pollerSettingsFile = path.join(BASE_DIR, "settings.json");
@@ -3499,7 +3499,7 @@ server.listen(PORT, "0.0.0.0", function() {
     console.log("  [POLLER] Erreur dÃ©marrage : " + e.message);
   }
 
-  // â”€â”€ DÃ©marrage du cron TNR (Cycle 3) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â"€â"€ DÃ©marrage du cron TNR (Cycle 3) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   function getFreshSettings() {
     try { return JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); }
     catch(e) { return {}; }
@@ -3507,7 +3507,7 @@ server.listen(PORT, "0.0.0.0", function() {
   try {
     cycle.startCron(sendSSE, runAgent, getFreshSettings);
     if (startupSettings.tnr && startupSettings.tnr.enabled) {
-      console.log("  â° TNR Cron  : actif â€” dÃ©clenchement Ã  " + (startupSettings.tnr.hour || "22:00"));
+      console.log("  â° TNR Cron  : actif  —  dÃ©clenchement Ã  " + (startupSettings.tnr.hour || "22:00"));
     } else {
       console.log("  â° TNR Cron  : dÃ©sactivÃ© (activer dans ParamÃ¨tres QA)");
     }
