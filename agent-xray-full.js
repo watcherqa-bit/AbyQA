@@ -958,6 +958,20 @@ function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
   .meta table { box-shadow: none; } .meta td { padding: 6px 12px; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
   .meta td:first-child { color: #666; width: 160px; }
   .footer { text-align: center; color: #aaa; font-size: 11px; margin-top: 40px; }
+  @media print {
+    *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+    body{padding:0!important;background:#fff!important}
+    .header{-webkit-print-color-adjust:exact;border-radius:8px;padding:20px 24px;margin-bottom:16px}
+    .status-banner{-webkit-print-color-adjust:exact;border-radius:6px;font-size:14px;padding:12px 20px;margin-bottom:16px}
+    .stat{box-shadow:none;border:1px solid #eee;padding:14px}
+    .stat .num{font-size:24px}
+    table{box-shadow:none;font-size:11px}
+    th{font-size:10px;padding:8px 10px}
+    td{padding:6px 10px;font-size:11px}
+    tr{page-break-inside:avoid}
+    .meta{box-shadow:none;border:1px solid #eee;page-break-inside:avoid}
+    img{max-width:140px!important}
+  }
 </style>
 </head><body>
 <div class="header">
@@ -998,11 +1012,22 @@ async function convertHtmlToPdf(htmlPath) {
     var browser = await chromium.launch();
     var pg = await browser.newPage();
     await pg.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+
+    var headerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
+      "<span style='font-weight:700;color:#1a237e'>AbyQA</span>" +
+      "<span>Rapport de test automatique</span></div>";
+    var footerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
+      "<span>Safran Group — Aby QA V2</span>" +
+      "<span>Page <span class='pageNumber'></span> / <span class='totalPages'></span></span></div>";
+
     await pg.pdf({
       path: pdfPath,
       format: "A4",
       printBackground: true,
-      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" }
+      displayHeaderFooter: true,
+      headerTemplate: headerHtml,
+      footerTemplate: footerHtml,
+      margin: { top: "40px", bottom: "40px", left: "24px", right: "24px" }
     });
     await browser.close();
     console.log("[PDF] " + path.basename(pdfPath));

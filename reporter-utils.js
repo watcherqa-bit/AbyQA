@@ -56,7 +56,6 @@ function buildScreenshotHtml(filePath, label, screenshotsDir, opts) {
     : " style='";
   var html = "<img src='" + b64 + "'" + clickZoom +
     "max-width:" + maxW + ";border-radius:4px;border:1px solid #1e2536;display:block'" +
-    " onerror=\"this.parentElement.innerHTML='<span style=\\\"color:#4a5568;font-size:10px\\\">Screenshot non disponible</span>'\"" +
     " loading='lazy'>";
   if (label) {
     html = "<div style='text-align:center'>" + html +

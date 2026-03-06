@@ -697,6 +697,48 @@ async function createBugJira(result, mode) {
   return null;
 }
 
+// ── CSS print professionnel (thème clair pour PDF) ──────────────────────────
+var PRINT_CSS =
+  "@media print {" +
+  "body{background:#fff!important;color:#1a1a2e!important;padding:0!important;font-size:11px}" +
+  "*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}" +
+  /* Header */
+  ".report-header{background:linear-gradient(135deg,#1a237e,#283593)!important;-webkit-print-color-adjust:exact;color:#fff!important;border-radius:8px;padding:20px 24px;margin-bottom:20px}" +
+  ".report-header h1{color:#fff!important;font-size:16px!important}" +
+  ".report-header p{color:rgba(255,255,255,.8)!important}" +
+  ".aq-logo{-webkit-print-color-adjust:exact!important}" +
+  /* Stats cards */
+  ".stats-grid{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:10px!important;margin-bottom:20px!important}" +
+  ".stat-card{background:#f8f9fa!important;border:1px solid #dee2e6!important;border-radius:6px!important;padding:14px!important;text-align:center!important}" +
+  ".stat-num{font-size:24px!important;font-weight:800!important}" +
+  ".stat-lbl{font-size:10px!important;color:#666!important}" +
+  /* Table */
+  "table{background:#fff!important;border:1px solid #dee2e6!important;border-radius:6px!important;font-size:10px!important}" +
+  "th{background:#1a237e!important;color:#fff!important;font-size:9px!important;padding:8px 10px!important}" +
+  "td{border-bottom:1px solid #eee!important;padding:8px 10px!important;color:#333!important;font-size:10px!important}" +
+  "td div,td span{color:#333!important}" +
+  /* Statut badges */
+  ".pass-text{color:#15803d!important}" +
+  ".fail-text{color:#dc2626!important}" +
+  /* Ticket context */
+  ".ticket-context{background:#f8f9fa!important;border:1px solid #dee2e6!important;border-radius:6px!important;padding:16px!important;margin-bottom:16px!important;page-break-inside:avoid}" +
+  ".ticket-context h2{color:#1a237e!important;font-size:13px!important}" +
+  ".ticket-context p{color:#666!important}" +
+  ".ctx-section{background:#f0f4ff!important;border-color:inherit!important}" +
+  ".ctx-section div{color:#333!important}" +
+  ".ctx-section strong{color:#1a1a2e!important}" +
+  /* Anomalies */
+  ".anomalies-section{background:#fff5f5!important;border:1px solid #feb2b2!important;border-radius:6px!important;padding:14px!important;page-break-before:always}" +
+  ".anomalies-section h2{color:#c53030!important;font-size:12px!important}" +
+  ".anomaly-card{background:#fff!important;border:1px solid #eee!important;border-left:3px solid #e53e3e!important;border-radius:4px!important;padding:12px!important;margin-bottom:10px!important;page-break-inside:avoid}" +
+  ".anomaly-card div,.anomaly-card span,.anomaly-card pre{color:#333!important}" +
+  /* Screenshots */
+  "img{max-width:160px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
+  /* Page breaks */
+  "tr{page-break-inside:avoid}" +
+  ".report-footer{color:#999!important;font-size:9px!important;margin-top:20px!important;border-top:1px solid #eee!important;padding-top:8px!important}" +
+  "}";
+
 function failTypeBadge(ft) {
   var cfg = {
     SESSION_EXPIRED: { label: "SESSION EXPIRÉE", color: "#ff9500", bg: "rgba(255,149,0,.18)"   },
@@ -814,7 +856,7 @@ function buildTicketContextHtml(ticketInfo) {
 
   var sectionsHtml = sections.map(function(s) {
     var c = sectionColor(s.title);
-    return "<div style='margin-bottom:10px;padding:12px 16px;background:" + c.bg + ";border:1px solid " + c.border + "30;border-left:3px solid " + c.border + ";border-radius:6px'>" +
+    return "<div class='ctx-section' style='margin-bottom:10px;padding:12px 16px;background:" + c.bg + ";border:1px solid " + c.border + "30;border-left:3px solid " + c.border + ";border-radius:6px'>" +
       "<div style='font-family:monospace;font-size:11px;font-weight:700;color:" + c.border + ";margin-bottom:6px;text-transform:uppercase'>" + c.icon + " " + esc(s.title) + "</div>" +
       mdToHtml(s.body) +
       "</div>";
@@ -825,7 +867,7 @@ function buildTicketContextHtml(ticketInfo) {
     ? "Cas de test du ticket parent " + esc(contextType) + " (source : " + esc(ticketInfo.key) + " " + esc(ticketInfo.type) + ")"
     : "Cas de test source du ticket " + esc(contextType);
 
-  return "<div style='margin-bottom:28px;padding:20px;background:#111520;border:1px solid #1e2536;border-radius:10px'>" +
+  return "<div class='ticket-context' style='margin-bottom:28px;padding:20px;background:#111520;border:1px solid #1e2536;border-radius:10px'>" +
     "<h2 style='font-size:14px;margin:0 0 6px;color:#00d4ff;font-family:monospace'>" + esc(contextKey) + " — " + esc(contextSummary) + "</h2>" +
     "<p style='font-size:11px;color:#4a5568;margin:0 0 14px;font-family:monospace'>" + subtitle + "</p>" +
     sectionsHtml +
@@ -862,7 +904,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
 
   var failsSection = "";
   if (fail > 0) {
-    failsSection = "<div style='margin-top:24px;padding:16px 20px;background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25);border-radius:10px'>" +
+    failsSection = "<div class='anomalies-section' style='margin-top:24px;padding:16px 20px;background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25);border-radius:10px'>" +
       "<h2 style='font-size:13px;color:#ff3b5c;margin:0 0 12px'>❌ ANOMALIES (" + fail + ")</h2>" +
       allResults.filter(function(r){return r.status==="FAIL";}).map(function(r) {
         // ── Blocs diagnostics dev ───────────────────────────────────────────
@@ -914,7 +956,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
           "</div>";
         }
 
-        return "<div style='margin-bottom:16px;padding:14px;background:#111520;border-radius:8px;border-left:3px solid #ff3b5c'>" +
+        return "<div class='anomaly-card' style='margin-bottom:16px;padding:14px;background:#111520;border-radius:8px;border-left:3px solid #ff3b5c'>" +
           "<div style='display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start'>" +
           "<div>" +
           "<div style='font-family:monospace;font-size:12px;font-weight:700;color:#ff3b5c;margin-bottom:6px'>"+(r.label||r.url)+"</div>" +
@@ -935,23 +977,24 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<link href='https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;600&display=swap' rel='stylesheet'>" +
     "<style>body{background:#0a0d14;color:#e2e8f0;font-family:'DM Sans',sans-serif;margin:0;padding:32px} h1,h2{font-family:'Space Mono',monospace} " +
     "table{width:100%;border-collapse:collapse;background:#111520;border:1px solid #1e2536;border-radius:10px;overflow:hidden} " +
-    "th{padding:10px 14px;font-family:'Space Mono',monospace;font-size:10px;color:#4a5568;text-align:left;background:#171c2b;text-transform:uppercase}</style></head>" +
+    "th{padding:10px 14px;font-family:'Space Mono',monospace;font-size:10px;color:#4a5568;text-align:left;background:#171c2b;text-transform:uppercase} " +
+    PRINT_CSS + "</style></head>" +
     "<body><div style='max-width:1100px;margin:0 auto'>" +
-    "<div style='display:flex;align-items:center;gap:16px;margin-bottom:32px'>" +
-    "<div style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
+    "<div class='report-header' style='display:flex;align-items:center;gap:16px;margin-bottom:32px'>" +
+    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
     "<div><h1 style='font-size:20px;margin:0'>Rapport Playwright Direct — <span style='color:#00d4ff'>"+mode.toUpperCase()+"</span></h1>" +
     "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>"+sourceLabel+" · "+ENV_NAME+" · "+date+(DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"")+"</p></div></div>" +
-    "<div style='display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px'>" +
-    "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00d4ff'><div style='font-family:monospace;font-size:28px;font-weight:700;color:#00d4ff'>"+total+"</div><div style='font-size:12px;color:#8892a4'>Total</div></div>" +
-    "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00e87a'><div style='font-family:monospace;font-size:28px;font-weight:700;color:#00e87a'>"+pass+"</div><div style='font-size:12px;color:#8892a4'>PASS</div></div>" +
-    "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+(fail>0?"#ff3b5c":"#00e87a")+"'><div style='font-family:monospace;font-size:28px;font-weight:700;color:"+(fail>0?"#ff3b5c":"#00e87a")+"'>"+fail+"</div><div style='font-size:12px;color:#8892a4'>FAIL</div></div>" +
-    "<div style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
+    "<div class='stats-grid' style='display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px'>" +
+    "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00d4ff'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:#00d4ff'>"+total+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>Total</div></div>" +
+    "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00e87a'><div class='stat-num pass-text' style='font-family:monospace;font-size:28px;font-weight:700;color:#00e87a'>"+pass+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>PASS</div></div>" +
+    "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+(fail>0?"#ff3b5c":"#00e87a")+"'><div class='stat-num fail-text' style='font-family:monospace;font-size:28px;font-weight:700;color:"+(fail>0?"#ff3b5c":"#00e87a")+"'>"+fail+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>FAIL</div></div>" +
+    "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
     "</div>" +
     buildTicketContextHtml(TICKET_INFO) +
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
     "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
-    "<p style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js</p>" +
+    "<p class='report-footer' style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js</p>" +
     "</div></body></html>";
 
   var prefix = fail===0 ? "RAPPORT-OK-PW-DIRECT-" : "RAPPORT-FAIL-PW-DIRECT-";
@@ -973,12 +1016,27 @@ async function convertHtmlToPdf(htmlPath) {
     console.log("[PDF] Conversion du rapport en PDF...");
     var browser = await chromium.launch();
     var page = await browser.newPage();
+    // Émuler le media print pour activer le thème clair
+    await page.emulateMedia({ media: "print" });
     await page.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
+
+    var headerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
+      "<span style='font-weight:700;color:#1a237e'>AbyQA</span>" +
+      "<span>Rapport de test automatique</span>" +
+      "</div>";
+    var footerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
+      "<span>Safran Group — Aby QA V2</span>" +
+      "<span>Page <span class='pageNumber'></span> / <span class='totalPages'></span></span>" +
+      "</div>";
+
     await page.pdf({
       path: pdfPath,
       format: "A4",
       printBackground: true,
-      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" }
+      displayHeaderFooter: true,
+      headerTemplate: headerHtml,
+      footerTemplate: footerHtml,
+      margin: { top: "40px", bottom: "40px", left: "24px", right: "24px" }
     });
     await browser.close();
     console.log("[PDF] " + path.basename(pdfPath));
@@ -1102,10 +1160,11 @@ function generateComparisonReport(allEnvResults, mode) {
     "<link href='https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;600&display=swap' rel='stylesheet'>" +
     "<style>body{background:#0a0d14;color:#e2e8f0;font-family:'DM Sans',sans-serif;margin:0;padding:32px} h1,h2{font-family:'Space Mono',monospace} " +
     "table{width:100%;border-collapse:collapse;background:#111520;border:1px solid #1e2536;border-radius:10px;overflow:hidden} " +
-    "th{padding:10px 14px;font-family:'Space Mono',monospace;font-size:10px;color:#4a5568;text-align:left;background:#171c2b;text-transform:uppercase}</style></head>" +
+    "th{padding:10px 14px;font-family:'Space Mono',monospace;font-size:10px;color:#4a5568;text-align:left;background:#171c2b;text-transform:uppercase} " +
+    PRINT_CSS + "</style></head>" +
     "<body><div style='max-width:1200px;margin:0 auto'>" +
-    "<div style='display:flex;align-items:center;gap:16px;margin-bottom:28px'>" +
-    "<div style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
+    "<div class='report-header' style='display:flex;align-items:center;gap:16px;margin-bottom:28px'>" +
+    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
     "<div><h1 style='font-size:20px;margin:0'>Rapport Comparatif — <span style='color:#00d4ff'>" + mode.toUpperCase() + "</span> — " +
     envNames.map(function(en,i){ return i===0 ? en : "<span style='color:#ff9500'>vs</span> " + en; }).join(" ") + "</h1>" +
     "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>" + date + (DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"") + "</p></div></div>" +
