@@ -5554,7 +5554,25 @@ function opsLoadTicket() {
       opsRenderLoadedTickets();
       showToast(key + ' chargé (' + ticket.type + ')', '🎫');
       switchOpsTab('commande');
-      opsAnalyze();
+      // Charger le ticket enrichi pour détecter les tests existants avant analyse
+      fetch(SERVER + '/api/enriched/' + ticket.key).then(function(r2){return r2.json();}).then(function(enr) {
+        if (enr && enr.key && enr.proposedTests && enr.proposedTests.length) {
+          window._opsAutoTests = enr.proposedTests.filter(function(p){return p.type!=='manual';});
+          window._opsManualTests = enr.proposedTests.filter(function(p){return p.type==='manual';});
+          var testBadge = '';
+          if (window._opsAutoTests.length)   testBadge += '<span style="color:#3b6fff;font-size:11px;font-weight:600"> · ' + window._opsAutoTests.length + ' 🤖 auto</span>';
+          if (window._opsManualTests.length) testBadge += '<span style="color:#f97316;font-size:11px;font-weight:600"> · ' + window._opsManualTests.length + ' ✋ manuel</span>';
+          if (preview) preview.innerHTML += testBadge;
+        } else {
+          window._opsAutoTests = [];
+          window._opsManualTests = [];
+        }
+        opsAnalyze();
+      }).catch(function() {
+        window._opsAutoTests = [];
+        window._opsManualTests = [];
+        opsAnalyze();
+      });
     })
     .catch(function(e) {
       opsTickets.push({ key: key, summary: key, type: 'ticket', description: '' });
@@ -5673,13 +5691,29 @@ function opsAnalyze() {
 
 function opsLocalRoute(text) {
   // Si un ticket Jira est chargé et que le texte est vide/minimal,
-  // on se base sur le TYPE + STATUT du ticket pour router
+  // on se base sur le TYPE + STATUT + tests existants pour router
   if (opsTickets.length) {
     var firstType = (opsTickets[0].type || '').toLowerCase();
     var firstStatus = (opsTickets[0].status || '').toLowerCase();
     var wf = wfInfo(opsTickets[0].status);
     var hasRealText = text.trim().length > 8 && !text.match(/^[A-Z]+-\d+$/i);
+    var hasAutoTests = (window._opsAutoTests || []).length > 0;
+    var hasManualTests = (window._opsManualTests || []).length > 0;
+    var hasTests = hasAutoTests || hasManualTests;
+    var testSummary = hasTests
+      ? (hasAutoTests ? (window._opsAutoTests.length + ' auto') : '') + (hasAutoTests && hasManualTests ? ' + ' : '') + (hasManualTests ? (window._opsManualTests.length + ' manuel') : '')
+      : '';
     if (!hasRealText) {
+      // ── Ticket avec tests existants → Playwright en priorité ──
+      if (hasAutoTests) {
+        return { agent:'playwright', label:'▶ Lancer ' + window._opsAutoTests.length + ' test(s) auto', detail:opsTickets[0].key + ' — ' + testSummary, mode:'ui',
+          altAction: { agent:'ticket-gen', subtype: firstType.includes('bug') ? 'BUG' : firstType.includes('test') ? 'TEST' : 'US', label:'📝 Ré-enrichir' } };
+      }
+      if (hasManualTests && !hasAutoTests) {
+        return { agent:'manual', label:'📋 ' + window._opsManualTests.length + ' test(s) manuel(s)', detail:opsTickets[0].key + ' — vérification manuelle',
+          altAction: { agent:'ticket-gen', subtype: firstType.includes('bug') ? 'BUG' : 'US', label:'📝 Ré-enrichir' } };
+      }
+      // ── Pas de tests existants → route par type ──
       // Test → Lancer Playwright directement
       if (firstType.includes('test'))  return { agent:'playwright', label:'🎭 Lancer Playwright', detail:'Exécuter les tests depuis ' + opsTickets[0].key, mode:'ui', altAction: { agent:'ticket-gen', subtype:'TEST', label:'📋 Enrichir Test' } };
       // Bug rejeté/à corriger → Fix Playwright
@@ -5736,7 +5770,29 @@ function opsShowConfirm(route, cfg, originalText) {
   var isManual = cfg.mode === 'manual' || route.agent === 'manual';
   var stepsBlock = document.getElementById('ops-steps-block');
   if (stepsBlock) stepsBlock.style.display = isManual ? 'block' : 'none';
-  if (isManual && !(document.getElementById('ops-steps-list') || {}).children.length) opsAddStep();
+  // Pré-remplir les steps manuels depuis le ticket enrichi
+  if (isManual && (window._opsManualTests || []).length) {
+    var stepsList = document.getElementById('ops-steps-list');
+    if (stepsList) stepsList.innerHTML = '';
+    opsStepCount = 0;
+    window._opsManualTests.forEach(function(mt) {
+      (mt.steps || []).forEach(function(s) {
+        opsStepCount++;
+        var id = 'ops-step-' + opsStepCount;
+        var div = document.createElement('div');
+        div.id = id;
+        div.style.cssText = 'display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:8px;align-items:center;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px';
+        div.innerHTML =
+          '<input value="' + escHtml(s) + '" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-label">' +
+          '<select style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-action"><option value="expect-visible">Vérifier visible</option><option value="expect-text">Vérifier texte</option><option value="click">Cliquer</option><option value="fill">Remplir</option><option value="navigate">Naviguer</option></select>' +
+          '<input placeholder="Sélecteur ou valeur" style="background:var(--bg2);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px" id="' + id + '-target">' +
+          '<button onclick="opsRemoveStep(\'' + id + '\')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:14px;padding:0">🗑</button>';
+        stepsList.appendChild(div);
+      });
+    });
+  } else if (isManual && !(document.getElementById('ops-steps-list') || {}).children.length) {
+    opsAddStep();
+  }
 
   // Bouton alternatif (ex: Enrichir a aussi "▶ Playwright" et vice-versa)
   var altBtn = document.getElementById('ops-alt-btn');
@@ -5911,15 +5967,18 @@ function opsRenderGenResult(r) {
   }
   function editable(fieldId, value, multiline) {
     var tag = multiline ? 'div' : 'span';
+    var isEmpty = !value || !value.trim();
     var style = 'display:block;font-size:' + (multiline ? '13' : '15') + 'px;color:var(--text);' +
       (multiline ? 'line-height:1.7;white-space:pre-wrap;' : 'font-weight:700;line-height:1.4;') +
-      'border-radius:6px;padding:6px 8px;outline:none;border:1px dashed transparent;' +
-      'transition:border-color .2s;' +
-      (multiline ? 'min-height:48px;' : '');
+      'border-radius:6px;padding:6px 8px;outline:none;border:1px dashed ' + (isEmpty ? 'var(--border2)' : 'transparent') + ';' +
+      'transition:border-color .2s;';
+    // Pas de min-height si vide → évite les blocs noirs
+    if (multiline && !isEmpty) style += 'min-height:32px;';
     return '<' + tag + ' id="' + fieldId + '" contenteditable="true" ' +
       'style="' + style + '" ' +
+      'placeholder="Cliquer pour éditer…" ' +
       'onfocus="this.style.borderColor=\'var(--blue)\';this.style.background=\'var(--bg3)\'" ' +
-      'onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">' +
+      'onblur="this.style.borderColor=this.textContent.trim()?\'transparent\':\'var(--border2)\';this.style.background=\'transparent\'">' +
       escHtml(value || '') + '</' + tag + '>';
   }
   function copyBtn(label, val) {
