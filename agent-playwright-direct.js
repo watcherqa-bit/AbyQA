@@ -706,6 +706,7 @@ var PRINT_CSS =
   ".report-header{background:linear-gradient(135deg,#1a237e,#283593)!important;-webkit-print-color-adjust:exact;color:#fff!important;border-radius:8px;padding:20px 24px;margin-bottom:20px}" +
   ".report-header h1{color:#fff!important;font-size:16px!important}" +
   ".report-header p{color:rgba(255,255,255,.8)!important}" +
+  ".report-header a{color:#fff!important;text-decoration:underline!important}" +
   ".aq-logo{-webkit-print-color-adjust:exact!important}" +
   /* Stats cards */
   ".stats-grid{display:grid!important;grid-template-columns:repeat(4,1fr)!important;gap:10px!important;margin-bottom:20px!important}" +
@@ -717,6 +718,8 @@ var PRINT_CSS =
   "th{background:#1a237e!important;color:#fff!important;font-size:9px!important;padding:8px 10px!important}" +
   "td{border-bottom:1px solid #eee!important;padding:8px 10px!important;color:#333!important;font-size:10px!important}" +
   "td div,td span{color:#333!important}" +
+  /* Liens cliquables */
+  "a{color:#1a237e!important;text-decoration:underline!important}" +
   /* Statut badges */
   ".pass-text{color:#15803d!important}" +
   ".fail-text{color:#dc2626!important}" +
@@ -732,8 +735,8 @@ var PRINT_CSS =
   ".anomalies-section h2{color:#c53030!important;font-size:12px!important}" +
   ".anomaly-card{background:#fff!important;border:1px solid #eee!important;border-left:3px solid #e53e3e!important;border-radius:4px!important;padding:12px!important;margin-bottom:10px!important;page-break-inside:avoid}" +
   ".anomaly-card div,.anomaly-card span,.anomaly-card pre{color:#333!important}" +
-  /* Screenshots */
-  "img{max-width:160px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
+  /* Screenshots — plus grands en PDF */
+  "img{max-width:200px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
   /* Page breaks */
   "tr{page-break-inside:avoid}" +
   ".report-footer{color:#999!important;font-size:9px!important;margin-top:20px!important;border-top:1px solid #eee!important;padding-top:8px!important}" +
@@ -837,8 +840,10 @@ function buildTicketContextHtml(ticketInfo) {
       if (/^\d+[.)]\s+/.test(line)) {
         return "<div style='padding:2px 0 2px 16px;font-size:12px;color:#cbd5e1'>" + esc(line) + "</div>";
       }
-      // Gras **text**
-      var html = esc(line).replace(/\*\*(.+?)\*\*/g, "<strong style='color:#e2e8f0'>$1</strong>");
+      // Gras **text** + liens https://
+      var html = esc(line)
+        .replace(/\*\*(.+?)\*\*/g, "<strong style='color:#e2e8f0'>$1</strong>")
+        .replace(/(https?:\/\/[^\s&lt;]+)/g, "<a href='$1' style='color:#3b82f6;text-decoration:underline' target='_blank'>$1</a>");
       return "<div style='font-size:12px;color:#94a3b8;padding:1px 0'>" + html + "</div>";
     }).filter(Boolean).join("");
   }
@@ -891,8 +896,9 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     }).join("");
     if (!stepsDetail) stepsDetail = "<span style='color:#4a5568;font-size:10px'>—</span>";
     var shotCell = reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"120px", zoomWidth:"600px" });
+    var urlLink = r.url ? "<a href='" + r.url + "' style='color:#00d4ff;text-decoration:none;font-size:10px' target='_blank'>" + (r.url||"").substring(0,60) + "</a>" : "";
     return "<tr style='border-bottom:1px solid #1e2536'>" +
-      "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='font-size:10px;color:#4a5568;margin-top:2px'>"+(r.url||"").substring(0,60)+"</div></td>" +
+      "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='margin-top:2px'>"+urlLink+"</div></td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
       "<td style='padding:10px 14px;text-align:center;font-family:monospace;font-weight:700;color:"+(r.status==="PASS"?"#00e87a":"#ff3b5c")+";vertical-align:top'>"+(r.status==="PASS"?"✅ PASS":"❌ FAIL")+"</td>" +
       "<td style='padding:10px 14px;text-align:center;vertical-align:top'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
@@ -960,6 +966,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
           "<div style='display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start'>" +
           "<div>" +
           "<div style='font-family:monospace;font-size:12px;font-weight:700;color:#ff3b5c;margin-bottom:6px'>"+(r.label||r.url)+"</div>" +
+          (r.url ? "<div style='margin-bottom:6px'><a href='" + r.url + "' style='color:#00d4ff;font-size:10px;font-family:monospace;text-decoration:none' target='_blank'>" + r.url.substring(0,70) + "</a></div>" : "") +
           (r.issues||[]).map(function(i){return "<div style='font-size:12px;color:#8892a4;margin-bottom:3px'>• "+i+"</div>";}).join("") +
           "<div style='margin-top:8px'>" +
           (r.steps||[]).filter(function(s){return s.status==="FAIL";}).map(function(s){
@@ -973,6 +980,11 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
       }).join("") + "</div>";
   }
 
+  // Lien Jira cliquable si KEY disponible
+  var sourceLabelHtml = (KEY && /^[A-Z]+-\d+$/i.test(sourceLabel))
+    ? "<a href='https://" + CFG.jira.host + "/browse/" + sourceLabel + "' style='color:#00d4ff;text-decoration:none' target='_blank'>" + sourceLabel + "</a>"
+    : sourceLabel;
+
   var html = "<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'><title>Rapport PW Direct — "+mode.toUpperCase()+"</title>" +
     "<link href='https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@400;600&display=swap' rel='stylesheet'>" +
     "<style>body{background:#0a0d14;color:#e2e8f0;font-family:'DM Sans',sans-serif;margin:0;padding:32px} h1,h2{font-family:'Space Mono',monospace} " +
@@ -983,7 +995,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<div class='report-header' style='display:flex;align-items:center;gap:16px;margin-bottom:32px'>" +
     "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
     "<div><h1 style='font-size:20px;margin:0'>Rapport Playwright Direct — <span style='color:#00d4ff'>"+mode.toUpperCase()+"</span></h1>" +
-    "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>"+sourceLabel+" · "+ENV_NAME+" · "+date+(DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"")+"</p></div></div>" +
+    "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>"+sourceLabelHtml+" · "+ENV_NAME+" · "+date+(DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"")+"</p></div></div>" +
     "<div class='stats-grid' style='display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px'>" +
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00d4ff'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:#00d4ff'>"+total+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>Total</div></div>" +
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00e87a'><div class='stat-num pass-text' style='font-family:monospace;font-size:28px;font-weight:700;color:#00e87a'>"+pass+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>PASS</div></div>" +
