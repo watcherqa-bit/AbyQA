@@ -1325,6 +1325,23 @@ var server = http.createServer(function(req, res) {
                   var dName = path.basename(result.reportPath).replace(".html", "-diag.json");
                   try { fs.writeFileSync(path.join(BASE_DIR, "reports", dName), JSON.stringify(diagContent, null, 2), "utf8"); } catch(e) {}
                 }
+                // Capturer les logs de tests FAIL → inbox/logs/
+                var logLines2 = logs.filter(function(l) { return l.startsWith("PLAYWRIGHT_TEST_LOG:"); });
+                if (logLines2.length > 0) {
+                  var logsDir2 = path.join(BASE_DIR, "inbox", "logs");
+                  if (!fs.existsSync(logsDir2)) { try { fs.mkdirSync(logsDir2, { recursive: true }); } catch(e) {} }
+                  logLines2.forEach(function(line) {
+                    try {
+                      var logData2 = JSON.parse(line.replace("PLAYWRIGHT_TEST_LOG:", ""));
+                      var logId2   = (logData2.ticketKey || "NO-KEY") + "-" + Date.now();
+                      var logFile2 = path.join(logsDir2, logId2 + ".json");
+                      fs.writeFileSync(logFile2, JSON.stringify(Object.assign({ id: logId2 }, logData2), null, 2), "utf8");
+                      sendSSE(pdClientId,  { type: "test-log-new", log: Object.assign({ id: logId2 }, logData2) });
+                      if (pdClientId !== "default") sendSSE("default", { type: "test-log-new", log: Object.assign({ id: logId2 }, logData2) });
+                    } catch(e) {}
+                  });
+                }
+
                 if (result.fail > 0) {
                   leadQA.analyzePlaywrightFail(logs, result).then(function(diag) {
                     saveDiag({ result: result, diagnostic: diag, generatedAt: new Date().toISOString() });
@@ -2121,8 +2138,163 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Liste des logs de tests ──────────────────────────────────────────
+  if (method === “GET” && url === “/api/test-logs”) {
+    var tlDir = path.join(BASE_DIR, “inbox”, “logs”);
+    if (!fs.existsSync(tlDir)) { res.writeHead(200, { “Content-Type”: “application/json” }); res.end(“[]”); return; }
+    var tlFiles = fs.readdirSync(tlDir).filter(function(f) { return f.endsWith(“.json”); })
+      .sort().reverse().slice(0, 100);
+    var tlItems = tlFiles.map(function(f) {
+      try { return JSON.parse(fs.readFileSync(path.join(tlDir, f), “utf8”)); } catch(e) { return null; }
+    }).filter(Boolean);
+    res.writeHead(200, { “Content-Type”: “application/json” });
+    res.end(JSON.stringify(tlItems));
+    return;
+  }
+
+  // ── API : Détail d'un log ──────────────────────────────────────────────────
+  if (method === “GET” && url.startsWith(“/api/test-logs/”) && !url.endsWith(“/push-jira”)) {
+    var tlId = decodeURIComponent(url.replace(“/api/test-logs/”, “”));
+    if (tlId.includes(“..”)) { res.writeHead(400); res.end(“Invalid”); return; }
+    var tlPath = path.join(BASE_DIR, “inbox”, “logs”, tlId + “.json”);
+    if (!fs.existsSync(tlPath)) { res.writeHead(404, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ error: “Not found” })); return; }
+    try { res.writeHead(200, { “Content-Type”: “application/json” }); res.end(fs.readFileSync(tlPath, “utf8”)); }
+    catch(e) { res.writeHead(500); res.end(e.message); }
+    return;
+  }
+
+  // ── API : Supprimer un log ─────────────────────────────────────────────────
+  if (method === “DELETE” && url.startsWith(“/api/test-logs/”) && !url.endsWith(“/push-jira”)) {
+    var dlId = decodeURIComponent(url.replace(“/api/test-logs/”, “”));
+    if (dlId.includes(“..”)) { res.writeHead(400); res.end(“Invalid”); return; }
+    var dlPath = path.join(BASE_DIR, “inbox”, “logs”, dlId + “.json”);
+    try { if (fs.existsSync(dlPath)) fs.unlinkSync(dlPath); res.writeHead(200, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: true })); }
+    catch(e) { res.writeHead(500, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: false, error: e.message })); }
+    return;
+  }
+
+  // ── API : Intégrer log dans Jira (commentaire) ─────────────────────────────
+  if (method === “POST” && url.match(/^\/api\/test-logs\/[^/]+\/push-jira$/)) {
+    var pjId     = decodeURIComponent(url.replace(“/api/test-logs/”, “”).replace(“/push-jira”, “”));
+    var pjChunks = []; req.on(“data”, function(c) { pjChunks.push(c); });
+    req.on(“end”, async function() {
+      try {
+        var body    = JSON.parse(Buffer.concat(pjChunks).toString() || “{}”);
+        var pjPath  = path.join(BASE_DIR, “inbox”, “logs”, pjId + “.json”);
+        var logItem = JSON.parse(fs.readFileSync(pjPath, “utf8”));
+        var jiraKey = body.jiraKey || logItem.ticketKey;
+        if (!jiraKey) { res.writeHead(400, { “Content-Type”: “application/json” }); res.end(JSON.stringify({ ok: false, error: “Clé Jira manquante” })); return; }
+
+        var CFGpj  = require(“./config”);
+        var authpj = Buffer.from(CFGpj.jira.email + “:” + CFGpj.jira.token).toString(“base64”);
+        var https_pj = require(“https”);
+
+        // Construire le commentaire Jira (wiki markup)
+        var sections = body.sections || {};  // { jsExceptions, consoleErrors, networkFails, domSnippets, steps }
+        var comment  = “h3. 🔬 Rapport de test — “ + logItem.testLabel + “\n”;
+        comment += “*Date* : “ + new Date(logItem.timestamp).toLocaleString(“fr-FR”) +
+          “ | *Env* : “ + (logItem.env||”?”) +
+          “ | *Browser* : “ + (logItem.browser||”?”) +
+          “ | *Device* : “ + (logItem.device||”?”) + “\n”;
+        comment += “*URL* : “ + logItem.url + “\n\n”;
+
+        // Étapes FAIL
+        var steps = sections.steps !== undefined ? sections.steps : (logItem.steps||[]);
+        if (steps && steps.length) {
+          comment += “h3. ❌ Étapes en échec\n{noformat}\n”;
+          steps.forEach(function(s) { comment += “❌ “ + s.label + “ : “ + (s.detail||””) + (s.selector ? “ [“ + s.selector + “]” : “”) + “\n”; });
+          comment += “{noformat}\n\n”;
+        }
+
+        // JS Exceptions
+        var jsEx = sections.jsExceptions !== undefined ? sections.jsExceptions : (logItem.jsExceptions||[]);
+        if (jsEx && jsEx.length) {
+          comment += “h3. ⚡ Exceptions JavaScript\n”;
+          jsEx.forEach(function(ex, i) {
+            comment += “*Exception “ + (i+1) + “* : “ + ex.message + “\n”;
+            if (ex.stack) comment += “{noformat:title=Stack trace}\n” + ex.stack + “\n{noformat}\n”;
+          });
+          comment += “\n”;
+        }
+
+        // Console errors
+        var ceList = sections.consoleErrors !== undefined ? sections.consoleErrors : (logItem.consoleErrors||[]);
+        if (ceList && ceList.length) {
+          comment += “h3. 🖥️ Erreurs Console\n{noformat}\n”;
+          ceList.forEach(function(ce) {
+            var loc = ce.file ? “[“ + ce.file + (ce.line != null ? “:” + ce.line : “”) + “]  “ : “”;
+            comment += loc + ce.text + “\n”;
+          });
+          comment += “{noformat}\n\n”;
+        }
+
+        // Network fails
+        var nfList = sections.networkFails !== undefined ? sections.networkFails : (logItem.networkFails||[]);
+        if (nfList && nfList.length) {
+          comment += “h3. 🌐 Requêtes KO\n{noformat}\n”;
+          nfList.forEach(function(nf) { comment += nf.method + “  “ + nf.status + “  “ + nf.url + “\n”; });
+          comment += “{noformat}\n\n”;
+        }
+
+        // DOM snippets
+        var domList = sections.domSnippets !== undefined ? sections.domSnippets : (logItem.domSnippets||[]);
+        if (domList && domList.length) {
+          comment += “h3. 🔍 Contexte DOM\n”;
+          domList.forEach(function(ds) {
+            comment += “*” + ds.label + “* — {{“ + ds.selector + “}}”;
+            if (!ds.visible) comment += “ — *ABSENT / CACHÉ*”;
+            comment += “\n{noformat}\n” + ds.outerHTML + “\n{noformat}\n”;
+          });
+          comment += “\n”;
+        }
+
+        comment += “_Généré par AbyQA — agent-playwright-direct.js_”;
+
+        // POST commentaire Jira
+        var commentPayload = JSON.stringify({ body: comment });
+        var commentResult  = await new Promise(function(resolve, reject) {
+          var cr = https_pj.request({
+            hostname: CFGpj.jira.host,
+            path:     “/rest/api/2/issue/” + jiraKey + “/comment”,
+            method:   “POST”,
+            headers: {
+              “Authorization”:  “Basic “ + authpj,
+              “Content-Type”:   “application/json”,
+              “Accept”:         “application/json”,
+              “Content-Length”: Buffer.byteLength(commentPayload)
+            }
+          }, function(cRes) {
+            var cData = “”; cRes.on(“data”, function(d) { cData += d; });
+            cRes.on(“end”, function() { resolve({ status: cRes.statusCode, body: cData }); });
+          });
+          cr.on(“error”, reject);
+          cr.write(commentPayload); cr.end();
+        });
+
+        if (commentResult.status < 300) {
+          // Marquer le log comme intégré
+          logItem.pushedToJira = jiraKey;
+          logItem.pushedAt     = new Date().toISOString();
+          fs.writeFileSync(pjPath, JSON.stringify(logItem, null, 2), “utf8”);
+          console.log(“[test-log] Intégré dans “ + jiraKey);
+          res.writeHead(200, { “Content-Type”: “application/json” });
+          res.end(JSON.stringify({ ok: true, jiraKey: jiraKey }));
+        } else {
+          var errBody = commentResult.body.substring(0, 200);
+          res.writeHead(400, { “Content-Type”: “application/json” });
+          res.end(JSON.stringify({ ok: false, error: “Jira “ + commentResult.status + “ : “ + errBody }));
+        }
+      } catch(e) {
+        console.error(“[test-log] Erreur push-jira:”, e.message);
+        res.writeHead(500, { “Content-Type”: “application/json” });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // â”€â”€ API : Analyser un screenshot CSS avec Claude Vision â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  if (method === "POST" && url === "/api/analyze-screenshot") {
+  if (method === “POST” && url === “/api/analyze-screenshot”) {
     var ssChunks = [];
     req.on("data", function(c) { ssChunks.push(c); });
     req.on("end", function() {

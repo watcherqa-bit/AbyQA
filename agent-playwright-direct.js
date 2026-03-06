@@ -366,10 +366,35 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
     });
     page = await context.newPage();
 
-    var networkFails = [];
-    if (mode === "api") {
-      page.on("response", function(resp) { if (resp.status() >= 400) networkFails.push({ url: resp.url(), status: resp.status() }); });
-    }
+    // ── Capture diagnostics développeur (tous modes) ──────────────────────────
+    var networkFails   = [];  // { url, status, method, timing }
+    var consoleErrFull = [];  // { text, file, line, col }
+    var jsExceptions   = [];  // { message, stack }
+
+    page.on("response", function(resp) {
+      if (resp.status() >= 400) {
+        networkFails.push({ url: resp.url().substring(0, 200), status: resp.status(), method: resp.request().method() });
+      }
+    });
+    page.on("console", function(msg) {
+      if (msg.type() === "error") {
+        var loc = msg.location ? msg.location() : {};
+        consoleErrFull.push({
+          text: msg.text().substring(0, 300),
+          file: (loc.url || "").replace(/https?:\/\/[^/]+/, "").substring(0, 120),
+          line: loc.lineNumber != null ? loc.lineNumber + 1 : null,
+          col:  loc.columnNumber != null ? loc.columnNumber + 1 : null
+        });
+      }
+    });
+    page.on("pageerror", function(err) {
+      jsExceptions.push({
+        message: (err.message || String(err)).substring(0, 300),
+        stack: (err.stack || "").split("\n").slice(0, 8)
+          .map(function(l) { return l.replace(/https?:\/\/[^/]+/, "").substring(0, 120); })
+          .join("\n")
+      });
+    });
 
     var t0 = Date.now();
     var resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 30000 });
@@ -471,6 +496,39 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
       if (sr.status === "FAIL") { result.status="FAIL"; result.issues.push(STEPS[i].label + " : " + sr.detail); }
     }
 
+    // ── Contexte DOM pour les steps FAIL avec sélecteur ──────────────────────
+    var domSnippets = [];
+    var failedSelectors = result.steps.filter(function(s) { return s.status === "FAIL" && s.selector; });
+    if (failedSelectors.length > 0 && page) {
+      for (var fi = 0; fi < failedSelectors.length; fi++) {
+        var fStep = failedSelectors[fi];
+        try {
+          var snippet = await page.evaluate(function(sel) {
+            var el = document.querySelector(sel);
+            if (!el) return null;
+            return {
+              outerHTML:  el.outerHTML.substring(0, 500),
+              parentHTML: (el.parentElement || el).outerHTML.substring(0, 800),
+              tagName:    el.tagName.toLowerCase(),
+              id:         el.id || null,
+              classes:    el.className || null,
+              visible:    (el.offsetWidth > 0 && el.offsetHeight > 0)
+            };
+          }, fStep.selector);
+          if (snippet) domSnippets.push({ selector: fStep.selector, label: fStep.label, snippet: snippet });
+        } catch(e) {}
+      }
+    }
+
+    // Stocker les diagnostics dans result
+    result.jsExceptions   = jsExceptions;
+    result.consoleErrors  = consoleErrFull;
+    result.networkFails   = networkFails.filter(function(n) {
+      // Filtrer les ressources Jira/analytics (pas pertinentes pour les devs)
+      return !n.url.includes("analytics") && !n.url.includes("gravatar");
+    });
+    result.domSnippets    = domSnippets;
+
   } catch(e) {
     result.status = "FAIL";
     result.issues.push("Erreur : " + e.message.substring(0,100));
@@ -482,7 +540,6 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
     try {
       var shotName = [mode, thisEnv, device.name, browserName, (target.label||"page").replace(/[^a-z0-9]/gi,"-")].join("_") + "_" + Date.now() + ".png";
       result.screenshot = path.join(SCREENSHOTS_DIR, shotName);
-      // Annoter les éléments ayant un sélecteur avant le screenshot
       var annotableSteps = result.steps.filter(function(s) { return s.selector; });
       if (annotableSteps.length > 0) await annotateScreenshot(page, annotableSteps);
       await page.screenshot({ path: result.screenshot, fullPage: false });
@@ -496,13 +553,58 @@ async function createBugJira(result, mode) {
   if (DRY_RUN) { console.log("  [DRY_RUN] Bug Jira ignoré : " + result.label); return null; }
   var date = new Date().toLocaleString("fr-FR");
   var stepsSummary = (result.steps||[]).map(function(s) {
-    return (s.status==="PASS"?"✅":"❌") + " " + s.label + " — " + (s.detail||"").substring(0,80);
+    return (s.status==="PASS"?"[OK]":"[FAIL]") + " " + s.label + " — " + (s.detail||"").substring(0,80);
   }).join("\n");
+
+  // ── Blocs diagnostics développeur ────────────────────────────────────────────
+  var devSection = "";
+
+  // Exceptions JS (page errors)
+  if (result.jsExceptions && result.jsExceptions.length) {
+    devSection += "h3. ⚡ Exceptions JavaScript\n";
+    result.jsExceptions.forEach(function(ex, i) {
+      devSection += "*Exception " + (i+1) + "* : " + ex.message + "\n";
+      if (ex.stack) devSection += "{noformat:title=Stack trace}\n" + ex.stack + "\n{noformat}\n";
+    });
+    devSection += "\n";
+  }
+
+  // Erreurs console avec localisation fichier:ligne:col
+  if (result.consoleErrors && result.consoleErrors.length) {
+    devSection += "h3. 🖥️ Erreurs Console\n{noformat}\n";
+    result.consoleErrors.forEach(function(ce) {
+      var loc = ce.file ? (ce.file + (ce.line != null ? ":" + ce.line : "") + (ce.col != null ? ":" + ce.col : "")) : "";
+      devSection += (loc ? "[" + loc + "] " : "") + ce.text + "\n";
+    });
+    devSection += "{noformat}\n\n";
+  }
+
+  // Requêtes réseau KO
+  if (result.networkFails && result.networkFails.length) {
+    devSection += "h3. 🌐 Requêtes Réseau KO\n{noformat}\n";
+    result.networkFails.forEach(function(nf) {
+      devSection += nf.method + "  " + nf.status + "  " + nf.url + "\n";
+    });
+    devSection += "{noformat}\n\n";
+  }
+
+  // Contexte DOM des éléments en échec
+  if (result.domSnippets && result.domSnippets.length) {
+    devSection += "h3. 🔍 Contexte DOM — Éléments en échec\n";
+    result.domSnippets.forEach(function(ds) {
+      devSection += "*" + ds.label + "* — sélecteur : {{" + ds.selector + "}}\n";
+      devSection += "Visible : " + (ds.snippet.visible ? "oui" : "*non — élément absent/caché*") + "\n";
+      devSection += "{noformat:title=outerHTML}\n" + ds.snippet.outerHTML + "\n{noformat}\n";
+    });
+    devSection += "\n";
+  }
+
   var desc = "h3. Résumé\n*Mode* : "+mode.toUpperCase()+" | *URL* : "+result.url+" | *Env* : "+result.env+"\n\n" +
     "h3. Étant donné\nTest Playwright Direct lancé sur "+result.url+"\n\n" +
     "h3. Résultat obtenu\n"+(result.issues||[]).join("\n")+"\n\n" +
     "h3. Résultat attendu\nToutes les étapes en PASS\n\n" +
     "h3. Étapes de contrôle\n{noformat}\n"+stepsSummary+"\n{noformat}\n\n" +
+    (devSection || "") +
     "h3. Environnement\n*Env* : "+result.env+" | *Browser* : "+result.browser+" | *Device* : "+result.device+" | *Date* : "+date+"\n\n" +
     "h3. Impact\n*Page* : "+result.label+" | *Sévérité* : "+(result.issues.length>2?"Majeur":"Mineur")+"\n\n" +
     "_Généré par Aby QA V2 — agent-playwright-direct.js_";
@@ -570,18 +672,70 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     failsSection = "<div style='margin-top:24px;padding:16px 20px;background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.25);border-radius:10px'>" +
       "<h2 style='font-size:13px;color:#ff3b5c;margin:0 0 12px'>❌ ANOMALIES (" + fail + ")</h2>" +
       allResults.filter(function(r){return r.status==="FAIL";}).map(function(r) {
-        return "<div style='margin-bottom:12px;padding:12px;background:#111520;border-radius:8px;display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start'>" +
+        // ── Blocs diagnostics dev ───────────────────────────────────────────
+        var devHtml = "";
+
+        if (r.jsExceptions && r.jsExceptions.length) {
+          devHtml += "<div style='margin-top:12px;padding:10px 12px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:6px'>" +
+            "<div style='font-family:monospace;font-size:10px;color:#ef4444;font-weight:700;margin-bottom:6px'>⚡ EXCEPTIONS JS (" + r.jsExceptions.length + ")</div>" +
+            r.jsExceptions.map(function(ex) {
+              return "<div style='font-size:11px;color:#fca5a5;margin-bottom:4px;font-weight:600'>" + ex.message + "</div>" +
+                (ex.stack ? "<pre style='margin:2px 0 8px;font-size:10px;color:#8892a4;overflow-x:auto;white-space:pre-wrap;line-height:1.4'>" + ex.stack + "</pre>" : "");
+            }).join("") +
+          "</div>";
+        }
+
+        if (r.consoleErrors && r.consoleErrors.length) {
+          devHtml += "<div style='margin-top:10px;padding:10px 12px;background:rgba(249,115,22,.07);border:1px solid rgba(249,115,22,.25);border-radius:6px'>" +
+            "<div style='font-family:monospace;font-size:10px;color:#f97316;font-weight:700;margin-bottom:6px'>🖥️ ERREURS CONSOLE (" + r.consoleErrors.length + ")</div>" +
+            r.consoleErrors.map(function(ce) {
+              var loc = ce.file ? "<span style='color:#60a5fa;font-size:10px'>" + ce.file + (ce.line != null ? ":" + ce.line : "") + (ce.col != null ? ":" + ce.col : "") + "</span>  " : "";
+              return "<div style='font-size:11px;color:#fdba74;margin-bottom:3px;font-family:monospace'>" + loc + ce.text + "</div>";
+            }).join("") +
+          "</div>";
+        }
+
+        if (r.networkFails && r.networkFails.length) {
+          devHtml += "<div style='margin-top:10px;padding:10px 12px;background:rgba(139,92,246,.07);border:1px solid rgba(139,92,246,.25);border-radius:6px'>" +
+            "<div style='font-family:monospace;font-size:10px;color:#a78bfa;font-weight:700;margin-bottom:6px'>🌐 REQUÊTES KO (" + r.networkFails.length + ")</div>" +
+            r.networkFails.map(function(nf) {
+              var sc = nf.status >= 500 ? "#ef4444" : "#f97316";
+              return "<div style='font-size:11px;font-family:monospace;margin-bottom:2px'>" +
+                "<span style='color:#8892a4'>" + nf.method + "</span>  " +
+                "<span style='color:" + sc + ";font-weight:700'>" + nf.status + "</span>  " +
+                "<span style='color:#94a3b8'>" + nf.url + "</span></div>";
+            }).join("") +
+          "</div>";
+        }
+
+        if (r.domSnippets && r.domSnippets.length) {
+          devHtml += "<div style='margin-top:10px;padding:10px 12px;background:rgba(6,182,212,.07);border:1px solid rgba(6,182,212,.25);border-radius:6px'>" +
+            "<div style='font-family:monospace;font-size:10px;color:#22d3ee;font-weight:700;margin-bottom:6px'>🔍 CONTEXTE DOM</div>" +
+            r.domSnippets.map(function(ds) {
+              return "<div style='margin-bottom:8px'>" +
+                "<div style='font-size:11px;color:#94a3b8;margin-bottom:3px'><span style='color:#60a5fa'>" + ds.label + "</span>  <code style='color:#8892a4;font-size:10px'>" + ds.selector + "</code>" +
+                (!ds.snippet.visible ? "  <span style='color:#ef4444;font-size:10px;font-weight:700'>⚠ ABSENT/CACHÉ</span>" : "") + "</div>" +
+                "<pre style='margin:0;font-size:10px;color:#64748b;overflow-x:auto;white-space:pre-wrap;max-height:80px;line-height:1.3'>" + ds.snippet.outerHTML + "</pre>" +
+              "</div>";
+            }).join("") +
+          "</div>";
+        }
+
+        return "<div style='margin-bottom:16px;padding:14px;background:#111520;border-radius:8px;border-left:3px solid #ff3b5c'>" +
+          "<div style='display:grid;grid-template-columns:1fr auto;gap:16px;align-items:start'>" +
           "<div>" +
           "<div style='font-family:monospace;font-size:12px;font-weight:700;color:#ff3b5c;margin-bottom:6px'>"+(r.label||r.url)+"</div>" +
           (r.issues||[]).map(function(i){return "<div style='font-size:12px;color:#8892a4;margin-bottom:3px'>• "+i+"</div>";}).join("") +
           "<div style='margin-top:8px'>" +
           (r.steps||[]).filter(function(s){return s.status==="FAIL";}).map(function(s){
-            return "<div style='font-size:11px;color:#ff9500;font-family:monospace'>  ❌ "+s.label+" : "+s.detail+"</div>";
+            return "<div style='font-size:11px;color:#ff9500;font-family:monospace'>❌ "+s.label+" : "+s.detail+"</div>";
           }).join("") +
-          "</div></div>" +
+          "</div>" +
+          devHtml +
+          "</div>" +
           (r.screenshot ? "<a href='/screenshots/"+path.basename(r.screenshot)+"' target='_blank'>" +
-            "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:160px;border-radius:6px;border:1px solid rgba(255,59,92,.3)' loading='lazy'></a>" : "<span></span>") +
-          "</div>";
+            "<img src='/screenshots/"+path.basename(r.screenshot)+"' style='max-width:180px;border-radius:6px;border:1px solid rgba(255,59,92,.3)' loading='lazy'></a>" : "<span></span>") +
+          "</div></div>";
       }).join("") + "</div>";
   }
 
@@ -881,6 +1035,26 @@ async function main() {
     for (var i = 0; i < fails.length; i++) {
       var k = await createBugJira(fails[i], MODE);
       if (k) bugKeys.push(k);
+      // Émettre le log de test pour chaque FAIL (capturé par agent-server.js)
+      if (fails[i].status === "FAIL") {
+        console.log("PLAYWRIGHT_TEST_LOG:" + JSON.stringify({
+          ticketKey:    KEY || null,
+          testLabel:    fails[i].label,
+          url:          fails[i].url,
+          env:          fails[i].env,
+          mode:         MODE,
+          browser:      fails[i].browser,
+          device:       fails[i].device,
+          issues:       fails[i].issues || [],
+          steps:        (fails[i].steps||[]).filter(function(s){return s.status==="FAIL";}).map(function(s){ return { label:s.label, detail:s.detail, selector:s.selector||null }; }),
+          jsExceptions: fails[i].jsExceptions  || [],
+          consoleErrors:fails[i].consoleErrors || [],
+          networkFails: fails[i].networkFails  || [],
+          domSnippets:  (fails[i].domSnippets||[]).map(function(ds){ return { selector:ds.selector, label:ds.label, visible:ds.snippet.visible, outerHTML:ds.snippet.outerHTML }; }),
+          screenshot:   fails[i].screenshot ? require("path").basename(fails[i].screenshot) : null,
+          timestamp:    new Date().toISOString()
+        }));
+      }
     }
   }
 

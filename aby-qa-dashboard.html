@@ -1281,6 +1281,11 @@
           <span class="nav-text">Rapports</span>
           <span class="nav-badge new nav-text" id="badge-reports" style="display:none">0</span>
         </div>
+        <div class="nav-item" onclick="showPanel('logs')" title="Logs de tests — diagnostics développeur">
+          <div class="icon">🔬</div>
+          <span class="nav-text">Logs</span>
+          <span class="nav-badge new nav-text" id="badge-logs" style="display:none">0</span>
+        </div>
         <div class="nav-item" onclick="showPanel('matrix')" title="Matrice de traçabilité QA">
           <div class="icon">📐</div>
           <span class="nav-text">Matrice QA</span>
@@ -2835,6 +2840,27 @@
       </div>
     </div>
 
+    <!-- ══ LOGS DE TESTS ══ -->
+    <div class="panel" id="panel-logs">
+      <div class="panel-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🔬</span>
+          <div>
+            <div class="panel-title">Logs de Tests</div>
+            <div class="panel-desc">Diagnostics développeur — à vérifier avant intégration Jira</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="logs-count" style="font-family:var(--mono);font-size:11px;color:var(--text3)"></span>
+          <button onclick="loadTestLogs()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">↺ Actualiser</button>
+          <button onclick="clearAllLogs()" style="background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.2);color:var(--red);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">🗑 Tout effacer</button>
+        </div>
+      </div>
+      <div id="logs-list" style="display:flex;flex-direction:column;gap:12px;padding:20px 24px">
+        <div style="color:var(--text3);font-size:12px;text-align:center;padding:40px">Aucun log — les échecs de tests apparaîtront ici</div>
+      </div>
+    </div>
+
     <!-- ══ RAPPORTS TESTS ══ -->
     <div class="panel" id="panel-reports">
       <div class="panel-header">
@@ -3893,6 +3919,15 @@ function handleSSE(data) {
   } else if (data.type === "chat-error") {
     chatAppendStreamText("\n❌ " + (data.message || "Erreur"));
     finishChatStream(false);
+  } else if (data.type === "test-log-new") {
+    var badge = document.getElementById('badge-logs');
+    if (badge) {
+      var cur = parseInt(badge.textContent||'0', 10) || 0;
+      badge.textContent = cur + 1;
+      badge.style.display = 'inline-flex';
+    }
+    showToast('Nouveau log : ' + (data.log && data.log.testLabel ? data.log.testLabel : 'test FAIL'), '🔬');
+    return;
   } else if (data.type === "poll-ticket") {
     handlePollTickets(data);
   } else if (data.type === "poll-qa-ready") {
@@ -4031,6 +4066,7 @@ function showPanel(id) {
   if (id === "playwright-direct") { loadTestQueue(); updatePWDSummary(); }
   if (id === "pipeline")          updatePWDSummary();
   if (id === "reports")           loadPlaywrightReports();
+  if (id === "logs")              loadTestLogs();
   if (id === "settings")          loadSettingsPanel();
   if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
   if (id === "releases" && typeof loadReleases === "function") loadReleases();
@@ -11440,6 +11476,219 @@ function pushXraySteps() {
     showToast("Erreur : " + err.message, "❌");
     if (btn) { btn.disabled = false; btn.textContent = "📋 Envoyer vers Xray"; }
   });
+}
+
+// ── LOGS DE TESTS ─────────────────────────────────────────────────────────────
+var _logsData = [];
+
+function loadTestLogs() {
+  var list = document.getElementById('logs-list');
+  var cnt  = document.getElementById('logs-count');
+  if (list) list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>';
+  fetch(SERVER + '/api/test-logs')
+    .then(function(r) { return r.json(); })
+    .then(function(items) {
+      _logsData = items;
+      if (cnt) cnt.textContent = items.length + ' log(s)';
+      var badge = document.getElementById('badge-logs');
+      var unpushed = items.filter(function(i) { return !i.pushedToJira; }).length;
+      if (badge) { badge.textContent = unpushed; badge.style.display = unpushed > 0 ? 'inline-flex' : 'none'; }
+      if (!list) return;
+      if (!items.length) {
+        list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px">Aucun log — les échecs de tests apparaîtront ici</div>';
+        return;
+      }
+      list.innerHTML = items.map(function(log) { return renderLogCard(log); }).join('');
+    })
+    .catch(function() { if (list) list.innerHTML = '<div style="color:var(--red);font-size:12px;text-align:center;padding:32px">Erreur serveur</div>'; });
+}
+
+function renderLogCard(log) {
+  var isPushed = !!log.pushedToJira;
+  var dateStr  = log.timestamp ? new Date(log.timestamp).toLocaleString('fr-FR', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}) : '—';
+  var hasEx    = log.jsExceptions   && log.jsExceptions.length   > 0;
+  var hasCe    = log.consoleErrors  && log.consoleErrors.length  > 0;
+  var hasNf    = log.networkFails   && log.networkFails.length   > 0;
+  var hasDom   = log.domSnippets    && log.domSnippets.length    > 0;
+  var tags     = [
+    hasEx  ? '<span style="background:rgba(239,68,68,.15);color:#ef4444;border-radius:4px;padding:1px 7px;font-family:var(--mono);font-size:10px;font-weight:700">⚡ ' + log.jsExceptions.length + ' exception(s) JS</span>' : '',
+    hasCe  ? '<span style="background:rgba(249,115,22,.15);color:#f97316;border-radius:4px;padding:1px 7px;font-family:var(--mono);font-size:10px;font-weight:700">🖥️ ' + log.consoleErrors.length + ' erreur(s) console</span>' : '',
+    hasNf  ? '<span style="background:rgba(139,92,246,.15);color:#a78bfa;border-radius:4px;padding:1px 7px;font-family:var(--mono);font-size:10px;font-weight:700">🌐 ' + log.networkFails.length + ' requête(s) KO</span>' : '',
+    hasDom ? '<span style="background:rgba(6,182,212,.15);color:#22d3ee;border-radius:4px;padding:1px 7px;font-family:var(--mono);font-size:10px;font-weight:700">🔍 ' + log.domSnippets.length + ' élément(s) DOM</span>' : ''
+  ].filter(Boolean).join(' ');
+
+  var id = escHtml(log.id);
+
+  return '<div id="log-card-' + id + '" style="background:var(--bg2);border:1px solid ' + (isPushed ? 'rgba(0,232,122,.25)' : 'rgba(255,59,92,.25)') + ';border-radius:12px;overflow:hidden">' +
+    // Header card
+    '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer" onclick="toggleLogCard(\'' + id + '\')">' +
+      '<span style="font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:' + (isPushed ? 'rgba(0,232,122,.15)' : 'rgba(255,59,92,.12)') + ';color:' + (isPushed ? 'var(--green)' : 'var(--red)') + ';flex-shrink:0">' + (isPushed ? '✅ INTÉGRÉ' : '❌ FAIL') + '</span>' +
+      (log.ticketKey ? '<a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(log.ticketKey) + '" target="_blank" onclick="event.stopPropagation()" style="font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;background:rgba(59,111,255,.12);border:1px solid rgba(59,111,255,.3);border-radius:4px;color:var(--blue);text-decoration:none;flex-shrink:0">🎫 ' + escHtml(log.ticketKey) + '</a>' : '') +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(log.testLabel || '—') + '</div>' +
+        '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px">' + escHtml(log.url||'') + ' · ' + escHtml(log.env||'') + ' · ' + escHtml(log.browser||'') + ' · ' + dateStr + '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">' + tags + '</div>' +
+      '<span style="color:var(--text3);font-size:14px;flex-shrink:0" id="log-chevron-' + id + '">▼</span>' +
+    '</div>' +
+    // Detail (hidden by default)
+    '<div id="log-detail-' + id + '" style="display:none;padding:0 16px 16px">' +
+      renderLogDetail(log) +
+    '</div>' +
+  '</div>';
+}
+
+function renderLogDetail(log) {
+  var id = escHtml(log.id);
+  var html = '';
+
+  // Étapes FAIL
+  if (log.steps && log.steps.length) {
+    html += logSection('❌ Étapes en échec', 'red',
+      '<div style="display:flex;flex-direction:column;gap:4px">' +
+      log.steps.map(function(s) {
+        return '<div style="font-size:11px;font-family:var(--mono);color:#ff9500;padding:4px 8px;background:var(--bg3);border-radius:4px">' +
+          '❌ ' + escHtml(s.label) + ' : ' + escHtml(s.detail||'') +
+          (s.selector ? ' <span style="color:var(--text3)">→ ' + escHtml(s.selector) + '</span>' : '') + '</div>';
+      }).join('') + '</div>');
+  }
+
+  // JS Exceptions
+  if (log.jsExceptions && log.jsExceptions.length) {
+    html += logSection('⚡ Exceptions JavaScript', '#ef4444',
+      log.jsExceptions.map(function(ex, i) {
+        var tid = 'log-ex-' + id + '-' + i;
+        return '<div style="margin-bottom:10px">' +
+          '<div style="font-size:12px;color:#fca5a5;font-weight:600;margin-bottom:4px">' + escHtml(ex.message) + '</div>' +
+          (ex.stack ? '<textarea id="' + tid + '" style="width:100%;min-height:80px;background:var(--bg);color:#8892a4;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;resize:vertical;box-sizing:border-box">' + escHtml(ex.stack) + '</textarea>' : '') +
+        '</div>';
+      }).join(''));
+  }
+
+  // Console errors
+  if (log.consoleErrors && log.consoleErrors.length) {
+    var ceRows = log.consoleErrors.map(function(ce) {
+      var loc = ce.file ? escHtml(ce.file + (ce.line != null ? ':' + ce.line : '') + (ce.col != null ? ':' + ce.col : '')) : '';
+      return (loc ? '<span style="color:#60a5fa">' + loc + '</span>  ' : '') + escHtml(ce.text);
+    }).join('\n');
+    html += logSection('🖥️ Erreurs Console', '#f97316',
+      '<textarea id="log-ce-' + id + '" style="width:100%;min-height:100px;background:var(--bg);color:#fdba74;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;resize:vertical;box-sizing:border-box">' + ceRows + '</textarea>');
+  }
+
+  // Network fails
+  if (log.networkFails && log.networkFails.length) {
+    var nfRows = log.networkFails.map(function(nf) {
+      return escHtml(nf.method) + '  ' + nf.status + '  ' + escHtml(nf.url);
+    }).join('\n');
+    html += logSection('🌐 Requêtes KO', '#a78bfa',
+      '<textarea id="log-nf-' + id + '" style="width:100%;min-height:80px;background:var(--bg);color:#c4b5fd;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;resize:vertical;box-sizing:border-box">' + nfRows + '</textarea>');
+  }
+
+  // DOM snippets
+  if (log.domSnippets && log.domSnippets.length) {
+    html += logSection('🔍 Contexte DOM', '#22d3ee',
+      log.domSnippets.map(function(ds, i) {
+        var did = 'log-dom-' + id + '-' + i;
+        return '<div style="margin-bottom:8px">' +
+          '<div style="font-size:11px;color:#94a3b8;margin-bottom:4px;font-family:var(--mono)">' +
+            escHtml(ds.label) + '  <code style="color:#60a5fa">' + escHtml(ds.selector) + '</code>' +
+            (!ds.visible ? '  <span style="color:#ef4444;font-weight:700">⚠ ABSENT/CACHÉ</span>' : '') +
+          '</div>' +
+          '<textarea id="' + did + '" style="width:100%;min-height:70px;background:var(--bg);color:#67e8f9;border:1px solid var(--border);border-radius:6px;padding:8px;font-family:var(--mono);font-size:10px;resize:vertical;box-sizing:border-box">' + escHtml(ds.outerHTML||'') + '</textarea>' +
+        '</div>';
+      }).join(''));
+  }
+
+  // Screenshot
+  if (log.screenshot) {
+    html += '<div style="margin-top:10px">' +
+      '<a href="/screenshots/' + encodeURIComponent(log.screenshot) + '" target="_blank">' +
+      '<img src="/screenshots/' + encodeURIComponent(log.screenshot) + '" style="max-width:100%;border-radius:8px;border:1px solid var(--border2)" loading="lazy"></a>' +
+    '</div>';
+  }
+
+  // Barre d'actions
+  var jiraKey = log.ticketKey || '';
+  html += '<div style="display:flex;gap:8px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">' +
+    (log.pushedToJira
+      ? '<span style="font-size:12px;color:var(--green)">✅ Intégré dans ' + escHtml(log.pushedToJira) + ' — ' + (log.pushedAt ? new Date(log.pushedAt).toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : '') + '</span>'
+      : '<button onclick="pushLogToJira(\'' + escHtml(log.id) + '\')" id="log-push-btn-' + escHtml(log.id) + '" style="background:rgba(0,102,204,.2);border:1px solid rgba(0,102,204,.4);color:#4da6ff;border-radius:6px;padding:7px 16px;cursor:pointer;font-size:12px;font-weight:600">📎 Intégrer dans Jira</button>') +
+    (log.pushedToJira ? '' : '<input id="log-jira-key-' + escHtml(log.id) + '" type="text" value="' + escHtml(jiraKey) + '" placeholder="SAF-123" style="width:100px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-family:var(--mono);font-size:12px;text-transform:uppercase" oninput="this.value=this.value.toUpperCase()">') +
+    '<span id="log-push-status-' + escHtml(log.id) + '" style="font-size:11px;font-family:var(--mono);color:var(--text3)"></span>' +
+    '<div style="flex:1"></div>' +
+    '<button onclick="dismissLog(\'' + escHtml(log.id) + '\')" style="background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.2);color:var(--red);border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px">🗑 Ignorer</button>' +
+  '</div>';
+
+  return html;
+}
+
+function logSection(title, color, content) {
+  return '<div style="margin-bottom:10px;border:1px solid ' + color + '33;border-radius:8px;overflow:hidden">' +
+    '<div style="background:' + color + '11;padding:6px 12px;font-family:var(--mono);font-size:10px;font-weight:700;color:' + color + '">' + title + '</div>' +
+    '<div style="padding:10px 12px">' + content + '</div>' +
+  '</div>';
+}
+
+function toggleLogCard(id) {
+  var detail   = document.getElementById('log-detail-' + id);
+  var chevron  = document.getElementById('log-chevron-' + id);
+  if (!detail) return;
+  var isOpen = detail.style.display !== 'none';
+  detail.style.display  = isOpen ? 'none' : 'block';
+  if (chevron) chevron.textContent = isOpen ? '▼' : '▲';
+}
+
+function pushLogToJira(logId) {
+  var keyEl  = document.getElementById('log-jira-key-' + logId);
+  var btn    = document.getElementById('log-push-btn-' + logId);
+  var stEl   = document.getElementById('log-push-status-' + logId);
+  var key    = keyEl ? keyEl.value.trim().toUpperCase() : '';
+
+  if (!key || !/^[A-Z]+-\d+$/.test(key)) { showToast('Clé Jira invalide (ex : SAF-123)', '⚠️'); return; }
+  if (btn)  { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
+  if (stEl) stEl.textContent = '';
+
+  fetch(SERVER + '/api/test-logs/' + encodeURIComponent(logId) + '/push-jira', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ jiraKey: key })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Intégrer dans Jira'; }
+    if (d.ok) {
+      var url = 'https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + key;
+      if (stEl) stEl.innerHTML = '✅ Intégré dans <a href="' + url + '" target="_blank" style="color:var(--blue)">' + escHtml(key) + '</a>';
+      showToast('Log intégré dans ' + key, '✅');
+      setTimeout(loadTestLogs, 800);
+    } else {
+      if (stEl) stEl.textContent = '❌ ' + (d.error || 'Erreur');
+      showToast('Erreur : ' + (d.error || '?'), '❌');
+    }
+  })
+  .catch(function(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '📎 Intégrer dans Jira'; }
+    if (stEl) stEl.textContent = '❌ ' + e.message;
+  });
+}
+
+function dismissLog(logId) {
+  fetch(SERVER + '/api/test-logs/' + encodeURIComponent(logId), { method: 'DELETE' })
+    .then(function() { loadTestLogs(); })
+    .catch(function() {});
+}
+
+function clearAllLogs() {
+  if (!confirm('Supprimer tous les logs non intégrés ?')) return;
+  fetch(SERVER + '/api/test-logs')
+    .then(function(r) { return r.json(); })
+    .then(function(items) {
+      var pending = items.filter(function(i) { return !i.pushedToJira; });
+      return Promise.all(pending.map(function(i) {
+        return fetch(SERVER + '/api/test-logs/' + encodeURIComponent(i.id), { method: 'DELETE' });
+      }));
+    })
+    .then(function() { loadTestLogs(); });
 }
 </script>
 </body>
