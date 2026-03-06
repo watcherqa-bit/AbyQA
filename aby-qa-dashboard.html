@@ -3463,6 +3463,8 @@
       </button>
       <span id="rpt-preview-attach-status" style="font-size:11px;font-family:var(--mono);color:var(--text3)"></span>
     </div>
+    <button id="rpt-preview-open-tab" onclick="openReportInNewTab()"
+      style="background:rgba(0,232,122,.15);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;font-weight:600;flex-shrink:0;white-space:nowrap">↗ Nouvel onglet</button>
     <button onclick="closeReportPreview()"
       style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px;flex-shrink:0">✕ Fermer</button>
   </div>
@@ -4148,6 +4150,16 @@ function showPanel(id, opts) {
 
 // Navigation back/forward navigateur
 window.addEventListener("popstate", function(e) {
+  // Fermer le modal report-preview si on revient en arrière
+  var rptModal = document.getElementById('modal-report-preview');
+  if (rptModal && rptModal.style.display !== 'none' && (!e.state || !e.state.modal)) {
+    rptModal.style.display = 'none';
+    var rptIframe = document.getElementById('rpt-preview-iframe');
+    if (rptIframe) rptIframe.src = '';
+    document.body.style.overflow = '';
+  }
+  // Si c'est un état modal, ne pas changer de panel
+  if (e.state && e.state.modal) return;
   var id = (e.state && e.state.panel) || (window.location.hash.slice(1)) || "dashboard";
   showPanel(id, { _fromPopstate: true });
 });
@@ -8772,6 +8784,11 @@ function blUpdateSyncStamp() {
 // ── RACCOURCIS CLAVIER GLOBAUX ─────────────────────────────────────────────────
 function initKeyboardShortcuts() {
   document.addEventListener("keydown", function(e) {
+    // Escape ferme les modals ouverts (fonctionne même depuis un iframe)
+    if (e.key === "Escape") {
+      var rptModal = document.getElementById('modal-report-preview');
+      if (rptModal && rptModal.style.display !== 'none') { closeReportPreview(); return; }
+    }
     var tag = ((document.activeElement || {}).tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -10021,19 +10038,32 @@ function previewReport(filename, ticketKey, status, mode) {
   // Pré-remplir la clé Jira si connue
   if (keyEl) keyEl.value = ticketKey || '';
 
-  // Charger l'iframe
+  // Charger l'iframe (inline, pas attachment)
   if (iframe) iframe.src = '/api/download/' + encodeURIComponent(filename);
 
   modal.style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  // Ajouter un état historique pour pouvoir fermer avec back
+  history.pushState({ modal: 'report-preview' }, '', '#report-preview');
+}
+
+function openReportInNewTab() {
+  var fnEl = document.getElementById('rpt-preview-filename');
+  if (fnEl && fnEl.textContent) {
+    window.open('/api/download/' + encodeURIComponent(fnEl.textContent), '_blank');
+  }
 }
 
 function closeReportPreview() {
   var modal  = document.getElementById('modal-report-preview');
   var iframe = document.getElementById('rpt-preview-iframe');
-  if (modal)  modal.style.display = 'none';
-  if (iframe) iframe.src = '';
-  document.body.style.overflow = '';
+  if (modal && modal.style.display !== 'none') {
+    modal.style.display = 'none';
+    if (iframe) iframe.src = '';
+    document.body.style.overflow = '';
+    // Si on est sur #report-preview, revenir en arrière
+    if (window.location.hash === '#report-preview') history.back();
+  }
 }
 
 function previewAttachToJira() {

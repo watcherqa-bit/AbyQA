@@ -355,12 +355,20 @@ var server = http.createServer(function(req, res) {
 
   // â"€â"€ API : TÃ©lÃ©charger un fichier du dossier reports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url.startsWith("/api/download/")) {
-    var fname = decodeURIComponent(url.replace("/api/download/", ""));
+    var dlParts = url.replace("/api/download/", "").split("?");
+    var fname = decodeURIComponent(dlParts[0]);
+    var dlForce = url.includes("?dl=1");
     var fpath = path.join(BASE_DIR, "reports", fname);
     if (fs.existsSync(fpath)) {
       var ext  = path.extname(fname).toLowerCase();
-      var mime = ext===".csv"?"text/csv":ext===".html"?"text/html":ext===".json"?"application/json":"application/octet-stream";
-      res.writeHead(200, { "Content-Type": mime, 'Content-Disposition': 'attachment; filename="' + fname + '"' });
+      var mime = ext===".csv"?"text/csv":ext===".html"?"text/html; charset=utf-8":ext===".json"?"application/json":ext===".md"?"text/markdown; charset=utf-8":"application/octet-stream";
+      var headers = { "Content-Type": mime };
+      if (dlForce || (ext !== ".html" && ext !== ".md")) {
+        headers["Content-Disposition"] = 'attachment; filename="' + fname + '"';
+      } else {
+        headers["Content-Disposition"] = "inline";
+      }
+      res.writeHead(200, headers);
       fs.createReadStream(fpath).pipe(res);
     } else {
       res.writeHead(404); res.end("Fichier introuvable : " + fname);
@@ -1112,21 +1120,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  if (method === "GET" && url.startsWith("/api/download/")) {
-    var fileName = decodeURIComponent(url.replace("/api/download/", ""));
-    var filePath = path.join(REPORTS_DIR, fileName);
-    if (fs.existsSync(filePath)) {
-      var ext = path.extname(fileName);
-      var ct  = ext === ".xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              : ext === ".csv"  ? "text/csv"
-              : ext === ".md"   ? "text/markdown; charset=utf-8"
-              : ext === ".html" ? "text/html; charset=utf-8"
-              : "text/plain";
-      res.writeHead(200, { "Content-Type": ct, "Content-Disposition": "attachment; filename=\"" + fileName + "\"" });
-      fs.createReadStream(filePath).pipe(res);
-    } else { res.writeHead(404); res.end("Fichier introuvable"); }
-    return;
-  }
+  // Route /api/download/ dupliquée supprimée — voir la version unifiée plus haut
 
   if (method === "POST" && url === "/api/stop") {
     var b = ""; req.on("data", function(c) { b += c; });
