@@ -4050,7 +4050,7 @@ function loadReports() {
 }
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
-function showPanel(id) {
+function showPanel(id, opts) {
   var panel = document.getElementById("panel-" + id);
   if (!panel) return;
   document.querySelectorAll(".panel").forEach(function(p) {
@@ -4061,6 +4061,15 @@ function showPanel(id) {
   panel.classList.add("active");
   panel.style.display = (id === "chat") ? "flex" : (id === "backlog") ? "flex" : "block";
   if (typeof event !== "undefined" && event && event.currentTarget) event.currentTarget.classList.add("active");
+  // Sync nav active state via data-panel
+  document.querySelectorAll(".nav-item[data-panel]").forEach(function(n) {
+    if (n.dataset.panel === id) n.classList.add("active");
+  });
+  // URL hash — sauf si on vient du popstate (évite double entrée)
+  if (!opts || !opts._fromPopstate) {
+    var hash = "#" + id;
+    if (window.location.hash !== hash) history.pushState({ panel: id }, "", hash);
+  }
   // Auto-refresh callbacks
   if (id === "backup")            loadReports();
   if (id === "playwright-direct") { loadTestQueue(); updatePWDSummary(); }
@@ -4068,9 +4077,23 @@ function showPanel(id) {
   if (id === "reports")           loadPlaywrightReports();
   if (id === "logs")              loadTestLogs();
   if (id === "settings")          loadSettingsPanel();
-  if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
+  if (id === "backlog")           loadBacklog(true);
   if (id === "releases" && typeof loadReleases === "function") loadReleases();
 }
+
+// Navigation back/forward navigateur
+window.addEventListener("popstate", function(e) {
+  var id = (e.state && e.state.panel) || (window.location.hash.slice(1)) || "dashboard";
+  showPanel(id, { _fromPopstate: true });
+});
+
+// Pose data-panel sur chaque nav-item d'après son onclick (fait 1 seule fois au boot)
+document.addEventListener("DOMContentLoaded", function() {
+  document.querySelectorAll(".nav-item[onclick]").forEach(function(el) {
+    var m = el.getAttribute("onclick").match(/showPanel\(['"]([^'"]+)['"]\)/);
+    if (m) el.dataset.panel = m[1];
+  });
+});
 
 // ── FOCUS TRAP ────────────────────────────────────────────────────────────────
 var _focusTrapHandler = null;
@@ -5361,6 +5384,15 @@ document.addEventListener("DOMContentLoaded", function() {
   loadCycleState();      // Charger l'état des 3 cycles
   setInterval(loadCycleState, 30000); // Rafraîchir toutes les 30s
   initAllJiraAutocompletes(); // Autocomplete Jira sur tous les champs clés
+
+  // Restaurer le panel depuis le hash URL (refresh / partage de lien)
+  var initPanel = window.location.hash.slice(1) || "dashboard";
+  var validPanels = ["dashboard","backlog","enriched","operations","chat","playwright-direct",
+                     "reports","logs","matrix","css","releases","drupal","settings","pipeline"];
+  if (!document.getElementById("panel-" + initPanel)) initPanel = "dashboard";
+  // Pousser l'état initial dans l'historique pour que le 1er back fonctionne
+  history.replaceState({ panel: initPanel }, "", "#" + initPanel);
+  showPanel(initPanel, { _fromPopstate: true });
 
   // Init source et résumé config
   if (document.getElementById("src-xml")) selectSource("xml");
