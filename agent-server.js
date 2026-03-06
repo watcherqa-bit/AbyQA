@@ -3002,6 +3002,34 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // POST /api/analyze-logs  — analyse IA des logs Playwright (via leadQA)
+  if (method === "POST" && url === "/api/analyze-logs") {
+    var alChunks = [];
+    req.on("data", function(c) { alChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var body = JSON.parse(Buffer.concat(alChunks).toString());
+        var logs = body.logs || "";
+        if (!logs.trim()) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Pas de logs à analyser" }));
+          return;
+        }
+        leadQA.analyzePlaywrightFail(logs, {}).then(function(diag) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(diag || { diagnosis: "Aucun diagnostic disponible" }));
+        }).catch(function(err) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message || "Erreur analyse" }));
+        });
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "JSON invalide" }));
+      }
+    });
+    return;
+  }
+
   // POST /api/claude-code  —  exÃ©cuter claude --print <prompt>
   if (method === "POST" && url === "/api/claude-code") {
     var ccChunks = [];
