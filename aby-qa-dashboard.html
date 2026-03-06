@@ -6220,10 +6220,10 @@ function opsRenderGenResult(r) {
           '<div style="font-size:10px;color:#f97316;font-family:var(--mono);margin-bottom:6px;font-weight:700">✋ VÉRIFICATION MANUELLE REQUISE</div>' +
           (pt.steps || []).map(function(s, si) {
             var cbId = 'manual-check-' + i + '-' + si;
-            return '<label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:4px">' +
+            return '<div style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:4px" onclick="var cb=this.querySelector(\'input\');cb.checked=!cb.checked;cb.onchange()">' +
               '<input type="checkbox" id="' + cbId + '" onchange="this.parentElement.style.opacity=this.checked?\'0.5\':\'1\'" ' +
-              'style="margin-top:2px;accent-color:#f97316;flex-shrink:0">' +
-              '<span style="font-size:11px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</span></label>';
+              'style="margin-top:2px;accent-color:#f97316;flex-shrink:0;width:16px;height:16px">' +
+              '<span style="font-size:11px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</span></div>';
           }).join('') +
           '</div>';
       }
