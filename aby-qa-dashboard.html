@@ -2477,7 +2477,7 @@
       <!-- SOURCE TILES -->
       <div class="form-card">
         <div class="form-card-title">📥 SOURCE DE LA CIBLE</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
           <div class="source-tile active" id="pwd-src-url" onclick="selectPWDSource('url')">
             <div class="source-icon">🔗</div>
             <div class="source-label">URL(s)</div>
@@ -2487,6 +2487,11 @@
             <div class="source-icon">🎫</div>
             <div class="source-label">Clé Jira</div>
             <div class="source-hint">Ticket existant</div>
+          </div>
+          <div class="source-tile" id="pwd-src-enriched" onclick="selectPWDSource('enriched')">
+            <div class="source-icon">📂</div>
+            <div class="source-label">Enrichi</div>
+            <div class="source-hint">Tests déjà générés</div>
           </div>
           <div class="source-tile" id="pwd-src-xml" onclick="selectPWDSource('xml')">
             <div class="source-icon">📄</div>
@@ -2521,6 +2526,23 @@
             <div id="pwd-ticket-title" style="font-size:13px;font-weight:600"></div>
             <div id="pwd-ticket-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:3px"></div>
           </div>
+        </div>
+
+        <!-- Zone Enrichi -->
+        <div id="pwd-zone-enriched" style="display:none">
+          <label>Clé du ticket enrichi</label>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input type="text" id="pwd-enriched-key" placeholder="Ex: SAFWBST-2699"
+              style="flex:1;text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()"
+              onkeydown="if(event.key==='Enter')loadEnrichedForPlaywright(this.value.trim())">
+            <button class="btn btn-secondary" onclick="loadEnrichedForPlaywright(document.getElementById('pwd-enriched-key').value.trim())">📂 Charger</button>
+            <button class="btn btn-secondary" onclick="openEnrichedPickerPWD()" title="Choisir parmi les tickets enrichis">☰</button>
+          </div>
+          <!-- Picker liste enrichis -->
+          <div id="pwd-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:10px"></div>
+          <!-- Résumé du ticket chargé -->
+          <div id="pwd-enriched-summary" style="display:none"></div>
         </div>
 
         <!-- Zone XML -->
@@ -6178,6 +6200,18 @@ function opsIntegrateJira(key) {
         ' &nbsp;<button onclick="opsLaunchPlaywright(\'' + escHtml(key) + '\')" ' +
           'style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px;font-weight:600;margin-left:4px">' +
           '▶ Tester maintenant</button>';
+      // Sauvegarder les proposedTests dans le ticket enrichi pour accès ultérieur
+      var allTests = (window._opsAutoTests||[]).concat(
+        (window._opsGenData && window._opsGenData.proposedTests
+          ? window._opsGenData.proposedTests.filter(function(p){return p.type==='manual';})
+          : []));
+      if (allTests.length) {
+        fetch(SERVER + '/api/enriched/' + encodeURIComponent(key), {
+          method: 'PUT',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ proposedTests: allTests })
+        }).catch(function(){});
+      }
       showToast('Contenu intégré dans ' + key, '✅');
     } else {
       if (st) st.textContent = '❌ ' + (d.error || 'Erreur Jira');
@@ -6755,7 +6789,7 @@ function selectPWDMode(mode) {
 // ── SOURCE ────────────────────────────────────────────────────────────────────
 function selectPWDSource(src) {
   pwdSource = src;
-  ["url","jira-key","xml","text"].forEach(function(s) {
+  ["url","jira-key","enriched","xml","text"].forEach(function(s) {
     var tile = document.getElementById("pwd-src-" + s);
     var zone = document.getElementById("pwd-zone-" + s);
     if (tile) {
@@ -6770,6 +6804,144 @@ function selectPWDSource(src) {
     }
     if (zone) zone.style.display = s === src ? "block" : "none";
   });
+}
+
+// ── ENRICHI → PLAYWRIGHT DIRECT ───────────────────────────────────────────────
+function openEnrichedPickerPWD() {
+  var picker = document.getElementById("pwd-enriched-picker");
+  if (!picker) return;
+  if (picker.style.display !== "none") { picker.style.display = "none"; return; }
+  picker.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Chargement...</div>';
+  picker.style.display = "block";
+  fetch("/api/enriched").then(function(r){return r.json();}).then(function(list) {
+    if (!list.length) { picker.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--text3)">Aucun ticket enrichi</div>'; return; }
+    picker.innerHTML = list.map(function(t) {
+      var auto   = (t.proposedTests||[]).filter(function(p){return p.type!=='manual';}).length;
+      var manual = (t.proposedTests||[]).filter(function(p){return p.type==='manual';}).length;
+      var badge  = auto || manual
+        ? '<span style="margin-left:auto;font-size:9px;font-family:var(--mono);color:var(--text3)">' +
+          (auto   ? '<span style="color:#3b6fff">' + auto   + ' 🤖</span> ' : '') +
+          (manual ? '<span style="color:#f97316">' + manual + ' ✋</span>'  : '') +
+          '</span>'
+        : '';
+      return '<div onclick="loadEnrichedForPlaywright(\'' + escHtml(t.key) + '\')" ' +
+        'style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" ' +
+        'onmouseover="this.style.background=\'var(--bg4)\'" onmouseout="this.style.background=\'\'">' +
+        '<span style="font-family:var(--mono);font-size:11px;color:var(--cyan);flex-shrink:0">' + escHtml(t.key) + '</span>' +
+        '<span style="font-size:12px;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(t.summary||'') + '</span>' +
+        badge + '</div>';
+    }).join('');
+  }).catch(function() {
+    picker.innerHTML = '<div style="padding:10px;font-size:11px;color:var(--red)">Erreur de chargement</div>';
+  });
+}
+
+function loadEnrichedForPlaywright(key) {
+  if (!key) return;
+  var picker = document.getElementById("pwd-enriched-picker");
+  if (picker) picker.style.display = "none";
+  var summary = document.getElementById("pwd-enriched-summary");
+  if (summary) { summary.style.display = "block"; summary.innerHTML = '<div style="font-size:11px;color:var(--text3)">Chargement de ' + key + '...</div>'; }
+  fetch("/api/enriched/" + key).then(function(r){return r.json();}).then(function(t) {
+    if (!t || !t.key) { showToast("Ticket enrichi introuvable : " + key, "❌"); return; }
+    var keyInput = document.getElementById("pwd-enriched-key");
+    if (keyInput) keyInput.value = t.key;
+
+    var proposed = t.proposedTests || [];
+    var autoTests   = proposed.filter(function(p){return p.type!=='manual';});
+    var manualTests = proposed.filter(function(p){return p.type==='manual';});
+    window._opsAutoTests = autoTests;
+
+    // Pré-remplir les URLs depuis testUrls ou depuis la clé Jira
+    if (t.testUrls && t.testUrls.length) {
+      selectPWDSource('url');
+      pwdSource = 'enriched'; // garder la source enriched visible
+      selectPWDSource('enriched');
+      var urlsEl = document.getElementById("pwd-urls");
+      if (urlsEl) { urlsEl.value = t.testUrls.join("\n"); }
+    }
+
+    // Pré-remplir les instructions avec les tests auto
+    if (autoTests.length) {
+      var instrEl = document.getElementById("pwd-instructions");
+      if (instrEl) {
+        instrEl.value = autoTests.map(function(pt, i) {
+          return (i+1) + '. ' + (pt.name||'Test auto') + '\n' + (pt.steps||[]).join('\n');
+        }).join('\n\n').substring(0, 800);
+      }
+    }
+
+    // Construire le résumé affiché
+    var html = '<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:12px 14px">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<span style="font-family:var(--mono);font-size:12px;color:var(--cyan);font-weight:700">' + escHtml(t.key) + '</span>' +
+      '<span style="font-size:13px;font-weight:600;color:var(--text);flex:1">' + escHtml(t.summary||'') + '</span>' +
+      '</div>';
+
+    if (!proposed.length) {
+      html += '<div style="font-size:11px;color:var(--text3);font-style:italic">Aucun test enregistré — tu peux quand même lancer un audit UI standard</div>';
+    } else {
+      // Résumé auto
+      if (autoTests.length) {
+        html += '<div style="margin-bottom:8px">' +
+          '<div style="font-size:10px;font-family:var(--mono);color:#3b6fff;font-weight:700;margin-bottom:6px">🤖 ' + autoTests.length + ' TEST(S) AUTO → PLAYWRIGHT</div>' +
+          autoTests.map(function(pt,i) {
+            return '<div style="font-size:11px;color:var(--text2);padding:3px 0 3px 8px;border-left:2px solid #3b6fff33">' +
+              '<strong>' + escHtml(pt.name||'Scénario '+(i+1)) + '</strong> ' +
+              '<span style="color:var(--text3)">(' + (pt.steps||[]).length + ' étapes)</span></div>';
+          }).join('') + '</div>';
+      }
+      // Checklist manuelle
+      if (manualTests.length) {
+        html += '<div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">' +
+          '<div style="font-size:10px;font-family:var(--mono);color:#f97316;font-weight:700;margin-bottom:6px">✋ ' + manualTests.length + ' TEST(S) MANUEL(S) — À vérifier manuellement</div>' +
+          manualTests.map(function(pt,i) {
+            return '<div style="margin-bottom:8px">' +
+              '<div style="font-size:11px;font-weight:600;color:#f97316;margin-bottom:4px">' + escHtml(pt.name||'Test '+(i+1)) + '</div>' +
+              (pt.steps||[]).map(function(s,si) {
+                var cbId = 'epwd-manual-' + i + '-' + si;
+                return '<label style="display:flex;align-items:flex-start;gap:7px;cursor:pointer;margin-bottom:3px">' +
+                  '<input type="checkbox" id="' + cbId + '" style="margin-top:2px;accent-color:#f97316;flex-shrink:0">' +
+                  '<span style="font-size:11px;color:var(--text2);font-family:var(--mono)">' + escHtml(s) + '</span></label>';
+              }).join('') + '</div>';
+          }).join('') + '</div>';
+      }
+    }
+
+    // Bouton lancer
+    html += '<div style="display:flex;gap:8px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">' +
+      (autoTests.length
+        ? '<button onclick="pwdRunFromEnriched(\'' + escHtml(t.key) + '\',\'' + escHtml((t.testUrls||[]).join(',')) + '\')" style="background:#3b6fff;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600">▶ Lancer ' + autoTests.length + ' test(s) auto</button>'
+        : '<button onclick="runPWDirect()" style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:600">▶ Lancer audit standard</button>') +
+      '<button onclick="document.getElementById(\'pwd-jira-key\').value=\'' + escHtml(t.key) + '\';selectPWDSource(\'jira-key\')" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:12px">🎫 Basculer en mode Jira</button>' +
+      '</div></div>';
+
+    if (summary) { summary.style.display = "block"; summary.innerHTML = html; }
+    showToast(t.key + ' chargé — ' + autoTests.length + ' auto · ' + manualTests.length + ' manuel', '📂');
+  }).catch(function(e) {
+    showToast("Erreur chargement ticket enrichi", "❌");
+    if (summary) summary.style.display = "none";
+  });
+}
+
+function pwdRunFromEnriched(key, urlsCsv) {
+  // Remplir les URLs + instructions + lancer
+  if (urlsCsv) {
+    var urlsEl = document.getElementById("pwd-urls");
+    if (urlsEl) urlsEl.value = urlsCsv.split(",").filter(Boolean).join("\n");
+  }
+  // Mettre la clé pour l'associer au rapport
+  var keyEl = document.getElementById("pwd-jira-key");
+  if (keyEl) keyEl.value = key;
+  // Passer en mode url (ou jira-key si pas d'URLs)
+  var urlsEl2 = document.getElementById("pwd-urls");
+  if (urlsEl2 && urlsEl2.value.trim()) {
+    pwdSource = "url";
+  } else {
+    selectPWDSource("jira-key");
+  }
+  // Les instructions ont été pré-remplies par loadEnrichedForPlaywright
+  runPWDirect();
 }
 
 function handlePWDXml(input) {
@@ -7510,9 +7682,9 @@ function launchPWDTest() {
   if (!devices.length)       { showToast("Sélectionne au moins un device", "⚠️"); return; }
 
   // Validation source
-  if (pwdSource === "url") {
+  if (pwdSource === "url" || pwdSource === "enriched") {
     var urlsRaw = document.getElementById("pwd-urls") ? document.getElementById("pwd-urls").value.trim() : "";
-    if (!urlsRaw) { showToast("Saisis au moins une URL", "⚠️"); return; }
+    if (!urlsRaw && pwdSource === "url") { showToast("Saisis au moins une URL", "⚠️"); return; }
   } else if (pwdSource === "jira-key") {
     var key = document.getElementById("pwd-jira-key") ? document.getElementById("pwd-jira-key").value.trim() : "";
     if (!key) { showToast("Saisis une clé Jira", "⚠️"); return; }
@@ -7556,8 +7728,13 @@ function launchPWDTest() {
 
   var fd = null;
 
-  if (pwdSource === "url") {
+  if (pwdSource === "url" || pwdSource === "enriched") {
     var rawPwdUrls = document.getElementById("pwd-urls").value.trim();
+    // Si "enriched" sans URLs → basculer en jira-key avec la clé enrichie
+    if (pwdSource === "enriched" && !rawPwdUrls) {
+      var eKey = document.getElementById("pwd-enriched-key") ? document.getElementById("pwd-enriched-key").value.trim() : "";
+      if (eKey) { params.source = "jira-key"; params.key = eKey; callAgent(params); return; }
+    }
     // Décoder les entités HTML (avec ou sans ; final) avant envoi
     params.urls = rawPwdUrls
       .replace(/&[a-z0-9]+;?/gi, function(e) {
@@ -7578,6 +7755,12 @@ function launchPWDTest() {
         return u.replace(/[,.\s]+$/, ""); // nettoyer ponctuation finale
       })
       .filter(Boolean).join(",");
+    // En mode enrichi, associer la clé au rapport
+    if (pwdSource === "enriched") {
+      var eKeyRun = document.getElementById("pwd-enriched-key") ? document.getElementById("pwd-enriched-key").value.trim() : "";
+      if (eKeyRun) params.key = eKeyRun;
+      params.source = "url";
+    }
     callAgent(params);
   } else if (pwdSource === "jira-key") {
     params.key = document.getElementById("pwd-jira-key").value.trim().toUpperCase();
