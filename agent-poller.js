@@ -278,9 +278,49 @@ function runPoll() {
       if (qaTickets.length > 0) {
         console.log("[POLLER] " + qaTickets.length + " ticket(s) en phase QA : " +
           qaTickets.slice(0, 5).map(function(t) { return t.key + " [" + t.status + "]"; }).join(", "));
+
+        // Déclencher le pipeline automatique si des tickets QA existent
+        triggerPipeline();
       }
     });
   });
+}
+
+// ── DÉCLENCHEMENT AUTOMATIQUE DU PIPELINE ────────────────────────────────────
+var _lastPipelineTrigger = 0;
+var PIPELINE_COOLDOWN_MS = 10 * 60 * 1000; // 10 min entre deux déclenchements
+
+function triggerPipeline() {
+  var now = Date.now();
+  if (now - _lastPipelineTrigger < PIPELINE_COOLDOWN_MS) {
+    console.log("[POLLER] Pipeline déjà déclenché récemment — cooldown actif");
+    return;
+  }
+  _lastPipelineTrigger = now;
+  console.log("[POLLER] Déclenchement automatique du pipeline QA...");
+
+  var serverPort = (CFG.server && CFG.server.port) || 3210;
+  var req = require("http").request({
+    hostname: "127.0.0.1",
+    port: serverPort,
+    path: "/api/daily-job/run",
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Content-Length": 2 }
+  }, function(res) {
+    var data = "";
+    res.on("data", function(c) { data += c; });
+    res.on("end", function() {
+      console.log("[POLLER] Pipeline déclenché — réponse : " + data.substring(0, 100));
+      if (_sendSSE) {
+        _sendSSE("default", { type: "pipeline-auto-triggered", at: new Date().toISOString() });
+      }
+    });
+  });
+  req.on("error", function(e) {
+    console.log("[POLLER] Erreur déclenchement pipeline : " + e.message);
+  });
+  req.write("{}");
+  req.end();
 }
 
 // ── CALCUL DE LA PROCHAINE VÉRIFICATION ──────────────────────────────────────
