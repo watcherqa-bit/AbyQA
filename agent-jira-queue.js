@@ -885,24 +885,41 @@ function pollBacklog() {
 }
 
 // ── DÉMARRAGE ─────────────────────────────────────────────────────────────────
-console.log("══════════════════════════════════════════════════");
-console.log("  AbyQA V3 — Surveillance Jira");
-console.log("══════════════════════════════════════════════════");
-console.log("  Projet  : " + CFG.jira.project);
-console.log("  Compte  : " + CFG.jira.email);
-console.log("  Polling To Do    : " + (POLL_MS / 1000) + "s");
-console.log("  Polling Backlog  : " + (POLL_BACKLOG_MS / 1000) + "s");
-console.log("  Validation gate  : " + (VALIDATION_TIMEOUT_MS / 60000) + "min (auto-approve)");
-console.log("  LLM              : Claude API (Anthropic)");
-console.log("══════════════════════════════════════════════════\n");
+// start() peut être appelé depuis agent-server.js ou en standalone
+var _pollInterval = null;
+var _backlogInterval = null;
 
-// Démarrage immédiat
-poll();
-pollBacklog();
+function start() {
+  console.log("[jira-queue] Démarrage — polling To Do " + (POLL_MS / 1000) + "s, Backlog " + (POLL_BACKLOG_MS / 1000) + "s");
+  // Premier poll après 3s (laisser le serveur finir de démarrer)
+  setTimeout(function() { poll(); pollBacklog(); }, 3000);
+  // Intervalles récurrents
+  if (_pollInterval) clearInterval(_pollInterval);
+  if (_backlogInterval) clearInterval(_backlogInterval);
+  _pollInterval    = setInterval(poll,        POLL_MS);
+  _backlogInterval = setInterval(pollBacklog, POLL_BACKLOG_MS);
+}
 
-// Intervalles
-setInterval(poll,        POLL_MS);
-setInterval(pollBacklog, POLL_BACKLOG_MS);
+function stop() {
+  if (_pollInterval)    { clearInterval(_pollInterval);    _pollInterval = null; }
+  if (_backlogInterval) { clearInterval(_backlogInterval); _backlogInterval = null; }
+  console.log("[jira-queue] Arrêté");
+}
 
-// ── EXPORT (si utilisé depuis agent-server.js) ────────────────────────────────
-module.exports = { poll, pollBacklog, requestValidation };
+// Standalone : node agent-jira-queue.js
+if (require.main === module) {
+  console.log("══════════════════════════════════════════════════");
+  console.log("  AbyQA V3 — Surveillance Jira");
+  console.log("══════════════════════════════════════════════════");
+  console.log("  Projet  : " + CFG.jira.project);
+  console.log("  Compte  : " + CFG.jira.email);
+  console.log("  Polling To Do    : " + (POLL_MS / 1000) + "s");
+  console.log("  Polling Backlog  : " + (POLL_BACKLOG_MS / 1000) + "s");
+  console.log("  Validation gate  : " + (VALIDATION_TIMEOUT_MS / 60000) + "min (auto-approve)");
+  console.log("  LLM              : Claude API (Anthropic)");
+  console.log("══════════════════════════════════════════════════\n");
+  start();
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+module.exports = { start, stop, poll, pollBacklog, requestValidation };

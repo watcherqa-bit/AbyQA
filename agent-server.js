@@ -127,8 +127,7 @@ var runningProcs = {};
 var agentLocks = {};
 
 // â"€â"€ Surveillance Jira Queue â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-var queueProc  = null;
-var queueStats = { count: 0, lastCheck: null, running: false };
+const jiraQueue = require("./agent-jira-queue");
 
 function sendSSE(clientId, data) {
   var clients = sseClients[clientId] || [];
@@ -3563,7 +3562,15 @@ server.listen(PORT, "0.0.0.0", function() {
       : {};
     poller.start(startupSettings, sendSSE);
   } catch(e) {
-    console.log("  [POLLER] Erreur dÃ©marrage : " + e.message);
+    console.log("  [POLLER] Erreur demarrage : " + e.message);
+  }
+
+  // ── Demarrage Jira Queue (workflows US/Bug/Test) ──────────────────────────
+  try {
+    jiraQueue.start();
+    console.log("  [JIRA-QUEUE] Workflows actifs (US + Bug + Test + Backlog)");
+  } catch(e) {
+    console.log("  [JIRA-QUEUE] Erreur demarrage : " + e.message);
   }
 
   // â"€â"€ DÃ©marrage du cron TNR (Cycle 3) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
