@@ -7227,9 +7227,15 @@ function diagCorrection(type, ticketKey, diagB64) {
       if (fb) fb.innerHTML = '<span style="color:var(--orange)">⏳ Application du fix...</span>';
       var fixCode = action.code || '';
       if (!fixCode) {
-        // Pas de code snippet → relancer le test directement
-        if (fb) fb.innerHTML = '<span style="color:var(--green)">🔧 Relance du test...</span>';
-        _rerunLastTest(ticketKey, fb);
+        // Pas de code snippet → envoyer au Chat IA pour obtenir le fix exact
+        var autoFixPrompt = 'Tu es Lead QA expert Playwright. Un test a échoué avec une erreur de parsing/extraction.\n\n' +
+          '**Ticket :** ' + (ticketKey || '?') + '\n' +
+          '**Diagnostic :** ' + (diag.diagnostic || diag.diagnosis || '—') + '\n' +
+          '**Cause :** ' + (diag.causeProbable || diag.cause || '—') + '\n' +
+          '**Correction suggérée :** ' + (diag.correction || diag.fix || '—') + '\n' +
+          '**Pages :** ' + (diag.pages || diag.affectedPages || []).join(', ') + '\n\n' +
+          'Donne-moi le fix exact (code, regex, ou commande) à appliquer pour corriger cette erreur de parsing. Sois concis et actionnable.';
+        _diagSendToChat(autoFixPrompt, ticketKey, fb, ts);
       } else {
         // Appliquer le fix via /api/apply-fix, puis relancer
         fetch(SERVER + '/api/apply-fix', {
@@ -7276,22 +7282,16 @@ function diagCorrection(type, ticketKey, diagB64) {
       break;
 
     case 'CLAUDE_CODE':
-      if (fb) fb.innerHTML = '<span style="color:#a78bfa">⏳ Envoi à Claude Code...</span>';
-      var prompt = 'Analyse ce diagnostic de test Playwright pour le ticket ' + (ticketKey || '?') + ' et propose une correction :\n\n' +
-        'Diagnostic : ' + (diag.diagnostic || diag.diagnosis || '') + '\n' +
-        'Cause : ' + (diag.causeProbable || diag.cause || '') + '\n' +
-        'Correction suggérée : ' + (diag.correction || diag.fix || '') + '\n' +
-        'Pages : ' + (diag.pages || diag.affectedPages || []).join(', ');
-      fetch(SERVER + '/api/claude-code', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt })
-      }).then(function() {
-        if (fb) fb.innerHTML = '<span style="color:#a78bfa">🤖 Analyse envoyée à Claude Code — voir le panel Chat</span>';
-        _logDiagAction(ts, ticketKey, 'CLAUDE_CODE', 'Analyse envoyée');
-      }).catch(function(e) {
-        if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ ' + escHtml(e.message) + '</span>';
-      });
+      if (fb) fb.innerHTML = '<span style="color:#a78bfa">⏳ Envoi au Chat IA...</span>';
+      var diagPrompt = 'Tu es Lead QA expert Playwright. Analyse ce diagnostic de test en échec et propose une correction précise et actionnable.\n\n' +
+        '**Ticket :** ' + (ticketKey || '?') + '\n' +
+        '**Diagnostic :** ' + (diag.diagnostic || diag.diagnosis || '—') + '\n' +
+        '**Cause probable :** ' + (diag.causeProbable || diag.cause || '—') + '\n' +
+        '**Correction suggérée :** ' + (diag.correction || diag.fix || '—') + '\n' +
+        '**Pages affectées :** ' + (diag.pages || diag.affectedPages || []).join(', ') + '\n\n' +
+        'Donne-moi :\n1. L\'explication détaillée du problème\n2. La correction exacte à appliquer (code, config, ou action manuelle)\n3. Comment vérifier que le fix fonctionne';
+      // Injecter dans le Chat IA et envoyer
+      _diagSendToChat(diagPrompt, ticketKey, fb, ts);
       break;
   }
 }
@@ -7326,6 +7326,25 @@ function _logDiagAction(timestamp, ticketKey, actionType, result) {
   }).catch(function() {}); // best-effort
   // Afficher dans la console
   console.log('[DIAG] ' + timestamp + ' | ' + (ticketKey || '—') + ' | ' + actionType + ' | ' + result);
+}
+
+// Envoie un diagnostic dans le Chat IA et switch vers le panel Chat
+function _diagSendToChat(prompt, ticketKey, fb, ts) {
+  // 1. Switch vers le panel Chat
+  showPanel('chat');
+  setTimeout(function() {
+    // 2. Injecter le prompt dans l'input
+    var input = document.getElementById('chat-input');
+    if (input) {
+      input.value = prompt;
+      // 3. Déclencher l'envoi
+      sendChatMessage();
+      if (fb) fb.innerHTML = '<span style="color:#a78bfa">🤖 Analyse envoyée dans le Chat IA</span>';
+      _logDiagAction(ts, ticketKey, 'CLAUDE_CODE', 'Diagnostic envoyé au Chat IA');
+    } else {
+      if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ Panel Chat non trouvé</span>';
+    }
+  }, 300);
 }
 
 // Alias rétrocompatible pour le panel Opérations
