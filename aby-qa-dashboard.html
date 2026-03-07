@@ -1453,6 +1453,26 @@
             <button onclick="launchTNRComplet()" style="background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;white-space:nowrap">▶ Lancer</button>
           </div>
         </div>
+
+        <!-- Check Journalier -->
+        <div id="daily-job-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden">
+          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--purple)"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--purple);letter-spacing:.08em">CHECK JOURNALIER</div>
+            <div id="dj-status-dot" style="width:8px;height:8px;border-radius:50%;background:var(--text3)"></div>
+          </div>
+          <div id="dj-status-label" style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">En attente</div>
+          <div id="dj-last-run" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:4px">Aucun run</div>
+          <div id="dj-summary" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px"></div>
+          <div id="dj-progress" style="display:none;font-family:var(--mono);font-size:10px;color:var(--purple);margin-bottom:6px"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div id="dj-next-run" style="font-family:var(--mono);font-size:10px;color:var(--text3)">Prochain : 06:00</div>
+            <div style="display:flex;gap:6px">
+              <button id="dj-report-btn" onclick="viewDailyReport()" style="display:none;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);color:var(--purple);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;white-space:nowrap">📄 Rapport</button>
+              <button id="dj-launch-btn" onclick="launchDailyJob()" style="background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:var(--purple);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;white-space:nowrap">▶ Lancer</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- MODAL ERREUR CYCLE -->
@@ -4036,6 +4056,15 @@ function handleSSE(data) {
     if (data.type === "cycle2-done")    showToast("TNR Release " + (data.release || "") + (data.ok ? " — ✅ PASS" : " — ❌ FAIL"), data.ok ? "✅" : "❌");
     if (data.type === "cycle2-stopped") showToast("TNR Release — arrêté", "⏹");
     if (data.type === "cycle3-stopped") showToast("TNR Complet — arrêté", "⏹");
+  } else if (data.type === "daily-job-started") {
+    updateDailyJobCard({ running: true });
+    showToast("Check journalier démarré", "🔄");
+  } else if (data.type === "daily-job-progress") {
+    updateDailyJobCard({ running: true, progress: data.message || "" });
+  } else if (data.type === "daily-job-completed") {
+    updateDailyJobCard({ running: false, report: data.report });
+    var r = data.report || {};
+    showToast("Check journalier terminé — " + (r.ticketsTraites||0) + " traités, " + (r.pass||0) + " PASS, " + (r.fail||0) + " FAIL", r.fail > 0 ? "❌" : "✅");
   } else if (data.type === "done") {
     var ok = data.code === 0;
     if (isLLM) {
@@ -5489,6 +5518,7 @@ document.addEventListener("DOMContentLoaded", function() {
   initPollingStatus();   // Afficher le badge poller si actif
   loadCycleState();      // Charger l'état des 3 cycles
   setInterval(loadCycleState, 30000); // Rafraîchir toutes les 30s
+  loadDailyJobStatus();  // Charger le dernier rapport du check journalier
   initAllJiraAutocompletes(); // Autocomplete Jira sur tous les champs clés
 
   // Restaurer le panel depuis le hash URL (refresh / partage de lien)
@@ -8370,6 +8400,80 @@ function launchTicketTest(key) {
     .then(function(d) {
       if (d.ok) showToast(key + " — test lancé", "🎯");
       else showToast("Erreur : " + d.error, "❌");
+    })
+    .catch(function() { showToast("Serveur inaccessible", "🔴"); });
+}
+
+// ── DAILY JOB ──────────────────────────────────────────────────────────────
+function launchDailyJob() {
+  var btn = document.getElementById("dj-launch-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ En cours…"; }
+  fetch(SERVER + "/api/daily-job/run", { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { showToast("Check journalier lancé", "🔄"); updateDailyJobCard({ running: true }); }
+      else { showToast(d.error || "Déjà en cours", "⚠️"); if (btn) { btn.disabled = false; btn.textContent = "▶ Lancer"; } }
+    })
+    .catch(function() { showToast("Serveur inaccessible", "🔴"); if (btn) { btn.disabled = false; btn.textContent = "▶ Lancer"; } });
+}
+
+function updateDailyJobCard(opts) {
+  var dot = document.getElementById("dj-status-dot");
+  var label = document.getElementById("dj-status-label");
+  var lastRun = document.getElementById("dj-last-run");
+  var summary = document.getElementById("dj-summary");
+  var progress = document.getElementById("dj-progress");
+  var btn = document.getElementById("dj-launch-btn");
+  var rptBtn = document.getElementById("dj-report-btn");
+
+  if (opts.running) {
+    if (dot) dot.style.background = "var(--purple)";
+    if (label) label.textContent = "En cours…";
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ En cours…"; }
+    if (progress && opts.progress) { progress.style.display = "block"; progress.textContent = opts.progress; }
+  } else {
+    if (dot) dot.style.background = "var(--green)";
+    if (btn) { btn.disabled = false; btn.textContent = "▶ Lancer"; }
+    if (progress) progress.style.display = "none";
+  }
+  if (opts.report) {
+    var r = opts.report;
+    if (label) label.textContent = (r.fail > 0 ? "❌ " : "✅ ") + (r.ticketsTraites||0) + " tickets traités";
+    if (lastRun) lastRun.textContent = "Dernier run : " + (r.date || "—");
+    if (summary) summary.textContent = (r.pass||0) + " PASS / " + (r.fail||0) + " FAIL — " + (r.usEnrichies||0) + " US, " + (r.testsGeneres||0) + " tests, " + (r.bugsCreees||0) + " bugs";
+    if (rptBtn) rptBtn.style.display = "";
+  }
+}
+
+function loadDailyJobStatus() {
+  fetch(SERVER + "/api/daily-job/last-report")
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (d && d.date) updateDailyJobCard({ running: false, report: d }); })
+    .catch(function() {});
+}
+
+function viewDailyReport() {
+  fetch(SERVER + "/api/daily-job/last-report")
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.date) { showToast("Aucun rapport disponible", "⚠️"); return; }
+      var lines = [
+        "CHECK JOURNALIER — " + d.date,
+        "════════════════════════════════════",
+        "Tickets traités : " + (d.ticketsTraites||0),
+        "US enrichies : " + (d.usEnrichies||0),
+        "Tests générés : " + (d.testsGeneres||0),
+        "Tests exécutés : " + (d.testsExecutes||0),
+        "PASS : " + (d.pass||0),
+        "FAIL : " + (d.fail||0),
+        "Bugs créés : " + (d.bugsCreees||0),
+        "Durée : " + ((d.dureeMs||0)/1000).toFixed(1) + "s",
+      ];
+      if (d.erreurs && d.erreurs.length) {
+        lines.push("", "ERREURS :");
+        d.erreurs.forEach(function(e) { lines.push("  ⚠ " + e); });
+      }
+      alert(lines.join("\n"));
     })
     .catch(function() { showToast("Serveur inaccessible", "🔴"); });
 }

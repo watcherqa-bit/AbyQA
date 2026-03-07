@@ -128,6 +128,8 @@ var agentLocks = {};
 
 // â"€â"€ Surveillance Jira Queue â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const jiraQueue = require("./agent-jira-queue");
+const dailyJob  = require("./agent-daily-job");
+var DAILY_JOB_MODE = (process.env.DAILY_JOB_MODE || "").toLowerCase() === "true";
 
 function sendSSE(clientId, data) {
   var clients = sseClients[clientId] || [];
@@ -3502,6 +3504,32 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── DAILY JOB — check journalier QA ──────────────────────────────────────
+  if (method === "POST" && url === "/api/daily-job/run") {
+    if (dailyJob.isRunning()) {
+      res.writeHead(409, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Job deja en cours" }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, message: "Job lance" }));
+    dailyJob.runDailyQAJob();
+    return;
+  }
+
+  if (method === "GET" && url === "/api/daily-job/last-report") {
+    var djReport = dailyJob.getLastReport();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(djReport || { date: null, ticketsTraites: 0 }));
+    return;
+  }
+
+  if (method === "GET" && url === "/api/daily-job/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ running: dailyJob.isRunning(), mode: DAILY_JOB_MODE ? "daily" : "polling" }));
+    return;
+  }
+
   res.writeHead(404); res.end("Not found");
 });
 
@@ -3565,12 +3593,21 @@ server.listen(PORT, "0.0.0.0", function() {
     console.log("  [POLLER] Erreur demarrage : " + e.message);
   }
 
-  // ── Demarrage Jira Queue (workflows US/Bug/Test) ──────────────────────────
-  try {
-    jiraQueue.start();
-    console.log("  [JIRA-QUEUE] Workflows actifs (US + Bug + Test + Backlog)");
-  } catch(e) {
-    console.log("  [JIRA-QUEUE] Erreur demarrage : " + e.message);
+  // ── Demarrage Jira Queue OU Daily Job selon le mode ────────────────────────
+  if (DAILY_JOB_MODE) {
+    try {
+      dailyJob.startCron(sendSSE);
+      console.log("  [DAILY-JOB] Mode journalier actif — declenchement a 06:00");
+    } catch(e) {
+      console.log("  [DAILY-JOB] Erreur demarrage : " + e.message);
+    }
+  } else {
+    try {
+      jiraQueue.start();
+      console.log("  [JIRA-QUEUE] Polling continu actif (US + Bug + Test + Backlog)");
+    } catch(e) {
+      console.log("  [JIRA-QUEUE] Erreur demarrage : " + e.message);
+    }
   }
 
   // â"€â"€ DÃ©marrage du cron TNR (Cycle 3) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
