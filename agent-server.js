@@ -3753,11 +3753,13 @@ var server = http.createServer(function(req, res) {
             else if (labels.indexOf("test-drupal") !== -1) testType = "drupal";
             else if (labels.indexOf("test-auto") !== -1) testType = "auto";
 
-            // État basé sur le score
+            // État : canTest = vrai seulement si description + AC + TEST lié
+            var hasDesc = descText.length > 30;
+            var hasAC = /donn|lorsque|alors|given|when|then/i.test(descText);
             var state = "incomplete";
             var canTest = false;
-            if (score >= 70 && hasLinkedTest) { state = "ready"; canTest = true; }
-            else if (score >= 50) { state = "partial"; canTest = true; }
+            if (hasDesc && hasAC && hasLinkedTest) { state = "ready"; canTest = true; }
+            else if (hasDesc && hasAC) { state = "partial"; } // TEST manquant → préparer
 
             return {
               key: t.key,
