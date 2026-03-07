@@ -3701,7 +3701,7 @@ var server = http.createServer(function(req, res) {
       " AND issuetype in (Story, Bug)" +
       " ORDER BY priority DESC";
     var sophiePath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(sophieJql) +
-      "&fields=summary,status,issuetype,priority,labels,issuelinks&maxResults=50";
+      "&fields=summary,description,status,issuetype,priority,labels,issuelinks&maxResults=50";
     var sophieAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
 
     var sReq = require("https").request({
@@ -3717,20 +3717,47 @@ var server = http.createServer(function(req, res) {
           var parsed = JSON.parse(sData);
           var issues = (parsed.issues || []).map(function(t) {
             var status = (t.fields.status && t.fields.status.name) || "";
+            var labels = t.fields.labels || [];
             var hasLinkedTest = (t.fields.issuelinks || []).some(function(l) {
               var linked = l.outwardIssue || l.inwardIssue;
               return linked && linked.fields && linked.fields.issuetype &&
                 (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
             });
-            // Déterminer l'état
-            var state = "incomplete";
-            var enrichedPath = path.join(__dirname, "inbox", "enriched", t.key + ".json");
-            var hasEnriched = fs.existsSync(enrichedPath);
-            var testDir = path.join(__dirname, "inbox", "tests");
-            var hasTest = fs.existsSync(path.join(testDir, t.key + ".json")) ||
-                          fs.existsSync(path.join(testDir, t.key + "-fix.json"));
 
-            if (hasTest || hasEnriched || hasLinkedTest) state = "ready";
+            // Extraire description texte pour le score
+            var descText = "";
+            if (t.fields.description) {
+              if (typeof t.fields.description === "string") descText = t.fields.description;
+              else if (t.fields.description.content) {
+                descText = t.fields.description.content.map(function(b) {
+                  return (b.content || []).map(function(c) { return c.text || ""; }).join("");
+                }).join("\n");
+              }
+            }
+
+            // Score de complétude
+            var score = 0;
+            var missing = [];
+            var isBug = (t.fields.issuetype && t.fields.issuetype.name) === "Bug";
+
+            if (descText.length > 30) score += 30; else missing.push("description");
+            if (/tant que|je veux|afin de/i.test(descText) || isBug) score += 15; else missing.push("persona");
+            if (/donn|lorsque|alors|given|when|then/i.test(descText)) score += 25; else missing.push("AC Gherkin");
+            if (hasLinkedTest) score += 20; else missing.push("ticket TEST");
+            if (/https?:\/\//.test(descText)) score += 10; else missing.push("URL");
+
+            // Déterminer le type de test depuis les labels
+            var testType = "auto";
+            if (labels.indexOf("test-manuel") !== -1) testType = "manuel";
+            else if (labels.indexOf("test-mixte") !== -1) testType = "mixte";
+            else if (labels.indexOf("test-drupal") !== -1) testType = "drupal";
+            else if (labels.indexOf("test-auto") !== -1) testType = "auto";
+
+            // État basé sur le score
+            var state = "incomplete";
+            var canTest = false;
+            if (score >= 70 && hasLinkedTest) { state = "ready"; canTest = true; }
+            else if (score >= 50) { state = "partial"; canTest = true; }
 
             return {
               key: t.key,
@@ -3739,8 +3766,12 @@ var server = http.createServer(function(req, res) {
               jiraStatus: status,
               priority: (t.fields.priority && t.fields.priority.name) || "",
               state: state,
-              hasTest: hasTest || hasLinkedTest,
-              hasEnriched: hasEnriched,
+              score: score,
+              missing: missing,
+              canTest: canTest,
+              testType: testType,
+              hasTest: hasLinkedTest,
+              labels: labels,
               jiraUrl: "https://" + CFG.jira.host + "/browse/" + t.key
             };
           });

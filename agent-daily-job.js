@@ -63,6 +63,89 @@ function createJiraIssue(fields) {
   return jiraApi("POST", "/rest/api/3/issue", { fields: fields });
 }
 
+function linkIssues(sourceKey, testKey) {
+  return jiraApi("POST", "/rest/api/3/issueLink", {
+    type: { name: "Test" },
+    inwardIssue: { key: testKey },
+    outwardIssue: { key: sourceKey }
+  }).catch(function(e) {
+    log("[LINK] Erreur liaison " + sourceKey + " → " + testKey + " : " + e.message);
+  });
+}
+
+// Backup description puis mise à jour ADF
+var BACKUP_DIR = path.join(__dirname, "backup");
+
+async function backupAndUpdateDescription(key, adfDoc, fallbackText) {
+  // 1. Backup
+  try {
+    var r = await jiraApi("GET", "/rest/api/3/issue/" + key + "?fields=description", null);
+    var origDesc = r.data && r.data.fields && r.data.fields.description;
+    if (origDesc) {
+      if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      var ts = new Date().toISOString().replace(/[:.]/g, "-");
+      fs.writeFileSync(path.join(BACKUP_DIR, key + "-backup-" + ts + ".json"), JSON.stringify(origDesc, null, 2), "utf8");
+      log("[BACKUP] " + key + " sauvegardé");
+    }
+  } catch(e) {
+    log("[BACKUP] Erreur backup " + key + " : " + e.message);
+  }
+
+  // 2. Push ADF
+  try {
+    await jiraApi("PUT", "/rest/api/3/issue/" + key, { fields: { description: adfDoc } });
+    log("[JIRA] " + key + " — description ADF mise à jour");
+  } catch(e) {
+    // Fallback texte si ADF échoue
+    log("[JIRA] ADF échoué pour " + key + " (" + e.message + ") → fallback texte");
+    try {
+      await jiraApi("PUT", "/rest/api/3/issue/" + key, {
+        fields: {
+          description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: fallbackText || "" }] }] }
+        }
+      });
+    } catch(e2) {
+      log("[JIRA] Fallback texte aussi échoué pour " + key + " : " + e2.message);
+    }
+  }
+}
+
+// Import CSV Xray via le serveur local
+function importXrayCSV(ticketKey, csvContent) {
+  return new Promise(function(resolve) {
+    var body = JSON.stringify({ csv: csvContent });
+    var req = require("http").request({
+      hostname: "127.0.0.1", port: CFG.server.port || 3210,
+      path: "/api/xray/import-csv/" + ticketKey,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
+    }, function(res) {
+      var data = "";
+      res.on("data", function(c) { data += c; });
+      res.on("end", function() {
+        try { resolve(JSON.parse(data)); } catch(e) { resolve({ ok: false, error: data }); }
+      });
+    });
+    req.on("error", function(e) { resolve({ ok: false, error: e.message }); });
+    req.setTimeout(30000, function() { req.destroy(); resolve({ ok: false, error: "timeout" }); });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ── DÉDUCTION TYPE DE TEST (auto / manuel / mixte) ──────────────────────────
+function deduceTestType(text) {
+  if (!text) return "auto";
+  var lower = text.toLowerCase();
+  var hasAuto = /playwright|e2e|api|rest|endpoint|automat|selenium|cypress|url|page|formulaire|bouton|clic/i.test(lower);
+  var hasManual = /manuel|exploration|ergonomie|ux|accessibilit|jugement|visuel|utilisabilit/i.test(lower);
+  var hasDrupal = /drupal|bo |back.?office|contenu|taxonomy|content.?type/i.test(lower);
+  if (hasManual && hasAuto) return "mixte";
+  if (hasManual) return "manuel";
+  if (hasDrupal) return "drupal";
+  return "auto";
+}
+
 // ── HELPERS ──────────────────────────────────────────────────────────────────
 function log(msg) {
   var ts = new Date().toLocaleTimeString("fr-FR");
@@ -152,7 +235,7 @@ async function routeTicket(ticket, report) {
   }
 }
 
-// ── PIPELINE USER STORY ─────────────────────────────────────────────────────
+// ── PIPELINE USER STORY (automatique → push Jira) ───────────────────────────
 async function pipelineUS(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
@@ -172,14 +255,23 @@ async function pipelineUS(ticket, report) {
     var score = review.score || 0;
     var isComplete = score >= 70 && (!review.missingElements || review.missingElements.length === 0);
 
-    // Etape 2 : Enrichissement si necessaire
+    // Etape 2 : Enrichissement automatique si necessaire → push ADF dans Jira
     var phase = "pret";
     if (!isComplete) {
-      phase = "enrichissement";
-      log("[US] " + key + " — Score " + score + "/100 → enrichissement");
+      log("[US] " + key + " — Score " + score + "/100 → enrichissement + push Jira");
+      sse({ type: "daily-job-progress", step: "enrich", key: key, message: key + " — enrichissement en cours..." });
       var enriched = await leadQA.enrichUS(ticket);
       leadQA.saveMarkdown(enriched.markdown, "US", key + "-enrichi");
+
+      // Construire ADF et pousser dans Jira
+      if (enriched.structured) {
+        var adfDoc = leadQA.buildADFDescription(enriched.structured);
+        await backupAndUpdateDescription(key, adfDoc, enriched.markdown);
+        log("[US] " + key + " — Description ADF poussée dans Jira");
+        sse({ type: "daily-job-progress", step: "enrich-done", key: key, message: key + " — enrichi et poussé dans Jira" });
+      }
       report.usEnrichies++;
+      phase = "enrichi";
     }
 
     // Etape 3 : Verifier ticket TEST lie
@@ -189,16 +281,15 @@ async function pipelineUS(ticket, report) {
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
-    // Etape 4 : Generer TEST + CSV si pas de TEST lie (avec anti-doublon)
+    // Etape 4 : Generer TEST + CSV → creer dans Jira + lier + importer Xray
     var generatedFiles = [];
+    var testKey = "";
     var skipTest = false;
     if (!linkedTest) {
-      // Verrou memoire
       if (_inProgress.has("TEST-" + key)) {
         log("[US] " + key + " — TEST en cours de creation (verrou) — ignore");
         skipTest = true;
       } else {
-        // Verifier dans Jira si un TEST existe deja
         var testExists = await checkTestExists(key);
         if (testExists) {
           log("[US] " + key + " — TEST deja existant dans Jira — creation ignoree");
@@ -209,6 +300,7 @@ async function pipelineUS(ticket, report) {
         _inProgress.add("TEST-" + key);
         try {
           log("[US] " + key + " — Generation TEST + CSV...");
+          sse({ type: "daily-job-progress", step: "test-gen", key: key, message: key + " — génération TEST + CSV..." });
           var testAndCSV = await leadQA.generateTestAndCSV(
             { key: key, epic: result.epic || "", summary: summary, description: desc },
             strategy.decision || "e2e", summary, analysis.testCount || 5
@@ -216,14 +308,46 @@ async function pipelineUS(ticket, report) {
           leadQA.saveMarkdown(testAndCSV.markdown, "TEST", key);
           generatedFiles.push("TEST-" + key + ".md");
           report.testsCascade++;
+
+          // 4a. Créer le ticket TEST dans Jira avec label test-type
+          var usTestType = deduceTestType(summary + " " + desc);
+          var testTitle = leadQA.safeTruncate("TEST - " + summary + " - Validation " + (strategy.decision || "e2e"), 250);
+          log("[US] " + key + " — Création ticket TEST dans Jira [" + usTestType + "]...");
+          var testIssue = await createJiraIssue({
+            project: { key: CFG.jira.project },
+            summary: testTitle,
+            issuetype: { name: "Test" },
+            description: {
+              type: "doc", version: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: testAndCSV.markdown.substring(0, 3000) }] }]
+            },
+            labels: ["aby-qa-v3", "auto-generated", "test-" + usTestType]
+          });
+          testKey = (testIssue.data && testIssue.data.key) || "";
+          if (testKey) {
+            log("[US] " + key + " — Ticket TEST créé : " + testKey + " [" + usTestType + "]");
+            sse({ type: "daily-job-progress", step: "test-created", key: key, testKey: testKey, message: key + " → " + testKey + " créé" });
+
+            // 4b. Lier TEST au ticket source
+            await linkIssues(key, testKey);
+            log("[US] " + key + " — Lien " + key + " → " + testKey);
+          }
+
+          // 4c. Importer CSV dans Xray
           if (testAndCSV.csv) {
             leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
             generatedFiles.push(key + "-cas-test.csv");
             report.casTestImportesXray++;
-            report.csvReady = report.csvReady || [];
-            report.csvReady.push({ key: key, csv: testAndCSV.csv });
+            log("[US] " + key + " — Import CSV Xray...");
+            var xrayResult = await importXrayCSV(key, testAndCSV.csv);
+            if (xrayResult.ok) {
+              log("[US] " + key + " — CSV importé dans Xray (" + (xrayResult.count || "?") + " cas)");
+              sse({ type: "daily-job-progress", step: "xray-done", key: key, message: key + " — CSV importé Xray" });
+            } else {
+              log("[US] " + key + " — Import Xray échoué : " + (xrayResult.error || "?") + " (sauvé en local)");
+            }
           }
-          phase = "test-genere";
+          phase = "pret-a-tester";
         } finally {
           _inProgress.delete("TEST-" + key);
         }
@@ -240,14 +364,13 @@ async function pipelineUS(ticket, report) {
       key: key, type: "US", summary: summary, status: "OK",
       jiraStatus: jiraStatus, score: score,
       phase: phase,
-      enriched: !isComplete, testGenerated: !linkedTest,
+      enriched: !isComplete, testGenerated: !linkedTest && !skipTest, testKey: testKey,
       jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
       treatedAt: new Date().toISOString(),
-      files: generatedFiles,
-      localOnly: true
+      files: generatedFiles
     });
 
-    log("[US] " + key + " — Phase finale : " + phase);
+    log("[US] " + key + " — Pipeline terminé — phase : " + phase);
 
   } catch(e) {
     log("[US] " + key + " — ERREUR : " + e.message);
@@ -256,7 +379,7 @@ async function pipelineUS(ticket, report) {
   }
 }
 
-// ── PIPELINE BUG ────────────────────────────────────────────────────────────
+// ── PIPELINE BUG (automatique → push Jira) ──────────────────────────────────
 async function pipelineBug(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
@@ -277,8 +400,9 @@ async function pipelineBug(ticket, report) {
 
     var phase = "pret-a-tester";
     var generatedFiles = [];
+    var testKey = "";
 
-    // Etape 2 : Generer TEST si pas lie (avec anti-doublon)
+    // Etape 2 : Generer TEST → créer dans Jira + lier
     if (!linkedTest) {
       var skipBugTest = false;
       if (_inProgress.has("TEST-" + key)) {
@@ -295,6 +419,11 @@ async function pipelineBug(ticket, report) {
         _inProgress.add("TEST-" + key);
         try {
           log("[BUG] " + key + " — Generation test non-regression...");
+          sse({ type: "daily-job-progress", step: "test-gen", key: key, message: key + " — génération TEST non-regression..." });
+
+          // Déduire le type de test du contenu
+          var testType = deduceTestType(summary + " " + desc);
+
           var testResult = await leadQA.generateTestTicket(
             { key: key, epic: "", summary: summary, description: desc },
             "e2e", "Non-regression - " + summary
@@ -302,7 +431,27 @@ async function pipelineBug(ticket, report) {
           leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
           generatedFiles.push("TEST-" + key + "-nonreg.md");
           report.testsCascade++;
-          phase = "test-genere";
+
+          // Créer le ticket TEST dans Jira avec label test-type
+          var bugTestTitle = leadQA.safeTruncate("TEST - " + summary + " - Non-regression", 250);
+          var testLabels = ["aby-qa-v3", "auto-generated", "test-" + testType];
+          var bugTestIssue = await createJiraIssue({
+            project: { key: CFG.jira.project },
+            summary: bugTestTitle,
+            issuetype: { name: "Test" },
+            description: {
+              type: "doc", version: 1,
+              content: [{ type: "paragraph", content: [{ type: "text", text: testResult.markdown.substring(0, 3000) }] }]
+            },
+            labels: testLabels
+          });
+          testKey = (bugTestIssue.data && bugTestIssue.data.key) || "";
+          if (testKey) {
+            log("[BUG] " + key + " — Ticket TEST créé : " + testKey + " [" + testType + "]");
+            sse({ type: "daily-job-progress", step: "test-created", key: key, testKey: testKey, message: key + " → " + testKey + " créé" });
+            await linkIssues(key, testKey);
+          }
+          phase = "pret-a-tester";
         } finally {
           _inProgress.delete("TEST-" + key);
         }
@@ -314,14 +463,13 @@ async function pipelineBug(ticket, report) {
     report.details.push({
       key: key, type: "Bug", summary: summary, status: "OK",
       jiraStatus: jiraStatus, phase: phase,
-      testGenerated: !linkedTest,
+      testGenerated: !linkedTest && !skipBugTest, testKey: testKey,
       jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
       treatedAt: new Date().toISOString(),
-      files: generatedFiles,
-      localOnly: true
+      files: generatedFiles
     });
 
-    log("[BUG] " + key + " — Phase finale : " + phase);
+    log("[BUG] " + key + " — Pipeline terminé — phase : " + phase);
 
   } catch(e) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
