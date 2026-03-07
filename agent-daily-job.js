@@ -114,7 +114,7 @@ async function processUS(ticket, report) {
   var desc = extractDesc(fields);
 
   log("[US] " + key + " — " + summary);
-  sse({ type: "daily-job-progress", step: "us", key: key, summary: summary });
+  sse({ type: "daily-job-progress", step: "us", key: key, summary: summary, message: "US " + key + " — " + summary });
 
   try {
     // Verifier completude
@@ -208,7 +208,7 @@ async function processBug(ticket, report) {
   var urls = extractUrls(desc + " " + summary);
 
   log("[BUG] " + key + " — " + summary);
-  sse({ type: "daily-job-progress", step: "bug", key: key, summary: summary });
+  sse({ type: "daily-job-progress", step: "bug", key: key, summary: summary, message: "Bug " + key + " — " + summary });
 
   try {
     // Verifier si ticket TEST de non-regression existe
@@ -269,7 +269,7 @@ async function processTest(ticket, report) {
   var summary = fields.summary || "";
 
   log("[TEST] " + key + " — " + summary);
-  sse({ type: "daily-job-progress", step: "test", key: key, summary: summary });
+  sse({ type: "daily-job-progress", step: "test", key: key, summary: summary, message: "Test " + key + " — " + summary });
 
   try {
     // Lancer Playwright
@@ -356,7 +356,7 @@ async function runDailyQAJob() {
   log("========================================");
   log("  CHECK JOURNALIER QA — DEMARRAGE");
   log("========================================");
-  sse({ type: "daily-job-started", at: new Date().toISOString() });
+  sse({ type: "daily-job-started", at: new Date().toISOString(), message: "Demarrage du check journalier…" });
 
   var report = {
     date: new Date().toISOString(),
@@ -377,10 +377,11 @@ async function runDailyQAJob() {
     log("Recuperation des tickets In QA...");
     var tickets = await fetchTicketsInQA();
     log(tickets.length + " ticket(s) a traiter");
-    sse({ type: "daily-job-progress", step: "fetch", count: tickets.length });
+    sse({ type: "daily-job-progress", step: "fetch", count: tickets.length, message: tickets.length + " ticket(s) trouves" });
 
     if (tickets.length === 0) {
       log("Aucun ticket a traiter — fin du job");
+      sse({ type: "daily-job-progress", step: "done", message: "Aucun ticket a traiter" });
       report.dureeMs = Date.now() - startTime;
       saveReport(report);
       sse({ type: "daily-job-completed", report: report });
@@ -397,6 +398,7 @@ async function runDailyQAJob() {
     var tasks = tickets.filter(function(t) { return t.fields.issuetype.name === "Task"; });
 
     log("Repartition : " + stories.length + " US, " + bugs.length + " Bug, " + tests.length + " Test, " + tasks.length + " Task");
+    sse({ type: "daily-job-progress", step: "sort", message: stories.length + " US, " + bugs.length + " Bug, " + tests.length + " Test, " + tasks.length + " Task" });
 
     // 3. Traiter dans l'ordre : US → Bug → Test
     for (var i = 0; i < stories.length; i++) {
