@@ -1511,6 +1511,30 @@
         </div>
       </div>
 
+      <!-- MODAL RAPPORT DAILY JOB -->
+      <div id="dj-report-modal" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:24px" onclick="if(event.target===this)closeDJReportModal()">
+        <div style="background:var(--bg2);border:1px solid rgba(139,92,246,.4);border-radius:16px;width:100%;max-width:700px;max-height:85vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);display:flex;flex-direction:column">
+          <!-- Header -->
+          <div style="padding:16px 20px;background:rgba(139,92,246,.08);border-bottom:1px solid rgba(139,92,246,.25);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+            <div style="display:flex;align-items:center;gap:10px">
+              <span style="font-size:18px">📋</span>
+              <div>
+                <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--purple)">RAPPORT CHECK JOURNALIER</div>
+                <div id="dj-rpt-date" style="font-size:10px;color:var(--text3);margin-top:1px"></div>
+              </div>
+            </div>
+            <button onclick="closeDJReportModal()" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px">✕</button>
+          </div>
+          <!-- Corps scrollable -->
+          <div id="dj-rpt-body" style="padding:20px;overflow-y:auto;flex:1;min-height:0"></div>
+          <!-- Footer -->
+          <div style="padding:14px 20px;border-top:1px solid var(--border);background:var(--bg3);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+            <button onclick="closeDJReportModal()" style="background:none;border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:8px 18px;cursor:pointer;font-size:12px">Fermer</button>
+            <button onclick="exportDJReportPDF()" style="background:linear-gradient(135deg,rgba(139,92,246,.8),rgba(139,92,246,.6));border:1px solid rgba(139,92,246,.5);color:#fff;border-radius:8px;padding:8px 20px;cursor:pointer;font-size:12px;font-weight:700">📥 Exporter PDF</button>
+          </div>
+        </div>
+      </div>
+
       <!-- NOTIFICATIONS POLLING JIRA -->
       <div id="poll-notif-zone" style="display:none;margin-bottom:16px">
         <div style="border:1px solid rgba(59,111,255,.3);border-radius:12px;overflow:hidden;background:rgba(59,111,255,.04)">
@@ -8489,30 +8513,175 @@ function loadDailyJobStatus() {
     .catch(function() {});
 }
 
+var _djReportData = null;
+
 function viewDailyReport() {
   fetch(SERVER + "/api/daily-job/last-report")
     .then(function(r) { return r.json(); })
     .then(function(d) {
       if (!d || !d.date) { showToast("Aucun rapport disponible", "⚠️"); return; }
-      var lines = [
-        "CHECK JOURNALIER — " + d.date,
-        "════════════════════════════════════",
-        "Tickets traités : " + (d.ticketsTraites||0),
-        "US enrichies : " + (d.usEnrichies||0),
-        "Tests générés : " + (d.testsGeneres||0),
-        "Tests exécutés : " + (d.testsExecutes||0),
-        "PASS : " + (d.pass||0),
-        "FAIL : " + (d.fail||0),
-        "Bugs créés : " + (d.bugsCreees||0),
-        "Durée : " + ((d.dureeMs||0)/1000).toFixed(1) + "s",
-      ];
-      if (d.erreurs && d.erreurs.length) {
-        lines.push("", "ERREURS :");
-        d.erreurs.forEach(function(e) { lines.push("  ⚠ " + e); });
+      _djReportData = d;
+      var modal = document.getElementById("dj-report-modal");
+      var dateEl = document.getElementById("dj-rpt-date");
+      var body = document.getElementById("dj-rpt-body");
+      if (!modal || !body) return;
+
+      var dt = new Date(d.date);
+      var dateStr = dt.toLocaleDateString("fr-FR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+      var timeStr = dt.toLocaleTimeString("fr-FR");
+      var duree = ((d.dureeMs||0)/1000).toFixed(1);
+      if (dateEl) dateEl.textContent = dateStr + " à " + timeStr + " — Durée : " + duree + "s";
+
+      var jiraBase = "https://" + (CFG_JIRA_HOST || "eurelis.atlassian.net") + "/browse/";
+      var html = "";
+
+      // Résumé global
+      var hasErr = d.erreurs && d.erreurs.length;
+      html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">';
+      html += djStatCard(d.ticketsTraites||0, "Tickets traités", "var(--purple)");
+      html += djStatCard((d.pass||0) + " / " + (d.fail||0), "PASS / FAIL", d.fail > 0 ? "var(--red)" : "var(--green)");
+      html += djStatCard(d.testsGeneres||0, "Tests générés", "var(--cyan)");
+      html += djStatCard(d.bugsCreees||0, "Bugs créés", d.bugsCreees > 0 ? "var(--orange)" : "var(--text3)");
+      html += '</div>';
+
+      // Métriques secondaires
+      html += '<div style="display:flex;gap:16px;margin-bottom:20px;font-family:var(--mono);font-size:10px;color:var(--text3)">';
+      html += '<span>US enrichies : <b style="color:var(--text)">' + (d.usEnrichies||0) + '</b></span>';
+      html += '<span>Tests exécutés : <b style="color:var(--text)">' + (d.testsExecutes||0) + '</b></span>';
+      html += '<span>CSV Xray : <b style="color:var(--text)">' + (d.casTestImportesXray||0) + '</b></span>';
+      html += '</div>';
+
+      // Détails par ticket
+      var details = d.details || [];
+      if (details.length > 0) {
+        html += djSectionTitle("TICKETS TRAITÉS");
+        html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">';
+        details.forEach(function(t) {
+          var icon = t.type === "US" ? "📋" : t.type === "Bug" ? "🐛" : t.type === "Test" ? "🧪" : "📄";
+          var statusColor = t.status === "PASS" ? "var(--green)" : t.status === "FAIL" ? "var(--red)" : t.status === "ERROR" ? "var(--red)" : "var(--text)";
+          var statusLabel = t.status === "OK" ? "✅ Traité" : t.status === "PASS" ? "✅ PASS" : t.status === "FAIL" ? "❌ FAIL" : "⚠️ " + t.status;
+          var extra = [];
+          if (t.enriched) extra.push("enrichi");
+          if (t.testGenerated && t.testKey) extra.push('test → <a href="' + jiraBase + t.testKey + '" target="_blank" style="color:var(--cyan)">' + t.testKey + '</a>');
+          else if (t.testGenerated) extra.push("test généré");
+          if (t.bugKey) extra.push('bug → <a href="' + jiraBase + t.bugKey + '" target="_blank" style="color:var(--orange)">' + t.bugKey + '</a>');
+          if (t.mode) extra.push("mode " + t.mode);
+          if (t.error) extra.push('<span style="color:var(--red)">' + t.error + '</span>');
+
+          html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">';
+          html += '<span>' + icon + '</span>';
+          html += '<a href="' + jiraBase + t.key + '" target="_blank" style="color:var(--cyan);font-family:var(--mono);font-size:11px;font-weight:700;text-decoration:none;min-width:100px">' + t.key + '</a>';
+          html += '<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (t.summary||'').replace(/"/g,'&quot;') + '">' + (t.summary||'—') + '</span>';
+          html += '<span style="font-size:10px;font-family:var(--mono);color:' + statusColor + ';white-space:nowrap">' + statusLabel + '</span>';
+          html += '</div>';
+          if (extra.length) {
+            html += '<div style="margin-left:32px;font-size:10px;color:var(--text3);font-family:var(--mono)">' + extra.join(' · ') + '</div>';
+          }
+        });
+        html += '</div>';
+      } else {
+        html += '<div style="text-align:center;color:var(--text3);font-size:12px;padding:20px">Aucun ticket traité lors de ce run</div>';
       }
-      alert(lines.join("\n"));
+
+      // Erreurs
+      if (hasErr) {
+        html += djSectionTitle("ERREURS (" + d.erreurs.length + ")");
+        html += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px">';
+        d.erreurs.forEach(function(e) {
+          var eKey = e.key || "—";
+          var eType = e.type || "—";
+          var eMsg = e.error || (typeof e === "string" ? e : JSON.stringify(e));
+          html += '<div style="padding:6px 10px;background:rgba(255,69,58,.06);border:1px solid rgba(255,69,58,.2);border-radius:6px;font-size:10px;font-family:var(--mono);color:var(--text2)">';
+          html += '<span style="color:var(--red);font-weight:700">[' + eKey + ']</span> ' + eType + ' — ' + eMsg;
+          html += '</div>';
+        });
+        html += '</div>';
+      }
+
+      body.innerHTML = html;
+      modal.style.display = "flex";
     })
     .catch(function() { showToast("Serveur inaccessible", "🔴"); });
+}
+
+function djStatCard(value, label, color) {
+  return '<div style="text-align:center;padding:12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">' +
+    '<div style="font-size:22px;font-weight:800;color:' + color + ';font-family:var(--mono)">' + value + '</div>' +
+    '<div style="font-size:9px;color:var(--text3);margin-top:2px;letter-spacing:.06em">' + label + '</div></div>';
+}
+
+function djSectionTitle(text) {
+  return '<div style="font-family:var(--mono);font-size:10px;color:var(--purple);letter-spacing:.08em;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">' + text + '</div>';
+}
+
+function closeDJReportModal() {
+  var m = document.getElementById("dj-report-modal");
+  if (m) m.style.display = "none";
+}
+
+function exportDJReportPDF() {
+  var body = document.getElementById("dj-rpt-body");
+  if (!body || !_djReportData) { showToast("Aucun rapport à exporter", "⚠️"); return; }
+  var win = window.open("", "_blank");
+  var d = _djReportData;
+  var dt = new Date(d.date);
+  var dateStr = dt.toLocaleDateString("fr-FR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+  var timeStr = dt.toLocaleTimeString("fr-FR");
+  var jiraBase = "https://" + (CFG_JIRA_HOST || "eurelis.atlassian.net") + "/browse/";
+
+  var h = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Rapport Check Journalier - ' + dateStr + '</title>';
+  h += '<style>body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;color:#222;line-height:1.5}';
+  h += 'h1{color:#7c3aed;border-bottom:2px solid #7c3aed;padding-bottom:8px}';
+  h += 'h2{color:#7c3aed;margin-top:24px;font-size:14px;letter-spacing:.1em}';
+  h += '.stats{display:flex;gap:16px;margin:16px 0}.stat{flex:1;text-align:center;padding:16px;border:1px solid #ddd;border-radius:8px}';
+  h += '.stat b{display:block;font-size:24px;color:#7c3aed}.stat span{font-size:11px;color:#888}';
+  h += 'table{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}th,td{padding:8px;border:1px solid #ddd;text-align:left}';
+  h += 'th{background:#f5f3ff;color:#7c3aed;font-weight:700}.pass{color:#16a34a}.fail{color:#dc2626}.err{color:#dc2626;background:#fef2f2}';
+  h += '.footer{margin-top:32px;font-size:10px;color:#aaa;text-align:center;border-top:1px solid #eee;padding-top:8px}';
+  h += '@media print{body{margin:20px}}</style></head><body>';
+  h += '<h1>📋 Rapport Check Journalier</h1>';
+  h += '<p>' + dateStr + ' à ' + timeStr + ' — Durée : ' + ((d.dureeMs||0)/1000).toFixed(1) + 's</p>';
+
+  h += '<div class="stats">';
+  h += '<div class="stat"><b>' + (d.ticketsTraites||0) + '</b><span>Tickets traités</span></div>';
+  h += '<div class="stat"><b class="' + (d.fail > 0 ? 'fail' : 'pass') + '">' + (d.pass||0) + ' / ' + (d.fail||0) + '</b><span>PASS / FAIL</span></div>';
+  h += '<div class="stat"><b>' + (d.testsGeneres||0) + '</b><span>Tests générés</span></div>';
+  h += '<div class="stat"><b>' + (d.bugsCreees||0) + '</b><span>Bugs créés</span></div>';
+  h += '</div>';
+
+  h += '<p style="font-size:12px;color:#666">US enrichies : ' + (d.usEnrichies||0) + ' · Tests exécutés : ' + (d.testsExecutes||0) + ' · CSV Xray : ' + (d.casTestImportesXray||0) + '</p>';
+
+  var details = d.details || [];
+  if (details.length) {
+    h += '<h2>TICKETS TRAITÉS</h2><table><tr><th>Type</th><th>Clé</th><th>Résumé</th><th>Statut</th><th>Actions</th></tr>';
+    details.forEach(function(t) {
+      var cls = t.status === "PASS" ? "pass" : t.status === "FAIL" || t.status === "ERROR" ? "fail" : "";
+      var acts = [];
+      if (t.enriched) acts.push("enrichi");
+      if (t.testKey) acts.push("test → " + t.testKey);
+      else if (t.testGenerated) acts.push("test généré");
+      if (t.bugKey) acts.push("bug → " + t.bugKey);
+      if (t.mode) acts.push("mode " + t.mode);
+      if (t.error) acts.push("Erreur: " + t.error);
+      h += '<tr><td>' + (t.type||"—") + '</td><td><a href="' + jiraBase + t.key + '">' + t.key + '</a></td><td>' + (t.summary||"—") + '</td><td class="' + cls + '">' + (t.status||"—") + '</td><td>' + (acts.join(", ")||"—") + '</td></tr>';
+    });
+    h += '</table>';
+  }
+
+  if (d.erreurs && d.erreurs.length) {
+    h += '<h2>ERREURS</h2><table><tr><th>Clé</th><th>Type</th><th>Message</th></tr>';
+    d.erreurs.forEach(function(e) {
+      h += '<tr class="err"><td>' + (e.key||"—") + '</td><td>' + (e.type||"—") + '</td><td>' + (e.error||JSON.stringify(e)) + '</td></tr>';
+    });
+    h += '</table>';
+  }
+
+  h += '<div class="footer">Généré par AbyQA v3 — ' + new Date().toLocaleString("fr-FR") + '</div>';
+  h += '</body></html>';
+
+  win.document.write(h);
+  win.document.close();
+  setTimeout(function() { win.print(); }, 500);
 }
 
 function clearPollNotifs() {

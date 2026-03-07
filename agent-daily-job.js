@@ -193,9 +193,13 @@ async function processUS(ticket, report) {
     }
 
     report.ticketsTraites++;
+    report.details.push({ key: key, type: "US", summary: summary, status: "OK",
+      enriched: !isComplete, testGenerated: !linkedTest,
+      testKey: (!linkedTest && testKey) || null });
   } catch(e) {
     log("[US] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "US", error: e.message });
+    report.details.push({ key: key, type: "US", summary: summary, status: "ERROR", error: e.message });
   }
 }
 
@@ -256,9 +260,12 @@ async function processBug(ticket, report) {
 
     await postComment(key, "[AbyQA Daily] Bug analyse — pret pour test");
     report.ticketsTraites++;
+    report.details.push({ key: key, type: "Bug", summary: summary, status: "OK",
+      testGenerated: !linkedTest, testKey: (!linkedTest && testKey) || null });
   } catch(e) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Bug", error: e.message });
+    report.details.push({ key: key, type: "Bug", summary: summary, status: "ERROR", error: e.message });
   }
 }
 
@@ -338,9 +345,14 @@ async function processTest(ticket, report) {
       "Mode : " + strategy.decision);
 
     report.ticketsTraites++;
+    report.details.push({ key: key, type: "Test", summary: summary,
+      status: pwResult.hasFail ? "FAIL" : "PASS",
+      bugKey: (pwResult.hasFail && bugKey) || null,
+      mode: strategy.decision });
   } catch(e) {
     log("[TEST] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Test", error: e.message });
+    report.details.push({ key: key, type: "Test", summary: summary, status: "ERROR", error: e.message });
   }
 }
 
@@ -365,6 +377,7 @@ async function runDailyQAJob() {
     testsGeneres: 0,
     casTestImportesXray: 0,
     testsExecutes: 0,
+    details: [],
     pass: 0,
     fail: 0,
     bugsCreees: 0,
