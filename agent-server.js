@@ -3524,6 +3524,38 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // Debug : lister les statuts Jira du projet
+  if (method === "GET" && url === "/api/jira-statuses") {
+    var httpsDbg = require("https");
+    var authDbg = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var dbgReq = httpsDbg.request({
+      hostname: CFG.jira.host,
+      path: "/rest/api/3/project/" + (CFG.jira.project || "SAFWBST") + "/statuses",
+      method: "GET",
+      headers: { "Authorization": "Basic " + authDbg, "Accept": "application/json" }
+    }, function(dbgRes) {
+      var dbgData = "";
+      dbgRes.on("data", function(c) { dbgData += c; });
+      dbgRes.on("end", function() {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        try {
+          var parsed = JSON.parse(dbgData);
+          var statuses = [];
+          (parsed || []).forEach(function(issueType) {
+            (issueType.statuses || []).forEach(function(s) {
+              if (!statuses.find(function(x) { return x.name === s.name; }))
+                statuses.push({ name: s.name, id: s.id, category: s.statusCategory && s.statusCategory.name });
+            });
+          });
+          res.end(JSON.stringify({ project: CFG.jira.project, statuses: statuses }));
+        } catch(e) { res.end(dbgData); }
+      });
+    });
+    dbgReq.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ error: e.message })); });
+    dbgReq.end();
+    return;
+  }
+
   if (method === "GET" && url === "/api/daily-job/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ running: dailyJob.isRunning(), mode: DAILY_JOB_MODE ? "daily" : "polling" }));
