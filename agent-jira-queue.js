@@ -279,16 +279,62 @@ async function testAlreadyExists(sourceKey) {
   return false;
 }
 
-function updateJiraDescription(key, markdownText) {
-  var body = {
-    fields: {
-      description: {
-        type: "doc", version: 1,
-        content: [{ type: "paragraph", content: [{ type: "text", text: markdownText }] }]
-      }
+// Sauvegarder la description actuelle avant toute modification
+var BACKUP_DIR = path.join(__dirname, "backup");
+
+async function backupDescription(key) {
+  try {
+    var r = await jiraApiAsync("GET", "/rest/api/3/issue/" + key + "?fields=description", null);
+    var desc = r.data && r.data.fields && r.data.fields.description;
+    if (desc) {
+      if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+      var ts = new Date().toISOString().replace(/[:.]/g, "-");
+      var backupFile = path.join(BACKUP_DIR, key + "-backup-" + ts + ".json");
+      fs.writeFileSync(backupFile, JSON.stringify(desc, null, 2), "utf8");
+      log("[BACKUP] " + key + " → " + path.basename(backupFile));
+      return backupFile;
     }
-  };
-  return jiraApiAsync("PUT", "/rest/api/3/issue/" + key, body);
+  } catch(e) {
+    log("[BACKUP] Erreur backup " + key + " : " + e.message);
+  }
+  return null;
+}
+
+async function updateJiraDescription(key, markdownOrADF) {
+  // Backup avant modification
+  await backupDescription(key);
+
+  var description;
+  if (markdownOrADF && markdownOrADF.type === "doc" && markdownOrADF.version === 1) {
+    // Déjà en ADF
+    description = markdownOrADF;
+  } else {
+    // Fallback : texte simple → ADF basique
+    description = {
+      type: "doc", version: 1,
+      content: [{ type: "paragraph", content: [{ type: "text", text: String(markdownOrADF || "") }] }]
+    };
+  }
+
+  var body = { fields: { description: description } };
+
+  try {
+    var result = await jiraApiAsync("PUT", "/rest/api/3/issue/" + key, body);
+    log("[JIRA] Description " + key + " mise à jour (ADF)");
+    return result;
+  } catch(e) {
+    // Fallback texte si ADF échoue (ex: expand non supporté)
+    log("[JIRA] ADF échoué pour " + key + " (" + e.message + ") → fallback texte");
+    var fallbackBody = {
+      fields: {
+        description: {
+          type: "doc", version: 1,
+          content: [{ type: "paragraph", content: [{ type: "text", text: String(markdownOrADF.fallbackText || markdownOrADF || "") }] }]
+        }
+      }
+    };
+    return jiraApiAsync("PUT", "/rest/api/3/issue/" + key, fallbackBody);
+  }
 }
 
 // ── SSE VERS LE DASHBOARD ─────────────────────────────────────────────────────
@@ -445,12 +491,19 @@ async function workflowBacklog(ticket) {
       return;
     }
 
-    // 5. Lire le markdown final (peut avoir été édité dans le dashboard)
-    var finalData = getEnrichedUS(key);
-    var finalMarkdown = (finalData && finalData.enrichedMarkdown) || enriched.markdown;
+    // 5. Construire le document ADF avec accordéons
+    var adfDoc;
+    if (enriched.structured) {
+      adfDoc = leadQA.buildADFDescription(enriched.structured);
+      adfDoc.fallbackText = enriched.markdown; // pour le fallback texte si ADF échoue
+    } else {
+      // Fallback : markdown brut si pas de données structurées
+      var finalData = getEnrichedUS(key);
+      adfDoc = (finalData && finalData.enrichedMarkdown) || enriched.markdown;
+    }
 
-    // 6. Mettre à jour la description Jira avec le contenu final (potentiellement édité)
-    await updateJiraDescription(key, finalMarkdown);
+    // 6. Mettre à jour la description Jira (ADF avec backup auto)
+    await updateJiraDescription(key, adfDoc);
 
     // 5. Commenter sur le ticket
     await postComment(key,

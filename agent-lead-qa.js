@@ -333,30 +333,120 @@ async function enrichUS(ticket) {
 
   var prompt =
     ANTI_HALLU +
-    "Tu enrichis la description de cette User Story pour Jira. Le contenu sera pushé DIRECTEMENT dans le champ description Jira.\n\n" +
+    "Tu enrichis cette User Story. Retourne un JSON structuré (pas de markdown).\n\n" +
     "=== TICKET SOURCE ===\n" +
     "Clé : " + key + "\n" +
     "Résumé : " + summary + "\n" +
     "Description actuelle : " + (desc || "(vide)") + "\n" +
     "=== FIN TICKET SOURCE ===\n\n" +
-    "RÈGLES DE FORMAT — STRICTES :\n" +
-    "- PAS de titres ## avec emojis\n" +
-    "- PAS de bloc RÉSUMÉ ni INFORMATIONS JIRA (ces métadonnées sont déjà dans Jira)\n" +
-    "- PAS de [À préciser] ni [URL à préciser] — si l'info manque, OMETS le champ entièrement\n" +
-    "- PAS de métadonnées redondantes (Espace, Clé, Type, Epic, Créé le, Statut)\n" +
-    "- Texte brut ou markdown léger (listes à puces, gras) uniquement\n\n" +
-    "STRUCTURE EXACTE À PRODUIRE (rien d'autre) :\n\n" +
-    "En tant que [persona], je veux [action], afin de [bénéfice].\n\n" +
-    "[Description fonctionnelle enrichie — 2 à 5 phrases max, basée sur le ticket source]\n\n" +
-    "Critères d'acceptation :\n" +
-    "- Étant donné [contexte], lorsque [action], alors [résultat attendu]\n" +
-    "(2 à 6 critères Gherkin)\n\n" +
-    "Couverture de tests :\n" +
-    "- [liste simple des types de tests nécessaires, ex: test fonctionnel, test API, test visuel]\n\n" +
-    "NE RIEN AJOUTER D'AUTRE.";
+    "RETOURNE EXACTEMENT ce JSON :\n" +
+    "{\n" +
+    '  "persona": "le persona déduit du ticket",\n' +
+    '  "objectif": "ce que le persona veut faire",\n' +
+    '  "benefice": "le bénéfice métier",\n' +
+    '  "testType": "E2E|API|Manuel|Drupal BO|Mix — BO + E2E (déduit du contenu)",\n' +
+    '  "acs": [\n' +
+    '    { "title": "Titre court AC1", "given": "contexte", "when": "action", "then": "résultat" },\n' +
+    '    { "title": "Titre court AC2", "given": "contexte", "when": "action", "then": "résultat" }\n' +
+    "  ]\n" +
+    "}\n\n" +
+    "RÈGLES :\n" +
+    "- 3 à 8 ACs, chacun avec un seul comportement observable\n" +
+    "- Gherkin strict : given/when/then basés sur le ticket source\n" +
+    "- testType déduit : Drupal BO si mentions BO/contenu, API si mentions API/REST, E2E si front/page/URL\n" +
+    "- Si une info manque, omets le champ — JAMAIS de [À préciser]\n" +
+    "- PAS de métadonnées Jira, PAS de markdown, PAS d'emojis";
 
-  var markdown = await ask(prompt, MODEL_QUALITY);
-  return { key: key, summary: summary, epic: epic, markdown: markdown };
+  var enriched = await askJSON(prompt, MODEL_QUALITY);
+  // Sauvegarder aussi le markdown pour compatibilité
+  var markdown = formatEnrichedMarkdown(enriched, summary);
+  return { key: key, summary: summary, epic: epic, markdown: markdown, structured: enriched };
+}
+
+// Formater le JSON enrichi en markdown (pour sauvegarde locale lisible)
+function formatEnrichedMarkdown(enriched, summary) {
+  if (!enriched) return summary || "";
+  var lines = [];
+  if (enriched.persona && enriched.objectif) {
+    lines.push("En tant que " + enriched.persona + ", je veux " + enriched.objectif +
+      (enriched.benefice ? ", afin de " + enriched.benefice : "") + ".");
+  }
+  if (enriched.testType) lines.push("\nType de test : " + enriched.testType);
+  if (enriched.acs && enriched.acs.length) {
+    lines.push("\nCritères d'acceptation :");
+    enriched.acs.forEach(function(ac, i) {
+      lines.push("AC" + (i + 1) + " : " + (ac.title || ""));
+      lines.push("  Étant donné " + (ac.given || ""));
+      lines.push("  Lorsque " + (ac.when || ""));
+      lines.push("  Alors " + (ac.then || ""));
+    });
+  }
+  return lines.join("\n");
+}
+
+// Construire le document ADF avec accordéons pour chaque AC
+function buildADFDescription(enriched) {
+  if (!enriched || !enriched.persona) {
+    // Fallback texte simple si le JSON est invalide
+    return {
+      type: "doc", version: 1,
+      content: [{ type: "paragraph", content: [{ type: "text", text: JSON.stringify(enriched || {}) }] }]
+    };
+  }
+
+  var content = [];
+
+  // Heading DESCRIPTION
+  content.push({
+    type: "heading", attrs: { level: 3 },
+    content: [{ type: "text", text: "DESCRIPTION" }]
+  });
+
+  // User Story statement
+  var usText = "En tant que " + enriched.persona +
+    "\nJe veux " + enriched.objectif +
+    (enriched.benefice ? "\nAfin de " + enriched.benefice : "");
+  content.push({
+    type: "paragraph",
+    content: [{ type: "text", text: usText }]
+  });
+
+  // Séparateur
+  content.push({ type: "rule" });
+
+  // Type de test
+  if (enriched.testType) {
+    content.push({
+      type: "paragraph",
+      content: [{ type: "text", text: "TYPE DE TEST\n" + enriched.testType }]
+    });
+    content.push({ type: "rule" });
+  }
+
+  // Heading AC
+  content.push({
+    type: "heading", attrs: { level: 3 },
+    content: [{ type: "text", text: "CRITÈRES D'ACCEPTATION" }]
+  });
+
+  // Accordéons AC (expand nodes)
+  var acs = enriched.acs || [];
+  acs.forEach(function(ac, i) {
+    var title = "AC" + (i + 1) + " : " + (ac.title || "Critère " + (i + 1));
+    var gherkin = "Étant donné " + (ac.given || "...") +
+      "\nLorsque " + (ac.when || "...") +
+      "\nAlors " + (ac.then || "...");
+    content.push({
+      type: "expand",
+      attrs: { title: title },
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: gherkin }]
+      }]
+    });
+  });
+
+  return { type: "doc", version: 1, content: content };
 }
 
 // ── 3. REVUE D'UNE US — QUALITÉ ─────────────────────────────────────────────
@@ -1060,8 +1150,9 @@ module.exports = {
   // Fonctions fusionnees (daily-job optimise)
   analyzeAndReviewUS,
   generateTestAndCSV,
-  // Génération
+  // Génération & ADF
   enrichUS,
+  buildADFDescription,
   generateTestTicket,
   generateTestCasesCSV,
   generateBugTicket,

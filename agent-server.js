@@ -3732,6 +3732,80 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── RESTORE BACKUP — remet la description originale dans Jira ──────────────
+  if (method === "POST" && url.match(/^\/api\/restore-backup\/[A-Z]+-\d+$/)) {
+    var restoreKey = url.split("/").pop();
+    var backupDir = path.join(BASE_DIR, "backup");
+    try {
+      if (!fs.existsSync(backupDir)) throw new Error("Dossier backup/ inexistant");
+      // Trouver le backup le plus récent pour cette clé
+      var backups = fs.readdirSync(backupDir)
+        .filter(function(f) { return f.startsWith(restoreKey + "-backup-") && f.endsWith(".json"); })
+        .sort().reverse();
+      if (backups.length === 0) throw new Error("Aucun backup trouvé pour " + restoreKey);
+
+      var backupFile = path.join(backupDir, backups[0]);
+      var originalDesc = JSON.parse(fs.readFileSync(backupFile, "utf8"));
+
+      // Restaurer dans Jira via API v3
+      var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+      var restoreBody = JSON.stringify({ fields: { description: originalDesc } });
+      var restoreReq = require("https").request({
+        hostname: CFG.jira.host,
+        path: "/rest/api/3/issue/" + restoreKey,
+        method: "PUT",
+        headers: {
+          "Authorization": "Basic " + auth,
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(restoreBody)
+        }
+      }, function(jRes) {
+        var data = "";
+        jRes.on("data", function(c) { data += c; });
+        jRes.on("end", function() {
+          if (jRes.statusCode >= 200 && jRes.statusCode < 300) {
+            console.log("[RESTORE] " + restoreKey + " restauré depuis " + backups[0]);
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, key: restoreKey, from: backups[0], backupsAvailable: backups.length }));
+          } else {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Jira HTTP " + jRes.statusCode, body: data.substring(0, 300) }));
+          }
+        });
+      });
+      restoreReq.on("error", function(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      });
+      restoreReq.write(restoreBody);
+      restoreReq.end();
+    } catch(e) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // ── LIST BACKUPS ──────────────────────────────────────────────────────────
+  if (method === "GET" && url === "/api/backups") {
+    var bDir = path.join(BASE_DIR, "backup");
+    var list = [];
+    try {
+      if (fs.existsSync(bDir)) {
+        list = fs.readdirSync(bDir)
+          .filter(function(f) { return f.endsWith(".json"); })
+          .map(function(f) {
+            var match = f.match(/^([A-Z]+-\d+)-backup-(.+)\.json$/);
+            return { file: f, key: match ? match[1] : f, timestamp: match ? match[2] : "" };
+          })
+          .sort(function(a, b) { return b.timestamp.localeCompare(a.timestamp); });
+      }
+    } catch(e) {}
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(list));
+    return;
+  }
+
   res.writeHead(404); res.end("Not found");
 });
 

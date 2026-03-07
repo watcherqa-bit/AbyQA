@@ -124,8 +124,7 @@ async function addSteps(key, content, issue) {
   });
   console.log("[OK] " + (nextTC - lastTC - 1) + " cas de test ajoutés (TC" +
     String(lastTC + 1).padStart(2, "0") + " → TC" + String(nextTC - 1).padStart(2, "0") + ")");
-
-  await addComment(key, "*Nouveaux cas de test ajoutés :*\n\n" + newSteps);
+  // Les cas de test vont uniquement dans Xray via CSV — pas de commentaire Jira
 }
 
 // ── METTRE À JOUR LE STATUT ───────────────────────────────────────────────────
