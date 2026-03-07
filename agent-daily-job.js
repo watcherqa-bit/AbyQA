@@ -483,6 +483,7 @@ function _cronTick() {
 }
 
 function isRunning() { return _running; }
+function setSendSSE(fn) { _sendSSE = fn; }
 
 // ── STANDALONE ──────────────────────────────────────────────────────────────
 if (require.main === module) {
@@ -496,4 +497,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { startCron, stopCron, runDailyQAJob, getLastReport, isRunning };
+module.exports = { startCron, stopCron, runDailyQAJob, getLastReport, isRunning, setSendSSE };

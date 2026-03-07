@@ -3513,7 +3513,11 @@ var server = http.createServer(function(req, res) {
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, message: "Job lance" }));
-    dailyJob.runDailyQAJob();
+    // S'assurer que sendSSE est injecte meme hors mode cron
+    dailyJob.setSendSSE(sendSSE);
+    dailyJob.runDailyQAJob().catch(function(e) {
+      console.log("[DAILY-JOB] Erreur non capturee : " + e.message);
+    });
     return;
   }
 
