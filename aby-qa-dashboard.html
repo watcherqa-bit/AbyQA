@@ -51,7 +51,7 @@
     font-size: 11px;
     cursor: pointer;
   }
-  #ops-results-block { overflow:hidden; max-width:100%; }
+  #ops-results-block { overflow:visible; max-width:100%; }
   #ops-results-block * { max-width:100%; overflow-wrap:break-word; }
   #ops-results-block [contenteditable]:empty { min-height:0 !important; padding:2px 8px !important; }
   #ops-results-block img[src=""], #ops-results-block img:not([src]),
@@ -3835,7 +3835,7 @@
         </div>
 
         <!-- ─── RÉSULTATS (innerHTML géré par opsRenderGenResult) ─── -->
-        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;overflow:hidden"></div>
+        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;overflow:visible"></div>
 
       </div>
     </div>
@@ -7031,6 +7031,7 @@ function opsProgressComplete(ok) {
 function opsShowTestResult(result, diagnostic) {
   var wrap = document.getElementById('ops-test-result-wrap');
   if (!wrap) return;
+  window._opsLastResult = result;
   window._opsLastDiagnostic = diagnostic || null;
   var ok = !result.fail || result.fail === 0;
   var borderColor = ok ? 'rgba(0,232,122,.4)' : 'rgba(255,59,92,.4)';
@@ -7096,7 +7097,15 @@ function opsShowTestResult(result, diagnostic) {
 
   wrap.innerHTML = html;
   wrap.style.display = 'block';
-  wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Scroll vers le diagnostic si FAIL, sinon vers le résultat
+  setTimeout(function() {
+    var diagZone = document.getElementById('ops-diagnostic-zone');
+    if (diagZone) {
+      diagZone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, 100);
 }
 
 // ── DIAGNOSTIC UNIVERSEL + BOUTON CORRIGER ────────────────────────────────────
@@ -7339,7 +7348,10 @@ function opsRequestLogAnalysis() {
     .then(function(d) {
       window._opsLastDiagnostic = d;
       var tk = (window._opsLastResult && window._opsLastResult.ticketKey) || '';
-      if (zone) zone.innerHTML = renderDiagnosticBlock(d, tk);
+      if (zone) {
+        zone.innerHTML = renderDiagnosticBlock(d, tk);
+        zone.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
       if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-analyser les logs'; }
     }).catch(function(e) {
       if (zone) zone.innerHTML = '<div style="color:var(--red);font-size:13px">Erreur d\'analyse : ' + escHtml(e.message) + '</div>';
