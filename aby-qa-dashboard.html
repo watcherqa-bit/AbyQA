@@ -7154,9 +7154,9 @@ function renderDiagnosticBlock(diag, ticketKey) {
   }
 
   // ── BOUTON CORRIGER ─────────────────────────────────────────────────────────
-  // Visible uniquement si une correction est suggérée
-  if (fixText || action) {
-    var btnType = _detectCorrectionType(diag);
+  // Toujours visible quand un diagnostic existe — défaut CLAUDE_CODE si pas de correction explicite
+  {
+    var btnType = (fixText || action) ? _detectCorrectionType(diag) : 'CLAUDE_CODE';
     var btnCfg = {
       OPEN_JIRA:   { icon: '🔗', label: 'Ouvrir Jira',  color: 'var(--blue)',   bg: 'rgba(59,111,255,.15)', border: 'rgba(59,111,255,.35)' },
       AUTO_FIX:    { icon: '🔧', label: 'Fix auto',      color: 'var(--green)',  bg: 'rgba(0,232,122,.15)',  border: 'rgba(0,232,122,.35)' },
@@ -10133,11 +10133,23 @@ function loadPlaywrightReports() {
     .then(function(r) { return r.json(); })
     .then(function(items) {
       _reportsList = items; // cache pour la comparaison
+      // Trier par date DESC (plus récent en premier)
+      items.sort(function(a, b) {
+        return (b.date || '').localeCompare(a.date || '');
+      });
       // Filtrer
       var filtered = items.filter(function(r) {
         if (filterStatus !== "all" && r.status !== filterStatus) return false;
         if (filterMode   !== "all" && r.mode   !== filterMode)   return false;
         return true;
+      });
+
+      // Calculer le dernier run par ticketKey pour le badge DERNIER RUN
+      var _latestByTicket = {};
+      filtered.forEach(function(r) {
+        if (r.ticketKey && (!_latestByTicket[r.ticketKey] || (r.date || '') > (_latestByTicket[r.ticketKey] || ''))) {
+          _latestByTicket[r.ticketKey] = r.date || '';
+        }
       });
 
       var rptCount = document.getElementById("rptCount");
@@ -10149,6 +10161,7 @@ function loadPlaywrightReports() {
       }
 
       container.innerHTML = filtered.map(function(r) {
+        var _isLatest = r.ticketKey && r.date === _latestByTicket[r.ticketKey];
         var isOk         = r.status === "OK";
         var isCss        = r.type === "css";
         var statusColor  = isOk ? "var(--green)" : "var(--red)";
@@ -10212,12 +10225,14 @@ function loadPlaywrightReports() {
           '</div>';
         }
 
-        return '<div class="rpt-card" style="background:var(--bg2);border:1px solid ' + statusBorder + ';border-radius:12px;padding:16px;transition:border-color .2s,outline .15s">' +
+        var _cardOpacity = (!_isLatest && r.ticketKey) ? 'opacity:0.6;' : '';
+        return '<div class="rpt-card" style="background:var(--bg2);border:1px solid ' + statusBorder + ';border-radius:12px;padding:16px;transition:border-color .2s,outline .15s;' + _cardOpacity + '">' +
           '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
             '<input type="checkbox" class="rpt-cb" data-filename="' + escHtml(r.filename) + '" onchange="toggleReportSelect(\'' + escHtml(r.filename) + '\', this)" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;accent-color:var(--blue)">' +
             '<div style="display:flex;align-items:center;gap:6px;padding:4px 10px;background:' + statusBg + ';border:1px solid ' + statusBorder + ';border-radius:6px;font-family:var(--mono);font-size:11px;font-weight:700;color:' + statusColor + '">' +
               (isOk ? "✅ TEST OK" : "❌ TEST KO") +
             '</div>' +
+            (_isLatest ? '<div style="font-family:var(--mono);font-size:9px;padding:2px 6px;background:rgba(0,212,255,.15);border:1px solid rgba(0,212,255,.3);border-radius:4px;color:var(--cyan);font-weight:700;letter-spacing:.05em">DERNIER RUN</div>' : '') +
             '<div style="font-family:var(--mono);font-size:11px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;color:var(--cyan)">' + escHtml(r.mode) + '</div>' +
             (r.isCompare ? '<div style="font-family:var(--mono);font-size:10px;padding:2px 6px;background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.3);border-radius:4px;color:#a78bfa">COMPARE</div>' : '') +
             (r.ticketKey ? '<a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(r.ticketKey) + '" target="_blank" style="font-family:var(--mono);font-size:11px;padding:3px 8px;background:rgba(59,111,255,.12);border:1px solid rgba(59,111,255,.35);border-radius:4px;color:var(--blue);text-decoration:none;font-weight:700" title="Ouvrir ticket Jira">🎫 ' + escHtml(r.ticketKey) + '</a>' : '') +
@@ -10234,6 +10249,11 @@ function loadPlaywrightReports() {
             '</div>' +
           '</div>' +
           '<div style="font-size:11px;color:' + statusColor + ';margin-top:8px;font-style:italic">' + commentPW + '</div>' +
+          (res.scenarios ? '<div style="display:flex;gap:8px;margin-top:6px;align-items:center;flex-wrap:wrap">' +
+            '<span style="font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:#a78bfa;font-weight:700">SCENARIOS ' + (res.scenarios.total || 0) + '</span>' +
+            (res.scenarios.autoPass !== undefined ? '<span style="font-family:var(--mono);font-size:10px;color:var(--green)">' + res.scenarios.autoPass + '/' + res.scenarios.autoTotal + ' AUTO PASS</span>' : '') +
+            (res.scenarios.manuelTotal ? '<span style="font-family:var(--mono);font-size:10px;color:var(--orange)">' + res.scenarios.manuelTotal + ' MANUEL</span>' : '') +
+          '</div>' : '') +
           diagHtml +
         '</div>';
       }).join("");
