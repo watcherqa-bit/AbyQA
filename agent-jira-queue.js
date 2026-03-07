@@ -302,9 +302,18 @@ function log(msg) {
 // Pour toutes les URLs : utiliser leadQA.extractUrlsFromDescription()
 function extractUrls(text) {
   if (!text) return [];
-  return (text.match(/https?:\/\/[^\s"'<>\]]+/g) || []).filter(function(u) {
-    return u.includes("safran");
-  });
+  // Extraire les URLs depuis la syntaxe Jira [texte|url]
+  var jiraUrls = [];
+  var jlRe = /\[([^\|\]]+)\|([^\]]+)\]/g;
+  var m;
+  while ((m = jlRe.exec(text)) !== null) {
+    var u = m[2].trim();
+    if (/^https?:\/\//i.test(u) && u.includes("safran")) jiraUrls.push(u);
+  }
+  var raw = (text.match(/https?:\/\/[^\s"'<>\]\)]+/g) || []);
+  return jiraUrls.concat(raw)
+    .map(function(u) { return u.replace(/[\)\(\]\[\|\_\{\}]+$/g, "").trim(); })
+    .filter(function(u) { return u.includes("safran"); });
 }
 
 function extractDesc(fields) {

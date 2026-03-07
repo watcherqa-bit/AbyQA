@@ -250,16 +250,34 @@ async function getUrlsFromJiraKey(key) {
     ? issue.fields.comment.comments.map(function(c) { return normalizeDescription(c.body); }).join(" ")
     : "";
   var desc = descText + " " + commentsText;
-  var urlMatches = desc.match(/https?:\/\/[^\s<"'\]]+/g) || [];
+  // 1. Extraire les URLs depuis la syntaxe Jira [texte|url] en priorité
+  var jiraLinkUrls = [];
+  var jiraLinkRe = /\[([^\|\]]+)\|([^\]]+)\]/g;
+  var jlm;
+  while ((jlm = jiraLinkRe.exec(desc)) !== null) {
+    var jlUrl = jlm[2].trim();
+    if (/^https?:\/\//i.test(jlUrl)) jiraLinkUrls.push(jlUrl);
+  }
+  // 2. Extraire les URLs brutes du texte
+  var urlMatches = desc.match(/https?:\/\/[^\s<"'\]\)]+/g) || [];
+  // 3. Combiner et nettoyer
+  var allRawUrls = jiraLinkUrls.concat(urlMatches);
   var seen = {};
-  var urls = urlMatches
+  var urls = allRawUrls
     .reduce(function(acc, raw) {
       // Séparer les URLs collées par pipe, virgule ou point-virgule
       return acc.concat(raw.split(/[|,;]/).map(function(u) { return u.trim(); }));
     }, [])
+    .map(function(u) {
+      // Nettoyer les caractères Jira parasites en fin d'URL : ) ( ] [ | _ { }
+      return u.replace(/[\)\(\]\[\|\_\{\}]+$/g, "").trim();
+    })
     .filter(function(u) {
       if (!u || !/^https?:\/\//i.test(u)) return false;
-      try { var p = new URL(u); return p.hostname && p.hostname.includes("."); } catch(e) { return false; }
+      try { var p = new URL(u); return p.hostname && p.hostname.includes("."); } catch(e) {
+        console.log("  [URL] Rejetée (invalide) : " + u.substring(0, 60));
+        return false;
+      }
     })
     .filter(function(u) {
       return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);

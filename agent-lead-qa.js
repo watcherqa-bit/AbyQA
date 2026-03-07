@@ -800,7 +800,7 @@ async function analyzePlaywrightFail(logs, resultData) {
     if (match) {
       var parsed = JSON.parse(match[0]);
       // Normaliser : garantir la structure attendue
-      return {
+      var result = {
         diagnostic:      parsed.diagnostic || parsed.diagnosis || fallback.diagnostic,
         causeProbable:   parsed.causeProbable || parsed.cause || fallback.causeProbable,
         typeErreur:      (parsed.typeErreur || "UNKNOWN").toUpperCase(),
@@ -815,6 +815,21 @@ async function analyzePlaywrightFail(logs, resultData) {
         priority:        (parsed["priorité"] || parsed.priority || "MEDIUM").toLowerCase(),
         affectedPages:   parsed.pages || parsed.affectedPages || []
       };
+      // Post-correction : si le LLM accuse le ticket Jira mais que l'erreur contient
+      // des caractères Jira parasites dans les URLs → c'est un problème de parsing AbyQA
+      if (result.typeErreur === "SYNTAX_JIRA") {
+        var allText = (result.diagnostic + " " + result.causeProbable + " " + result.correction).toLowerCase();
+        var hasJiraChars = /[\)\(\]\[\|\_\{\}]/.test(allText) || /url.*malform|caract.*parasit|pars/i.test(allText);
+        if (hasJiraChars) {
+          result.typeErreur = "PARSING";
+          result.diagnostic = "Caractères Jira détectés dans l'URL extraite — correction automatique appliquée par AbyQA. " + result.diagnostic;
+          result.diagnosis = result.diagnostic;
+          result.causeProbable = "Le parser d'URLs AbyQA n'éliminait pas les caractères de syntaxe Jira ( ) [ ] | _ en fin d'URL.";
+          result.cause = result.causeProbable;
+          result["actionSuggérée"] = { type: "AUTO_FIX", valeur: "", code: "" };
+        }
+      }
+      return result;
     }
     return Object.assign({}, fallback, { diagnostic: text, diagnosis: text });
   } catch(e) {
@@ -829,15 +844,30 @@ async function analyzePlaywrightFail(logs, resultData) {
  */
 function extractUrlsFromDescription(text) {
   if (!text || typeof text !== "string") return [];
-  var urlRegex = /https?:\/\/[^\s\]|[<>"'{}\\^`]+/g;
+  // 1. Extraire les URLs depuis la syntaxe Jira [texte|url]
+  var jiraLinkUrls = [];
+  var jiraLinkRe = /\[([^\|\]]+)\|([^\]]+)\]/g;
+  var jlm;
+  while ((jlm = jiraLinkRe.exec(text)) !== null) {
+    var jlUrl = jlm[2].trim();
+    if (/^https?:\/\//i.test(jlUrl)) jiraLinkUrls.push(jlUrl);
+  }
+  // 2. Extraire les URLs brutes
+  var urlRegex = /https?:\/\/[^\s<>"'{}\\^`\]\)]+/g;
   var raw = text.match(urlRegex) || [];
+  var all = jiraLinkUrls.concat(raw);
   var seen = {};
-  return raw
-    .map(function(u) { return u.replace(/[.,;:!?)]+$/, ""); }) // nettoyer ponctuation finale
+  return all
+    .map(function(u) {
+      // Nettoyer les caractères Jira parasites en fin d'URL
+      return u.replace(/[\)\(\]\[\|\_\{\}.,;:!?]+$/g, "").trim();
+    })
     .filter(function(u) {
+      if (!u || u.length < 10) return false;
+      try { new URL(u); } catch(e) { return false; }
       if (seen[u]) return false;
       seen[u] = true;
-      return u.length > 10;
+      return true;
     });
 }
 
