@@ -458,6 +458,96 @@ async function generateTestCasesCSV(us, count) {
   return csv;
 }
 
+// ── 6b. ANALYSE + REVUE + STRATEGIE FUSIONNEES (1 seul appel Claude) ────────
+// Fusionne reviewUS + analyzeUS + decideStrategy en un seul prompt
+async function analyzeAndReviewUS(ticket) {
+  var key     = ticket.key || "?";
+  var summary = (ticket.fields && ticket.fields.summary) || ticket.summary || "";
+  var desc    = extractText((ticket.fields && ticket.fields.description) || ticket.description);
+  var epic    = extractEpic(ticket);
+
+  var prompt =
+    "Analyse cette User Story Jira selon 3 axes en un seul JSON.\n\n" +
+    "Cle    : " + key + "\n" +
+    "Resume : " + summary + "\n" +
+    "Epic   : " + epic + "\n" +
+    "Description : " + desc.substring(0, 800) + "\n\n" +
+    "Retourne un JSON UNIQUE avec ces champs :\n" +
+    "{\n" +
+    '  "key": "' + key + '",\n' +
+    '  "epic": "' + epic + '",\n' +
+    '  "summary": "' + summary.replace(/"/g, "'") + '",\n' +
+    '  "review": {\n' +
+    '    "score": 65,\n' +
+    '    "isReadyForTest": false,\n' +
+    '    "missingElements": ["ac", "persona"],\n' +
+    '    "issues": ["AC manquants"],\n' +
+    '    "suggestions": ["Ajouter 2 AC Gherkin"]\n' +
+    '  },\n' +
+    '  "analysis": {\n' +
+    '    "complexity": "faible|moyenne|elevee",\n' +
+    '    "testCount": 3,\n' +
+    '    "priority": "Critique|Haute|Moyenne|Basse",\n' +
+    '    "risks": ["Risque 1"]\n' +
+    '  },\n' +
+    '  "strategy": {\n' +
+    '    "decision": "e2e|api|drupal|css|manual|mix",\n' +
+    '    "types": ["e2e"],\n' +
+    '    "confidence": 85,\n' +
+    '    "reasoning": "Justification courte (2 phrases max)",\n' +
+    '    "playwrightMode": "ui|api|drupal|css-audit|null"\n' +
+    '  }\n' +
+    "}";
+
+  return await askJSON(prompt, MODEL_FAST);
+}
+
+// ── 6c. GENERER TICKET TEST + CSV EN UN SEUL APPEL ──────────────────────────
+// Fusionne generateTestTicket + generateTestCasesCSV en un seul prompt
+async function generateTestAndCSV(us, testType, fonction, csvCount) {
+  var usKey   = us.key || "SAFWBST-?";
+  var epic    = us.epic || extractEpic(us);
+  var summary = us.summary || "";
+  var desc    = us.description || extractText((us.fields && us.fields.description) || "");
+  var fn      = fonction || summary;
+  var title   = "TEST - [" + summary + "] - " + fn;
+  var count   = csvCount || 5;
+
+  var prompt =
+    ANTI_HALLU +
+    "Genere un ticket TEST complet + ses cas de test CSV en une seule reponse.\n\n" +
+    "US de reference : " + usKey + "\n" +
+    "Epic            : " + epic + "\n" +
+    "Resume US       : " + summary + "\n" +
+    "Type de test    : " + (testType || "mixte") + "\n" +
+    "Fonction testee : " + fn + "\n" +
+    "Contexte        : " + desc.substring(0, 500) + "\n\n" +
+    "Titre exact du ticket : \"" + title + "\"\n" +
+    "Date : " + new Date().toLocaleDateString("fr-FR") + "\n\n" +
+    "REPONDS EN 2 SECTIONS SEPAREES PAR LA LIGNE : ---CSV-SEPARATOR---\n\n" +
+    "SECTION 1 — Ticket TEST complet en Markdown selon le template.\n\n" +
+    "SECTION 2 — " + count + " cas de test au format CSV strict :\n" +
+    "- Ligne 1 (header) : Action,Donnees,Resultat Attendu\n" +
+    "- Chaque cellule entre guillemets doubles\n" +
+    "- Colonne Action    : \"Etant donne [X]\\nLorsque [Y]\\nAlors [Z]\"\n" +
+    "- Colonne Donnees   : \"• Cle : Valeur\\n• Cle2 : Valeur2\"\n" +
+    "- Colonne Resultat  : \"• Critere 1\\n• Critere 2\\n• Pas d'erreur serveur 5xx\"";
+
+  var raw = await ask(prompt, MODEL_QUALITY);
+
+  // Separer les deux sections
+  var parts = raw.split(/---CSV-SEPARATOR---/i);
+  var markdown = (parts[0] || "").trim();
+  var csv = (parts[1] || "").trim();
+  // Nettoyer les eventuels blocs markdown du CSV
+  csv = csv.replace(/^```csv\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+
+  return {
+    title: title, usKey: usKey, epic: epic, testType: testType,
+    markdown: markdown, csv: csv
+  };
+}
+
 // ── 7. GÉNÉRER UN TICKET BUG ─────────────────────────────────────────────────
 // opts: { sourceUS, epic, page, description, steps, expected, actual, severity, evidence }
 async function generateBugTicket(opts) {
@@ -943,6 +1033,9 @@ module.exports = {
   analyzeUS,
   reviewUS,
   decideStrategy,
+  // Fonctions fusionnees (daily-job optimise)
+  analyzeAndReviewUS,
+  generateTestAndCSV,
   // Génération
   enrichUS,
   generateTestTicket,

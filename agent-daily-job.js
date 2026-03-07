@@ -120,16 +120,17 @@ async function processUS(ticket, report) {
   sse({ type: "daily-job-progress", step: "us", key: key, summary: summary, message: "US " + key + " — " + summary });
 
   try {
-    // Analyser la completude (lecture seule)
-    var review = await leadQA.reviewUS(ticket);
-    var isComplete = review.score >= 70 && (!review.missingElements || review.missingElements.length === 0);
+    // Appel unique : analyse + revue + strategie (1 appel Claude au lieu de 3)
+    var result = await leadQA.analyzeAndReviewUS(ticket);
+    var review = result.review || {};
+    var analysis = result.analysis || {};
+    var strategy = result.strategy || {};
+    var isComplete = (review.score || 0) >= 70 && (!review.missingElements || review.missingElements.length === 0);
 
     // Preparer l'enrichissement LOCAL (sans toucher Jira)
-    var enrichedMarkdown = null;
     if (!isComplete) {
-      log("[US] " + key + " — Score " + review.score + "/100, preparation enrichissement...");
+      log("[US] " + key + " — Score " + (review.score||0) + "/100, preparation enrichissement...");
       var enriched = await leadQA.enrichUS(ticket);
-      enrichedMarkdown = enriched.markdown;
       leadQA.saveMarkdown(enriched.markdown, "US", key + "-enrichi");
       report.usEnrichies++;
       log("[US] " + key + " — Enrichissement prepare localement (inbox/enriched/)");
@@ -142,26 +143,19 @@ async function processUS(ticket, report) {
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
-    var localTestFile = null;
     if (!linkedTest) {
-      // Generer ticket TEST localement (sans creer dans Jira)
-      log("[US] " + key + " — Generation ticket TEST local...");
-      var analysis = await leadQA.analyzeUS(ticket);
-      var strategy = await leadQA.decideStrategy(ticket);
-      var testResult = await leadQA.generateTestTicket(
-        { key: key, epic: analysis.epic, summary: summary, description: desc },
-        strategy.decision, summary
+      // Appel unique : ticket TEST + CSV (1 appel Claude au lieu de 2)
+      log("[US] " + key + " — Generation ticket TEST + CSV...");
+      var testAndCSV = await leadQA.generateTestAndCSV(
+        { key: key, epic: result.epic || "", summary: summary, description: desc },
+        strategy.decision || "e2e", summary, analysis.testCount || 5
       );
-      localTestFile = leadQA.saveMarkdown(testResult.markdown, "TEST", key);
+      leadQA.saveMarkdown(testAndCSV.markdown, "TEST", key);
       report.testsCascade++;
-
-      // Generer CSV cas de test localement
-      var csvContent = await leadQA.generateTestCasesCSV(
-        { key: key, summary: summary, description: desc, automationType: strategy.decision },
-        analysis.testCount || 5
-      );
-      leadQA.saveCSV(csvContent, key + "-cas-test");
-      report.casTestImportesXray++;
+      if (testAndCSV.csv) {
+        leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
+        report.casTestImportesXray++;
+      }
       log("[US] " + key + " — TEST + CSV prepares localement");
     } else {
       log("[US] " + key + " — Ticket TEST deja lie");
@@ -170,7 +164,7 @@ async function processUS(ticket, report) {
     report.ticketsTraites++;
     report.usTraitees++;
     report.details.push({ key: key, type: "US", summary: summary, status: "OK",
-      jiraStatus: jiraStatus, score: review.score,
+      jiraStatus: jiraStatus, score: review.score || 0,
       enriched: !isComplete, testGenerated: !linkedTest,
       localOnly: true });
   } catch(e) {
