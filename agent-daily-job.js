@@ -94,16 +94,20 @@ function extractUrls(text) {
   });
 }
 
-// ── FETCH TICKETS IN QA (Story + Bug en colonne "Sophie" / "In QA") ─────────
+// ── FETCH TICKETS IN QA (Story + Bug dans les colonnes QA du workflow SAF-v3) ─
+var QA_STATUSES = ["To Test", "In Test", "Reopened", "To Test UAT", "In validation"];
+
 async function fetchTicketsInQA() {
+  var statusClause = QA_STATUSES.map(function(s) { return '"' + s + '"'; }).join(", ");
   var jql = "project = " + CFG.jira.project +
     " AND assignee = currentUser()" +
-    " AND status = \"In QA\"" +
+    " AND status in (" + statusClause + ")" +
     " AND issuetype in (Story, Bug)" +
     " ORDER BY priority DESC";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +
     "&fields=summary,description,status,issuetype,priority,fixVersions,labels,issuelinks,subtasks,customfield_10014" +
     "&maxResults=50";
+  log("JQL: " + jql);
   var r = await jiraApi("GET", searchPath, null);
   return (r.data && r.data.issues) || [];
 }
@@ -166,6 +170,13 @@ async function processUS(ticket, report) {
     report.details.push({ key: key, type: "US", summary: summary, status: "OK",
       jiraStatus: jiraStatus, score: review.score || 0,
       enriched: !isComplete, testGenerated: !linkedTest,
+      jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
+      treatedAt: new Date().toISOString(),
+      files: [
+        !isComplete ? "inbox/enriched/" + key + "-enrichi.md" : null,
+        !linkedTest ? "inbox/enriched/TEST-" + key + ".md" : null,
+        (!linkedTest && testAndCSV && testAndCSV.csv) ? "inbox/enriched/" + key + "-cas-test.csv" : null
+      ].filter(Boolean),
       localOnly: true });
   } catch(e) {
     log("[US] " + key + " — ERREUR : " + e.message);
@@ -210,6 +221,11 @@ async function processBug(ticket, report) {
     report.bugsTraites++;
     report.details.push({ key: key, type: "Bug", summary: summary, status: "OK",
       jiraStatus: jiraStatus, testGenerated: !linkedTest,
+      jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
+      treatedAt: new Date().toISOString(),
+      files: [
+        !linkedTest ? "inbox/enriched/TEST-" + key + "-nonreg.md" : null
+      ].filter(Boolean),
       localOnly: true });
   } catch(e) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
@@ -292,12 +308,20 @@ async function runDailyQAJob() {
   report.dureeMs = Date.now() - startTime;
   try { saveReport(report); } catch(saveErr) { log("ERREUR saveReport : " + saveErr.message); }
 
+  report.jqlUsed = "project=" + CFG.jira.project + " status in (" + QA_STATUSES.join(", ") + ")";
+  report.statuts = {};
+  report.details.forEach(function(d) {
+    var s = d.jiraStatus || "unknown";
+    report.statuts[s] = (report.statuts[s] || 0) + 1;
+  });
+
   log("========================================");
   log("  RAPPORT : " + report.ticketsTraites + " traites (" +
     report.usTraitees + " US, " + report.bugsTraites + " Bug) | " +
     report.testsCascade + " tests cascade | " +
     report.casTestImportesXray + " CSV Xray | " +
     report.erreurs.length + " erreurs");
+  log("  Statuts : " + JSON.stringify(report.statuts));
   log("  Duree : " + Math.round(report.dureeMs / 1000) + "s");
   log("========================================");
 
