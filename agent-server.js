@@ -312,6 +312,13 @@ var server = http.createServer(function(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,X-Atlassian-Token");
   if (method === "OPTIONS") { res.writeHead(204); res.end(); return; }
 
+  // ── Health check — pour monitoring et règle de stabilité ──
+  if (method === "GET" && url === "/api/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, uptime: process.uptime(), timestamp: new Date().toISOString() }));
+    return;
+  }
+
   if (method === "GET" && (url === "/" || url === "/dashboard")) {
     var p = path.join(BASE_DIR, "aby-qa-dashboard.html");
     if (fs.existsSync(p)) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(fs.readFileSync(p)); }

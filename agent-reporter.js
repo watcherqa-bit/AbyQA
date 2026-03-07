@@ -8,15 +8,16 @@ const fs   = require("fs");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const cfg  = require("./config");
 
-// ── VARIABLES À CONFIGURER ───────────────────────────────────────────────────
-const OLLAMA_MODEL  = "llama3";
-const JIRA_HOST     = "eurelis.atlassian.net";
-const JIRA_EMAIL    = "ismaila.traore.ext@safrangroup.com";
-const JIRA_TOKEN    = "ATATT3xFfGF0iLS4y8JZCHZfZ_csF5dYRcu1NJVmSH8WPxGuBU4XI3Z4Q8unzTV2zowuWHQ2NMLoquFf1mvS_C4WnOLkcBZevToUJiXF3kbgqC21qMYbAepqODv2GGsi22XWqyo4jcIO9l-1g7-qNmNJkMsT729eOyWmYxaU9atre7h5AkTth9U=D7B09488";
-const JIRA_PROJECT  = "SAFWBST";
+// ── VARIABLES DEPUIS CONFIG ──────────────────────────────────────────────────
+const OLLAMA_MODEL  = (cfg.ollama && cfg.ollama.model) || "llama3";
+const JIRA_HOST     = cfg.jira.host;
+const JIRA_EMAIL    = cfg.jira.email;
+const JIRA_TOKEN    = cfg.jira.token;
+const JIRA_PROJECT  = cfg.jira.project;
 
-const REPORTS_DIR   = CFG.paths.reports;
+const REPORTS_DIR   = cfg.paths.reports;
 const OUTBOX_DIR    = path.join(__dirname, "outbox");
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ function callOllama(prompt) {
 
     const options = {
       hostname: "127.0.0.1",
-      port: CFG.ollama.port,
+      port: (cfg.ollama && cfg.ollama.port) || 11434,
       path: "/api/generate",
       method: "POST",
       headers: {

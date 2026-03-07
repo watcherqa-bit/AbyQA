@@ -27,7 +27,7 @@ var FORCE    = arg("force") === "true";
 var CACHE_DIR = path.join(__dirname, "inbox", "inspector-cache");
 if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
 
-var SHOTS_DIR = path.join(__dirname, cfg.paths && cfg.paths.screenshots ? cfg.paths.screenshots : "screenshots");
+var SHOTS_DIR = cfg.paths && cfg.paths.screenshots ? cfg.paths.screenshots : path.join(__dirname, "screenshots");
 if (!fs.existsSync(SHOTS_DIR)) fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
 function resolveBaseUrl(envName) {
