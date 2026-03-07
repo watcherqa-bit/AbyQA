@@ -20,12 +20,13 @@ const MODEL_QUALITY = "claude-sonnet-4-6";           // Génération de contenu 
 // ── RÈGLES ANTI-HALLUCINATION — appliquées à toutes les générations ───────────
 const ANTI_HALLU =
   "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
-  "1. Génère UNIQUEMENT du contenu basé sur les données du ticket fourni. RIEN d'autre.\n" +
-  "2. Si une information est absente du ticket → écris [À préciser], n'invente JAMAIS.\n" +
-  "3. URLs → uniquement celles mentionnées dans le ticket. Sinon : [URL à préciser].\n" +
-  "4. Noms de champs, boutons, composants → exactement ceux décrits dans le ticket.\n" +
-  "5. Personas, valeurs de test, sélecteurs CSS absents → [À préciser].\n" +
-  "6. Tu ne complètes JAMAIS un contenu manquant par supposition.\n\n";
+  "1. Génère UNIQUEMENT du contenu basé sur les données du ticket source fourni ci-dessous.\n" +
+  "2. Tu dois EXPLOITER TOUTES les informations présentes dans le ticket source : description, AC, URLs, valeurs de test, noms de champs.\n" +
+  "3. Ne JAMAIS écrire [À préciser] ou [URL à préciser] si l'information est présente dans le ticket source.\n" +
+  "4. Si une information manque RÉELLEMENT dans le ticket source, indique EXPLICITEMENT : \"MANQUANT : [ce qui manque et pourquoi c'est nécessaire]\".\n" +
+  "5. URLs → réutilise celles du ticket source. Si aucune URL n'est mentionnée → \"MANQUANT : URL de la page à tester\".\n" +
+  "6. Noms de champs, boutons, composants → exactement ceux décrits dans le ticket source.\n" +
+  "7. Tu ne complètes JAMAIS un contenu manquant par supposition ou invention.\n\n";
 
 // ── SYSTEM PROMPT — RÈGLES QA SAFRAN ─────────────────────────────────────────
 const SYSTEM_QA = `Tu es Aby QA — Lead QA Senior et expert en automatisation pour Safran Group.
@@ -412,18 +413,23 @@ async function generateTestTicket(us, testType, fonction) {
   var usKey   = us.key || "SAFWBST-?";
   var epic    = us.epic || extractEpic(us);
   var summary = us.summary || "";
+  var desc    = us.description || extractText((us.fields && us.fields.description) || "");
   var fn      = fonction || summary;
-  var title   = "TEST - [" + summary + "] - " + fn;
+  var title   = safeTruncate("TEST - [" + summary + "] - " + fn, 200);
 
   var prompt =
     ANTI_HALLU +
-    "Génère un ticket TEST complet et actionnable.\n\n" +
-    "US de référence : " + usKey + "\n" +
+    "Génère un ticket TEST complet et actionnable à partir du ticket source ci-dessous.\n\n" +
+    "=== TICKET SOURCE ===\n" +
+    "Clé             : " + usKey + "\n" +
     "Epic            : " + epic + "\n" +
-    "Résumé US       : " + summary + "\n" +
+    "Résumé          : " + summary + "\n" +
     "Type de test    : " + (testType || "mixte") + "\n" +
-    "Fonction testée : " + fn + "\n\n" +
+    "Fonction testée : " + fn + "\n" +
+    "Description complète :\n" + desc.substring(0, 2000) + "\n" +
+    "=== FIN TICKET SOURCE ===\n\n" +
     "Titre exact du ticket : \"" + title + "\"\n\n" +
+    "IMPORTANT : Réutilise les URLs, AC Gherkin, valeurs de test et noms de champs présents dans le ticket source.\n" +
     "Génère le ticket TEST au format Markdown complet selon le template.\n" +
     "Date : " + new Date().toLocaleDateString("fr-FR");
 
@@ -510,18 +516,21 @@ async function generateTestAndCSV(us, testType, fonction, csvCount) {
   var summary = us.summary || "";
   var desc    = us.description || extractText((us.fields && us.fields.description) || "");
   var fn      = fonction || summary;
-  var title   = "TEST - [" + summary + "] - " + fn;
+  var title   = safeTruncate("TEST - [" + summary + "] - " + fn, 200);
   var count   = csvCount || 5;
 
   var prompt =
     ANTI_HALLU +
     "Genere un ticket TEST complet + ses cas de test CSV en une seule reponse.\n\n" +
+    "=== TICKET SOURCE ===\n" +
     "US de reference : " + usKey + "\n" +
     "Epic            : " + epic + "\n" +
     "Resume US       : " + summary + "\n" +
     "Type de test    : " + (testType || "mixte") + "\n" +
     "Fonction testee : " + fn + "\n" +
-    "Contexte        : " + desc.substring(0, 500) + "\n\n" +
+    "Description complete :\n" + desc.substring(0, 2000) + "\n" +
+    "=== FIN TICKET SOURCE ===\n\n" +
+    "IMPORTANT : Reutilise les URLs, AC Gherkin, valeurs de test et noms de champs presents dans le ticket source.\n\n" +
     "Titre exact du ticket : \"" + title + "\"\n" +
     "Date : " + new Date().toLocaleDateString("fr-FR") + "\n\n" +
     "REPONDS EN 2 SECTIONS SEPAREES PAR LA LIGNE : ---CSV-SEPARATOR---\n\n" +
@@ -557,7 +566,7 @@ async function generateBugTicket(opts) {
   // Référence : titre de l'US si disponible, sinon l'epic
   var ref      = usSummary || epic;
   var fonction = opts.fonction || opts.page || "Comportement anormal";
-  var title    = "BUG - [" + ref + "] - " + fonction;
+  var title    = safeTruncate("BUG - [" + ref + "] - " + fonction, 200);
 
   var prompt =
     ANTI_HALLU +
@@ -638,6 +647,16 @@ function extractEpic(ticket) {
     }) || "";
   }
   return epic || "SAFWBST";
+}
+
+// ── TRONCATURE TITRE SAFE ────────────────────────────────────────────────────
+function safeTruncate(str, max) {
+  if (!str || str.length <= max) return str || "";
+  var truncated = str.substring(0, max);
+  // Ne pas couper en milieu de mot
+  var lastSpace = truncated.lastIndexOf(" ");
+  if (lastSpace > max * 0.6) truncated = truncated.substring(0, lastSpace);
+  return truncated.trim() + "...";
 }
 
 // ── SAUVEGARDE FICHIERS ────────────────────────────────────────────────────────
@@ -1061,6 +1080,7 @@ module.exports = {
   saveCSV,
   extractText,
   extractEpic,
+  safeTruncate,
   // Modèles
   MODEL_FAST,
   MODEL_QUALITY

@@ -230,6 +230,27 @@ function createJiraIssue(fields) {
   return jiraApiAsync("POST", "/rest/api/3/issue", { fields: fields });
 }
 
+// Check si un bug auto-généré existe déjà pour ce ticket (évite les doublons)
+async function bugAlreadyExists(sourceKey) {
+  var jql = "project = " + CFG.jira.project +
+    " AND issuetype = Bug" +
+    " AND labels = \"auto-generated\"" +
+    " AND text ~ \"" + sourceKey + "\"" +
+    " AND created >= -7d";
+  var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) + "&fields=key,summary&maxResults=5";
+  try {
+    var r = await jiraApiAsync("GET", searchPath, null);
+    var issues = (r.data && r.data.issues) || [];
+    if (issues.length > 0) {
+      log("[DEDUP] Bug auto-généré déjà existant pour " + sourceKey + " : " + issues.map(function(i) { return i.key; }).join(", "));
+      return true;
+    }
+  } catch(e) {
+    log("[DEDUP] Erreur vérification doublon : " + e.message);
+  }
+  return false;
+}
+
 function updateJiraDescription(key, markdownText) {
   var body = {
     fields: {
@@ -635,20 +656,25 @@ async function workflowBug(ticket) {
       return;
     }
 
-    // 4. Créer le ticket BUG dans Jira (seulement si reproduit ou si l'utilisateur approuve quand même)
+    // 4. Vérifier si un bug auto-généré existe déjà (anti-doublon)
     var newBugKey = "";
-    var jiraBugResult = await createJiraIssue({
-      project:   { key: CFG.jira.project },
-      summary:   bugResult.title,
-      issuetype: { name: "Bug" },
-      description: {
-        type: "doc", version: 1,
-        content: [{ type: "paragraph", content: [{ type: "text", text: bugResult.markdown }] }]
-      },
-      labels:   ["qa-auto", "auto-generated"],
-      priority: { name: reproduced ? "High" : "Medium" }
-    });
-    newBugKey = (jiraBugResult.data && jiraBugResult.data.key) ? jiraBugResult.data.key : "";
+    if (await bugAlreadyExists(key)) {
+      log("[BUG] " + key + " — Bug déjà existant — création ignorée");
+      pushSSE({ type: "queue-item", key: key, issueType: "Bug", status: "dedup-skipped", summary: summary });
+    } else {
+      var jiraBugResult = await createJiraIssue({
+        project:   { key: CFG.jira.project },
+        summary:   bugResult.title,
+        issuetype: { name: "Bug" },
+        description: {
+          type: "doc", version: 1,
+          content: [{ type: "paragraph", content: [{ type: "text", text: bugResult.markdown }] }]
+        },
+        labels:   ["qa-auto", "auto-generated"],
+        priority: { name: reproduced ? "High" : "Medium" }
+      });
+      newBugKey = (jiraBugResult.data && jiraBugResult.data.key) ? jiraBugResult.data.key : "";
+    }
 
     // Sauvegarder un test de vérification du fix → disponible dans Playwright Direct
     saveTestQueue(key + "-fix", {
@@ -761,14 +787,18 @@ async function workflowTest(ticket) {
 
       var valBug = await requestValidation("bug-ticket", key, bugResult.title, bugResult.markdown);
       if (valBug.approved) {
-        var jiraBug = await createJiraIssue({
-          project:   { key: CFG.jira.project },
-          summary:   bugResult.title,
-          issuetype: { name: "Bug" },
-          labels:    ["qa-auto", "auto-generated"],
-          priority:  { name: "High" }
-        });
-        bugKey = (jiraBug.data && jiraBug.data.key) ? jiraBug.data.key : "";
+        if (await bugAlreadyExists(key)) {
+          log("[TEST] " + key + " — Bug déjà existant — création ignorée");
+        } else {
+          var jiraBug = await createJiraIssue({
+            project:   { key: CFG.jira.project },
+            summary:   bugResult.title,
+            issuetype: { name: "Bug" },
+            labels:    ["qa-auto", "auto-generated"],
+            priority:  { name: "High" }
+          });
+          bugKey = (jiraBug.data && jiraBug.data.key) ? jiraBug.data.key : "";
+        }
       }
     }
 

@@ -209,8 +209,8 @@ async function processBug(ticket, report) {
       // Preparer localement un test de non-regression (sans creer dans Jira)
       log("[BUG] " + key + " — Preparation test non-regression local...");
       var testResult = await leadQA.generateTestTicket(
-        { key: key, epic: "", summary: "TEST - " + summary, description: desc },
-        "e2e", summary
+        { key: key, epic: "", summary: summary, description: desc },
+        "e2e", "Non-regression - " + summary
       );
       leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
       report.testsCascade++;
