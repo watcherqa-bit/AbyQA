@@ -200,7 +200,7 @@ async function fetchQATickets() {
 async function checkTestExists(sourceKey) {
   var jql = "project = " + CFG.jira.project +
     " AND issuetype in (Test, \"Test Case\")" +
-    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
+    " AND labels in (\"auto-generated\", \"qa-auto\")" +
     " AND text ~ \"" + sourceKey + "\"";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +
     "&fields=key,summary&maxResults=5";
@@ -321,7 +321,7 @@ async function pipelineUS(ticket, report) {
               type: "doc", version: 1,
               content: [{ type: "paragraph", content: [{ type: "text", text: testAndCSV.markdown.substring(0, 3000) }] }]
             },
-            labels: ["aby-qa-v3", "auto-generated", "test-" + usTestType]
+            labels: ["qa-auto", "auto-generated", "test-" + usTestType]
           });
           testKey = (testIssue.data && testIssue.data.key) || "";
           if (testKey) {
@@ -434,7 +434,7 @@ async function pipelineBug(ticket, report) {
 
           // Créer le ticket TEST dans Jira avec label test-type
           var bugTestTitle = leadQA.safeTruncate("TEST - " + summary + " - Non-regression", 250);
-          var testLabels = ["aby-qa-v3", "auto-generated", "test-" + testType];
+          var testLabels = ["qa-auto", "auto-generated", "test-" + testType];
           var bugTestIssue = await createJiraIssue({
             project: { key: CFG.jira.project },
             summary: bugTestTitle,

@@ -65,7 +65,7 @@ async function addComment(key, content) {
   console.log("[->] Ajout commentaire sur " + key + "...");
   var date = new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR");
   var body = {
-    body: "*Mise à jour manuelle — Aby QA V2 — " + date + "*\n\n" + content
+    body: content
   };
   var result = await jiraRequest("POST", "/rest/api/2/issue/" + key + "/comment", body);
   if (result.id) {

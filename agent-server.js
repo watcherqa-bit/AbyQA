@@ -121,6 +121,44 @@ const poller = require("./agent-poller");
 const cycle = require("./agent-cycle");
 
 var sseClients   = {};
+
+// ── UTILITAIRE : attacher un fichier à un ticket Jira ────────────────────────
+function attachFileToJira(issueKey, filePath) {
+  if (!fs.existsSync(filePath)) return;
+  var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+  var fileData = fs.readFileSync(filePath);
+  var fileName = path.basename(filePath);
+  var ext = path.extname(filePath).toLowerCase();
+  var mime = ext === ".md" ? "text/markdown" : ext === ".png" ? "image/png" : ext === ".json" ? "application/json" : "application/octet-stream";
+  var boundary = "----QABnd" + Date.now();
+  var header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mime + "\r\n\r\n";
+  var footer = "\r\n--" + boundary + "--\r\n";
+  var bodyBuf = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
+  var req = require("https").request({
+    hostname: CFG.jira.host,
+    path: "/rest/api/3/issue/" + issueKey + "/attachments",
+    method: "POST",
+    headers: {
+      "Authorization": "Basic " + auth,
+      "X-Atlassian-Token": "no-check",
+      "Content-Type": "multipart/form-data; boundary=" + boundary,
+      "Content-Length": bodyBuf.length
+    }
+  }, function(res) {
+    var d = "";
+    res.on("data", function(c) { d += c; });
+    res.on("end", function() {
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        console.log("[ATTACH] " + fileName + " attaché à " + issueKey);
+      } else {
+        console.log("[ATTACH] Erreur HTTP " + res.statusCode + " pour " + issueKey);
+      }
+    });
+  });
+  req.on("error", function(e) { console.log("[ATTACH] Erreur : " + e.message); });
+  req.write(bodyBuf);
+  req.end();
+}
 var runningProcs = {};
 
 // Protection anti-double run : Map agent â†’ true si en cours
@@ -348,7 +386,7 @@ async function importXrayCSV(ticketKey, csvContent) {
           // Commenter sur le ticket Jira
           var commentAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
           var commentBody = JSON.stringify({
-            body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "[AbyQA] " + (result.count || "?") + " cas de test importes dans Xray via AbyQA" }] }] }
+            body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: (result.count || "?") + " cas de test importés dans Xray" }] }] }
           });
           var cReq = require("https").request({
             hostname: CFG.jira.host,
@@ -870,7 +908,7 @@ var server = http.createServer(function(req, res) {
 
         var fields = {
           project:     { key: CFGj.jira.project || "SAFWBST" },
-          summary:     body.title || "Ticket généré par AbyQA",
+          summary:     body.title || "Ticket QA",
           description: toADF(fullDesc.trim()),
           issuetype:   { name: issueType },
           priority:    { name: priority }
@@ -912,7 +950,7 @@ var server = http.createServer(function(req, res) {
             try {
               // TEST teste une Story/Bug → type "Tests"
               // BUG/US liés → type "Relates"
-              var linkTypeName = (body.ticketType === "TEST") ? "Tests" : "Relates";
+              var linkTypeName = body.linkType || ((body.ticketType === "TEST") ? "Tests" : "Relates");
               var linkPayload  = JSON.stringify({
                 type:         { name: linkTypeName },
                 inwardIssue:  { key: newKey },
@@ -2710,7 +2748,46 @@ var server = http.createServer(function(req, res) {
           var rLine = logs.find(function(l) { return l.startsWith("PLAYWRIGHT_DIRECT_RESULT:"); });
           if (rLine) { try { c1Result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e){} }
           cycle.markTicketDone(ticketKey, c1Result);
-          sendSSE("default", { type: "cycle1-ticket-done", key: ticketKey, result: c1Result, ok: exitCode === 0 });
+          var allPass = c1Result.fail === 0 && c1Result.total > 0;
+
+          // Attacher le rapport au ticket Jira (PASS ou FAIL)
+          if (c1Result.reportPath) {
+            var rptFullPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
+            if (fs.existsSync(rptFullPath)) {
+              attachFileToJira(ticketKey, rptFullPath);
+            }
+          }
+
+          // Si FAIL → lancer l'analyse IA en arrière-plan et envoyer le résultat via SSE
+          if (!allPass) {
+            var failLogs = logs.slice(-150).join("\n");
+            var reportContent = "";
+            if (c1Result.reportPath) {
+              var rpPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
+              try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) {}
+            }
+            leadQA.analyzePlaywrightFail(failLogs, {
+              ticketKey: ticketKey, mode: "ui", env: (c1Settings.envs || ["sophie"]).join(","),
+              pass: c1Result.pass, fail: c1Result.fail, total: c1Result.total
+            }).then(function(diag) {
+              sendSSE("default", {
+                type: "cycle1-fail-analysis",
+                key: ticketKey,
+                result: c1Result,
+                reportFile: c1Result.reportPath || null,
+                reportContent: reportContent.substring(0, 5000),
+                diagnostic: diag
+              });
+            }).catch(function() {});
+          }
+
+          sendSSE("default", {
+            type: "cycle1-ticket-done",
+            key: ticketKey,
+            result: c1Result,
+            ok: allPass,
+            reportFile: c1Result.reportPath || null
+          });
         }
       });
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -2923,6 +3000,23 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // GET /reports/:filename  —  servir un rapport .md
+  if (method === "GET" && url.startsWith("/reports/")) {
+    var rptFile = url.replace("/reports/", "").split("?")[0];
+    if (rptFile.includes("..") || rptFile.includes("/") || rptFile.includes("\\")) {
+      res.writeHead(400); res.end("Invalid filename");
+      return;
+    }
+    var rptPath = path.join(BASE_DIR, "reports", rptFile);
+    if (!fs.existsSync(rptPath)) { res.writeHead(404); res.end("Not found"); return; }
+    res.writeHead(200, {
+      "Content-Type": "text/markdown; charset=utf-8",
+      "Content-Disposition": 'attachment; filename="' + rptFile + '"'
+    });
+    fs.createReadStream(rptPath).pipe(res);
+    return;
+  }
+
   // GET /api/polling/status  —  Ã©tat du poller
   if (method === "GET" && url === "/api/polling/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -3077,6 +3171,73 @@ var server = http.createServer(function(req, res) {
     if (fs.existsSync(cpDelFile)) fs.unlinkSync(cpDelFile);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // POST /api/generate-bug-preview — génère un ticket Bug pré-rempli depuis un diagnostic FAIL
+  if (method === "POST" && url === "/api/generate-bug-preview") {
+    var gbChunks = [];
+    req.on("data", function(c) { gbChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var body = JSON.parse(Buffer.concat(gbChunks).toString());
+        var sourceKey = body.sourceKey || "";
+        var diag = body.diagnostic || {};
+        var reportContent = body.reportContent || "";
+
+        // Récupérer le summary du ticket source
+        var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+        var infoReq = require("https").request({
+          hostname: CFG.jira.host,
+          path: "/rest/api/3/issue/" + sourceKey + "?fields=summary,issuetype",
+          method: "GET",
+          headers: { "Authorization": "Basic " + auth, "Accept": "application/json" }
+        }, function(iRes) {
+          var iData = "";
+          iRes.on("data", function(c) { iData += c; });
+          iRes.on("end", function() {
+            var issueInfo = {};
+            try { issueInfo = JSON.parse(iData); } catch(e) {}
+            var usSummary = (issueInfo.fields && issueInfo.fields.summary) || sourceKey;
+
+            var fonction = (diag.pages && diag.pages[0]) || diag.causeProbable || "Dysfonctionnement détecté";
+            var bugTitle = "BUG - [" + usSummary.substring(0, 80) + "] - " + fonction.substring(0, 80);
+
+            // Construire la description du bug
+            var desc = "## Diagnostic\n\n" + (diag.diagnostic || "Erreur détectée lors du test automatisé") + "\n\n";
+            desc += "## Cause probable\n\n" + (diag.causeProbable || "À investiguer") + "\n\n";
+            desc += "## Correction suggérée\n\n" + (diag.correction || "Aucune suggestion") + "\n\n";
+            if (diag.pages && diag.pages.length > 0) {
+              desc += "## Pages affectées\n\n" + diag.pages.map(function(p) { return "- " + p; }).join("\n") + "\n\n";
+            }
+            desc += "## Ticket source\n\n" + sourceKey + "\n\n";
+            if (reportContent) {
+              desc += "## Extrait du rapport\n\n" + reportContent.substring(0, 2000) + "\n";
+            }
+
+            var priority = diag["priorité"] === "HIGH" ? "High" : diag["priorité"] === "LOW" ? "Low" : "Medium";
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              title: bugTitle,
+              description: desc,
+              priority: priority,
+              sourceKey: sourceKey,
+              labels: ["qa-auto", "auto-generated"],
+              issuetype: "Bug"
+            }));
+          });
+        });
+        infoReq.on("error", function(e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        });
+        infoReq.end();
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
 
@@ -3865,6 +4026,40 @@ var server = http.createServer(function(req, res) {
     } catch(e) {}
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(list));
+    return;
+  }
+
+  // ── SOPHIE MANUAL RESULT — rapport attaché au ticket Jira ────────────────
+  if (method === "POST" && url === "/api/sophie-manual-result") {
+    var manBody = "";
+    req.on("data", function(c) { manBody += c; });
+    req.on("end", function() {
+      try {
+        var params = JSON.parse(manBody);
+        var manKey = params.key;
+        var manResult = params.result; // "PASS" ou "FAIL"
+        if (!manKey || !manResult) throw new Error("key et result requis");
+
+        // Rapport local
+        var reportDir = path.join(BASE_DIR, "reports");
+        if (!fs.existsSync(reportDir)) fs.mkdirSync(reportDir, { recursive: true });
+        var reportFile = path.join(reportDir, "MANUAL-" + manKey + "-" + Date.now() + ".md");
+        var report = "# Test Manuel — " + manKey + "\n\n";
+        report += "- **Résultat :** " + manResult + "\n";
+        report += "- **Type :** Test manuel\n";
+        fs.writeFileSync(reportFile, report, "utf8");
+
+        // Attacher au ticket Jira
+        attachFileToJira(manKey, reportFile);
+
+        console.log("[MANUAL] " + manKey + " → " + manResult);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, key: manKey, result: manResult, reportFile: path.basename(reportFile) }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
     return;
   }
 

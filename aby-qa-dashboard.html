@@ -4188,10 +4188,14 @@ function handleSSE(data) {
     handlePollTickets(data);
   } else if (data.type === "poll-qa-ready") {
     handleQAReady(data);
-  } else if (data.type === "cycle1-ticket-done" || data.type === "cycle2-start" || data.type === "cycle2-done" ||
+  } else if (data.type === "cycle1-ticket-done") {
+    loadCycleState();
+    handleTestDoneNotification(data);
+  } else if (data.type === "cycle1-fail-analysis") {
+    handleFailAnalysis(data);
+  } else if (data.type === "cycle2-start" || data.type === "cycle2-done" ||
              data.type === "cycle3-start" || data.type === "cycle3-done" ||
              data.type === "cycle2-stopped" || data.type === "cycle3-stopped") {
-    // Mettre à jour la vue 360
     loadCycleState();
     if (data.type === "cycle3-start")   showToast("TNR Complet démarré", "🚀");
     if (data.type === "cycle3-done")    showToast(data.ok ? "TNR Complet — ✅ PASS" : "TNR Complet — ❌ FAIL", data.ok ? "✅" : "❌");
@@ -13241,7 +13245,14 @@ function renderSophieColumn() {
     // Bouton Tester ou message
     var actionBtn = "";
     if (t.canTest) {
-      actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Tester</button>';
+      if (t.testType === "manuel") {
+        actionBtn = '<button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">📋 Checklist</button>';
+      } else if (t.testType === "mixte") {
+        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Auto</button>' +
+          ' <button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">📋 Manuel</button>';
+      } else {
+        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Tester</button>';
+      }
     } else {
       actionBtn = '<button onclick="sophieTriggerEnrich(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">⚡ Préparer</button>';
     }
@@ -13278,6 +13289,101 @@ function sophieTriggerEnrich(key) {
       else showToast("Erreur : " + (d.error || d.reason || "?"), "⚠️");
     })
     .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+function sophieOpenChecklist(key) {
+  showToast("Chargement checklist " + key + "...", "📋");
+  fetch(SERVER + "/api/jira-ticket/" + key)
+    .then(function(r) { return r.json(); })
+    .then(function(ticket) {
+      var desc = "";
+      if (ticket.fields && ticket.fields.description) {
+        if (typeof ticket.fields.description === "string") desc = ticket.fields.description;
+        else if (ticket.fields.description.content) {
+          desc = ticket.fields.description.content.map(function(b) {
+            return (b.content || []).map(function(c) { return c.text || ""; }).join("");
+          }).join("\n");
+        }
+      }
+
+      // Extraire les ACs (lignes Gherkin ou expand titles)
+      var acs = [];
+      var lines = desc.split("\n");
+      var currentAC = null;
+      lines.forEach(function(line) {
+        var trimmed = line.trim();
+        if (/^AC\d|^Critère|tant donn|Lorsque|Alors|Given|When|Then/i.test(trimmed)) {
+          if (/^AC\d|^Critère/i.test(trimmed)) {
+            if (currentAC) acs.push(currentAC);
+            currentAC = { title: trimmed, steps: [] };
+          } else if (currentAC) {
+            currentAC.steps.push(trimmed);
+          } else {
+            if (!currentAC) currentAC = { title: "AC1", steps: [] };
+            currentAC.steps.push(trimmed);
+          }
+        }
+      });
+      if (currentAC) acs.push(currentAC);
+      if (acs.length === 0) acs.push({ title: "Test manuel", steps: ["Vérifier le comportement décrit dans le ticket"] });
+
+      // Afficher le modal checklist
+      var checklistHtml =
+        '<div id="sophie-checklist-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:9999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">' +
+        '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:24px;width:560px;max-height:80vh;overflow-y:auto">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+            '<div style="font-family:var(--mono);font-size:14px;font-weight:800;color:var(--orange)">📋 CHECKLIST MANUELLE — ' + key + '</div>' +
+            '<button onclick="this.closest(\'#sophie-checklist-modal\').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--text2);margin-bottom:16px">' + (ticket.fields && ticket.fields.summary || "") + '</div>' +
+          acs.map(function(ac, i) {
+            return '<div style="margin-bottom:12px;padding:12px;background:var(--bg3);border-radius:8px;border-left:3px solid var(--orange)">' +
+              '<div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);margin-bottom:8px">' + ac.title + '</div>' +
+              ac.steps.map(function(step, j) {
+                var stepId = "chk-" + key + "-" + i + "-" + j;
+                return '<label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer;font-size:12px;color:var(--text2)">' +
+                  '<input type="checkbox" id="' + stepId + '" onchange="sophieCheckProgress(\'' + key + '\')" style="margin-top:2px;accent-color:var(--green)">' +
+                  '<span>' + step + '</span>' +
+                '</label>';
+              }).join("") +
+            '</div>';
+          }).join("") +
+          '<div style="display:flex;gap:8px;margin-top:16px">' +
+            '<button onclick="sophieMarkManualResult(\'' + key + '\',true)" style="flex:1;background:var(--green);border:none;color:#000;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">✅ PASS</button>' +
+            '<button onclick="sophieMarkManualResult(\'' + key + '\',false)" style="flex:1;background:var(--red);border:none;color:#fff;border-radius:8px;padding:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">❌ FAIL</button>' +
+          '</div>' +
+          '<div id="sophie-chk-progress-' + key + '" style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:8px;text-align:center">0 / ' + acs.reduce(function(a,c){return a+c.steps.length},0) + ' vérifiés</div>' +
+        '</div></div>';
+
+      document.body.insertAdjacentHTML("beforeend", checklistHtml);
+    })
+    .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+function sophieCheckProgress(key) {
+  var modal = document.getElementById("sophie-checklist-modal");
+  if (!modal) return;
+  var checks = modal.querySelectorAll('input[type="checkbox"]');
+  var done = 0;
+  checks.forEach(function(c) { if (c.checked) done++; });
+  var el = document.getElementById("sophie-chk-progress-" + key);
+  if (el) el.textContent = done + " / " + checks.length + " vérifiés";
+}
+
+function sophieMarkManualResult(key, pass) {
+  var modal = document.getElementById("sophie-checklist-modal");
+  if (modal) modal.remove();
+  var status = pass ? "PASS" : "FAIL";
+  showToast(key + " — " + status, pass ? "✅" : "❌");
+
+  // Poster le résultat + rapport + attachment via l'API
+  fetch(SERVER + "/api/sophie-manual-result", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: key, result: status })
+  }).then(function() {
+    setTimeout(loadSophieColumn, 2000);
+  }).catch(function() {});
 }
 
 function sophieLaunchOne(key) {
@@ -13333,6 +13439,344 @@ function sophieLaunchAll() {
   }
 
   runNext();
+}
+
+// ── NOTIFICATION FIN DE TEST ─────────────────────────────────────────────────
+var _testNotifications = [];
+
+function handleTestDoneNotification(data) {
+  var key = data.key || "?";
+  var r = data.result || {};
+  var ok = data.ok;
+  var pass = r.pass || 0;
+  var fail = r.fail || 0;
+  var total = r.total || 0;
+  var reportFile = data.reportFile || null;
+  var emoji = ok ? "✅" : "❌";
+  var status = ok ? "PASS" : "FAIL";
+
+  // Toast immédiat
+  showToast(key + " — " + status + " (" + pass + "/" + total + ")", emoji);
+
+  // Notification persistante
+  var notif = { key: key, status: status, ok: ok, pass: pass, fail: fail, total: total, reportFile: reportFile, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) };
+  _testNotifications.unshift(notif);
+  if (_testNotifications.length > 20) _testNotifications.pop();
+  renderTestNotifBadge();
+
+  // Browser Notification API
+  if (Notification && Notification.permission === "granted") {
+    new Notification(key + " — " + status, { body: pass + " PASS / " + fail + " FAIL sur " + total + " tests", icon: ok ? "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✅</text></svg>" : "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>❌</text></svg>" });
+  } else if (Notification && Notification.permission !== "denied") {
+    Notification.requestPermission();
+  }
+
+  // Jouer un son discret
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = ok ? 880 : 440;
+    gain.gain.value = 0.08;
+    osc.start(); osc.stop(ctx.currentTime + 0.15);
+  } catch(e) {}
+
+  // Rafraîchir la colonne Sophie
+  setTimeout(loadSophieColumn, 2000);
+}
+
+function renderTestNotifBadge() {
+  var badge = document.getElementById("test-notif-badge");
+  if (!badge) {
+    // Créer le badge dans le header
+    var header = document.querySelector("header");
+    if (!header) return;
+    badge = document.createElement("div");
+    badge.id = "test-notif-badge";
+    badge.style.cssText = "position:relative;cursor:pointer;margin-left:12px;display:inline-flex;align-items:center";
+    badge.innerHTML = '<span style="font-size:18px">🔔</span><span id="test-notif-count" style="position:absolute;top:-4px;right:-8px;background:var(--red,#ef4444);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:flex;align-items:center;justify-content:center;font-weight:700"></span>';
+    badge.onclick = function() { toggleTestNotifPanel(); };
+    // Insérer avant le dernier élément du header
+    var headerRight = header.querySelector("div:last-child") || header;
+    headerRight.insertBefore(badge, headerRight.firstChild);
+  }
+  var countEl = document.getElementById("test-notif-count");
+  var unread = _testNotifications.length;
+  if (countEl) {
+    countEl.textContent = unread > 0 ? unread : "";
+    countEl.style.display = unread > 0 ? "flex" : "none";
+  }
+}
+
+function toggleTestNotifPanel() {
+  var existing = document.getElementById("test-notif-panel");
+  if (existing) { existing.remove(); return; }
+
+  var badge = document.getElementById("test-notif-badge");
+  if (!badge) return;
+
+  var panel = document.createElement("div");
+  panel.id = "test-notif-panel";
+  panel.style.cssText = "position:absolute;top:100%;right:0;width:360px;max-height:400px;overflow-y:auto;background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.5);z-index:9999;padding:0";
+
+  var html = '<div style="padding:10px 14px;border-bottom:1px solid var(--border,#333);font-weight:700;font-size:12px;color:var(--text2,#aaa);display:flex;justify-content:space-between;align-items:center">';
+  html += '<span>Résultats de tests</span>';
+  html += '<button onclick="_testNotifications=[];renderTestNotifBadge();document.getElementById(\'test-notif-panel\').remove()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:11px">Tout effacer</button>';
+  html += '</div>';
+
+  if (_testNotifications.length === 0) {
+    html += '<div style="padding:20px;text-align:center;color:var(--text2,#666);font-size:12px">Aucune notification</div>';
+  } else {
+    _testNotifications.forEach(function(n) {
+      var bg = n.ok ? "rgba(16,185,129,.1)" : "rgba(239,68,68,.1)";
+      var border = n.ok ? "var(--green,#10b981)" : "var(--red,#ef4444)";
+      html += '<div style="padding:10px 14px;border-bottom:1px solid var(--border,#222);border-left:3px solid ' + border + ';background:' + bg + '">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<span style="font-weight:700;font-size:13px;color:var(--text)">' + (n.ok ? "✅" : "❌") + " " + n.key + '</span>';
+      html += '<span style="font-size:10px;color:var(--text2)">' + n.at + '</span>';
+      html += '</div>';
+      html += '<div style="font-size:11px;color:var(--text2);margin-top:4px">' + n.pass + ' PASS / ' + n.fail + ' FAIL — ' + n.total + ' tests</div>';
+      if (n.reportFile) {
+        html += '<a href="' + SERVER + '/reports/' + n.reportFile + '" target="_blank" style="font-size:11px;color:var(--blue,#3b82f6);text-decoration:none;margin-top:4px;display:inline-block">📄 Rapport</a>';
+      }
+      html += '</div>';
+    });
+  }
+
+  panel.innerHTML = html;
+  badge.style.position = "relative";
+  badge.appendChild(panel);
+
+  // Fermer au clic extérieur
+  setTimeout(function() {
+    document.addEventListener("click", function closeNotif(e) {
+      if (!panel.contains(e.target) && e.target !== badge && !badge.contains(e.target)) {
+        panel.remove();
+        document.removeEventListener("click", closeNotif);
+      }
+    });
+  }, 100);
+}
+
+// ── ANALYSE FAIL — modal diagnostic + preview Bug ───────────────────────────
+function handleFailAnalysis(data) {
+  var key = data.key || "?";
+  var diag = data.diagnostic || {};
+  var r = data.result || {};
+  var reportFile = data.reportFile || null;
+  var reportContent = data.reportContent || "";
+
+  // Toast d'alerte
+  showToast(key + " FAIL — Analyse IA en cours...", "🔍");
+
+  // Construire le modal
+  var overlay = document.createElement("div");
+  overlay.id = "fail-analysis-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center";
+
+  var typeColor = { CONFIG: "#f59e0b", SYNTAX_JIRA: "#8b5cf6", PARSING: "#3b82f6", UNKNOWN: "#ef4444" };
+  var tColor = typeColor[diag.typeErreur] || "#ef4444";
+  var prioColor = diag["priorité"] === "HIGH" ? "#ef4444" : diag["priorité"] === "LOW" ? "#10b981" : "#f59e0b";
+
+  var html = '<div style="background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;width:700px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.8)">';
+
+  // Header
+  html += '<div style="padding:16px 20px;border-bottom:1px solid var(--border,#333);display:flex;justify-content:space-between;align-items:center">';
+  html += '<div style="display:flex;align-items:center;gap:10px">';
+  html += '<span style="font-size:22px">❌</span>';
+  html += '<span style="font-weight:700;font-size:15px;color:var(--text)">' + key + ' — FAIL</span>';
+  html += '<span style="background:' + tColor + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + (diag.typeErreur || "UNKNOWN") + '</span>';
+  html += '<span style="background:' + prioColor + ';color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">' + (diag["priorité"] || "MEDIUM") + '</span>';
+  html += '</div>';
+  html += '<button onclick="document.getElementById(\'fail-analysis-overlay\').remove()" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer">✕</button>';
+  html += '</div>';
+
+  // Résultat test
+  html += '<div style="padding:12px 20px;background:rgba(239,68,68,.08);border-bottom:1px solid var(--border,#333);font-size:12px;color:var(--text2)">';
+  html += (r.pass || 0) + ' PASS / ' + (r.fail || 0) + ' FAIL — ' + (r.total || 0) + ' tests';
+  if (reportFile) html += ' — <a href="' + SERVER + '/reports/' + reportFile + '" target="_blank" style="color:var(--blue,#3b82f6)">Rapport</a>';
+  html += '</div>';
+
+  // Diagnostic
+  html += '<div style="padding:16px 20px">';
+  html += '<div style="font-weight:700;font-size:12px;color:var(--green,#10b981);margin-bottom:8px;text-transform:uppercase">Diagnostic</div>';
+  html += '<div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:16px">' + escHtml(diag.diagnostic || "Aucun diagnostic") + '</div>';
+
+  html += '<div style="font-weight:700;font-size:12px;color:var(--yellow,#f59e0b);margin-bottom:8px;text-transform:uppercase">Cause probable</div>';
+  html += '<div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:16px">' + escHtml(diag.causeProbable || "Inconnue") + '</div>';
+
+  html += '<div style="font-weight:700;font-size:12px;color:var(--blue,#3b82f6);margin-bottom:8px;text-transform:uppercase">Correction suggérée</div>';
+  html += '<div style="font-size:13px;color:var(--text);line-height:1.5;margin-bottom:16px">' + escHtml(diag.correction || "Aucune") + '</div>';
+
+  // Code fix si disponible
+  var action = diag["actionSuggérée"] || {};
+  if (action.code) {
+    html += '<div style="font-weight:700;font-size:12px;color:var(--purple,#8b5cf6);margin-bottom:8px;text-transform:uppercase">Correctif code</div>';
+    html += '<pre style="background:var(--bg,#0d0d1a);border:1px solid var(--border,#333);border-radius:6px;padding:12px;font-size:11px;color:var(--green,#10b981);overflow-x:auto;margin-bottom:16px;white-space:pre-wrap">' + escHtml(action.code) + '</pre>';
+  }
+
+  // Pages affectées
+  if (diag.pages && diag.pages.length > 0) {
+    html += '<div style="font-weight:700;font-size:12px;color:var(--red,#ef4444);margin-bottom:8px;text-transform:uppercase">Pages en échec</div>';
+    html += '<div style="margin-bottom:16px">';
+    diag.pages.forEach(function(p) {
+      html += '<div style="font-size:11px;color:var(--text2);padding:2px 0">' + escHtml(p) + '</div>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>';
+
+  // Separator
+  html += '<div style="border-top:1px solid var(--border,#333);padding:16px 20px">';
+
+  // Actions
+  if (action.type === "AUTO_FIX" || action.type === "OPEN_CONFIG") {
+    html += '<div style="background:rgba(16,185,129,.1);border:1px solid var(--green,#10b981);border-radius:8px;padding:12px;margin-bottom:12px;font-size:12px;color:var(--text)">';
+    html += '<strong>Suggestion :</strong> ';
+    if (action.type === "AUTO_FIX") html += 'Correction automatique possible. Vérifiez le snippet ci-dessus.';
+    if (action.type === "OPEN_CONFIG") html += 'Problème de configuration — <a href="#" onclick="showPanel(\'panel-settings\');document.getElementById(\'fail-analysis-overlay\').remove()" style="color:var(--blue)">Ouvrir les paramètres</a>';
+    html += '</div>';
+  }
+
+  // Bouton créer Bug
+  html += '<div style="display:flex;gap:10px;justify-content:flex-end">';
+  if (reportFile) {
+    html += '<a href="' + SERVER + '/reports/' + reportFile + '" target="_blank" style="padding:8px 16px;background:var(--bg,#0d0d1a);border:1px solid var(--border);border-radius:6px;color:var(--text);text-decoration:none;font-size:12px;font-weight:600">Voir le rapport</a>';
+  }
+  html += '<button onclick="failAnalysisCreateBug(\'' + key + '\')" style="padding:8px 16px;background:var(--red,#ef4444);border:none;border-radius:6px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Créer un ticket Bug</button>';
+  html += '</div>';
+  html += '</div></div>';
+
+  overlay.innerHTML = html;
+  // Stocker les données pour la création du bug
+  overlay.dataset.diagJson = JSON.stringify(diag);
+  overlay.dataset.reportContent = reportContent;
+  overlay.dataset.reportFile = reportFile || "";
+  document.body.appendChild(overlay);
+
+  // Fermer au clic overlay
+  overlay.addEventListener("click", function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
+function failAnalysisCreateBug(sourceKey) {
+  var overlay = document.getElementById("fail-analysis-overlay");
+  if (!overlay) return;
+
+  var diag = {};
+  var reportContent = "";
+  try { diag = JSON.parse(overlay.dataset.diagJson || "{}"); } catch(e) {}
+  try { reportContent = overlay.dataset.reportContent || ""; } catch(e) {}
+
+  // Demander la preview du Bug au serveur
+  showToast("Génération du ticket Bug...", "🔄");
+
+  fetch(SERVER + "/api/generate-bug-preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sourceKey: sourceKey, diagnostic: diag, reportContent: reportContent })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(bug) {
+    if (bug.error) { showToast("Erreur : " + bug.error, "⚠️"); return; }
+    // Remplacer le contenu du modal par la preview
+    showBugPreview(bug, sourceKey);
+  })
+  .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+function showBugPreview(bug, sourceKey) {
+  var overlay = document.getElementById("fail-analysis-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "fail-analysis-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center";
+    document.body.appendChild(overlay);
+  }
+
+  var html = '<div style="background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;width:700px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.8)">';
+
+  // Header
+  html += '<div style="padding:16px 20px;border-bottom:1px solid var(--border,#333);display:flex;justify-content:space-between;align-items:center">';
+  html += '<div style="display:flex;align-items:center;gap:10px">';
+  html += '<span style="font-size:20px">🐛</span>';
+  html += '<span style="font-weight:700;font-size:14px;color:var(--text)">Preview Bug — ' + sourceKey + '</span>';
+  html += '<span style="background:var(--red,#ef4444);color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700">BUG</span>';
+  html += '</div>';
+  html += '<button onclick="document.getElementById(\'fail-analysis-overlay\').remove()" style="background:none;border:none;color:var(--text2);font-size:18px;cursor:pointer">✕</button>';
+  html += '</div>';
+
+  // Champs éditables
+  html += '<div style="padding:16px 20px">';
+
+  // Titre
+  html += '<label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;display:block;margin-bottom:4px">Titre</label>';
+  html += '<input id="bug-preview-title" type="text" value="' + escHtml(bug.title) + '" style="width:100%;padding:8px 10px;background:var(--bg,#0d0d1a);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;font-family:var(--mono);margin-bottom:12px;box-sizing:border-box">';
+
+  // Priorité
+  html += '<label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;display:block;margin-bottom:4px">Priorité</label>';
+  html += '<select id="bug-preview-priority" style="padding:6px 10px;background:var(--bg,#0d0d1a);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;margin-bottom:12px">';
+  ["Highest", "High", "Medium", "Low", "Lowest"].forEach(function(p) {
+    html += '<option value="' + p + '"' + (p === bug.priority ? ' selected' : '') + '>' + p + '</option>';
+  });
+  html += '</select>';
+
+  // Description
+  html += '<label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;display:block;margin-bottom:4px">Description</label>';
+  html += '<textarea id="bug-preview-desc" rows="16" style="width:100%;padding:10px;background:var(--bg,#0d0d1a);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:var(--mono);resize:vertical;line-height:1.5;margin-bottom:12px;box-sizing:border-box">' + escHtml(bug.description) + '</textarea>';
+
+  // Labels
+  html += '<div style="margin-bottom:12px;font-size:11px;color:var(--text2)">';
+  html += '<strong>Labels :</strong> ' + (bug.labels || []).join(", ");
+  html += ' | <strong>Source :</strong> ' + sourceKey;
+  html += '</div>';
+
+  html += '</div>';
+
+  // Footer avec boutons
+  html += '<div style="padding:12px 20px;border-top:1px solid var(--border,#333);display:flex;gap:10px;justify-content:flex-end">';
+  html += '<button onclick="document.getElementById(\'fail-analysis-overlay\').remove()" style="padding:8px 16px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;cursor:pointer">Annuler</button>';
+  html += '<button onclick="submitBugFromPreview(\'' + sourceKey + '\')" style="padding:8px 16px;background:var(--green,#10b981);border:none;border-radius:6px;color:#000;font-size:12px;font-weight:700;cursor:pointer">Créer dans Jira</button>';
+  html += '</div></div>';
+
+  overlay.innerHTML = html;
+  overlay.addEventListener("click", function(e) { if (e.target === overlay) overlay.remove(); });
+}
+
+function submitBugFromPreview(sourceKey) {
+  var title = document.getElementById("bug-preview-title").value.trim();
+  var desc = document.getElementById("bug-preview-desc").value.trim();
+  var priority = document.getElementById("bug-preview-priority").value;
+
+  if (!title) { showToast("Titre requis", "⚠️"); return; }
+
+  showToast("Création du ticket Bug...", "🔄");
+
+  fetch(SERVER + "/api/jira-push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: title,
+      description: desc,
+      ticketType: "BUG",
+      priority: priority,
+      labels: ["qa-auto", "auto-generated"],
+      parentKey: sourceKey,
+      linkType: "is caused by"
+    })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(d) {
+    var overlay = document.getElementById("fail-analysis-overlay");
+    if (overlay) overlay.remove();
+    if (d.key) {
+      showToast("Bug " + d.key + " créé et lié à " + sourceKey, "🐛");
+    } else if (d.error) {
+      showToast("Erreur Jira : " + d.error, "❌");
+    }
+  })
+  .catch(function(e) { showToast("Erreur : " + e.message, "❌"); });
 }
 
 function blAdvancePhase(key, newPhase) {

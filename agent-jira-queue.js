@@ -237,7 +237,7 @@ var _inProgress = new Set();
 async function bugAlreadyExists(sourceKey) {
   var jql = "project = " + CFG.jira.project +
     " AND issuetype = Bug" +
-    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
+    " AND labels in (\"auto-generated\", \"qa-auto\")" +
     " AND text ~ \"" + sourceKey + "\"" +
     " AND created >= -7d";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) + "&fields=key,summary&maxResults=5";
@@ -263,7 +263,7 @@ async function testAlreadyExists(sourceKey) {
   }
   var jql = "project = " + CFG.jira.project +
     " AND issuetype in (Test, \"Test Case\")" +
-    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
+    " AND labels in (\"auto-generated\", \"qa-auto\")" +
     " AND text ~ \"" + sourceKey + "\"";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) + "&fields=key,summary&maxResults=5";
   try {
