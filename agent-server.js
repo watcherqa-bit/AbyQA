@@ -3692,43 +3692,72 @@ var server = http.createServer(function(req, res) {
 
   // ── COLONNE SOPHIE — tickets QA prêts à tester ─────────────────────────
   if (method === "GET" && url === "/api/sophie-column") {
-    ensureBacklogDir();
-    var pending = readBacklog(BACKLOG_PENDING);
-    // Filtrer les tickets en phase QA (test, uat) et marquer leur état
-    var qaPhases = ["test", "uat", "pret", "pret-a-tester", "en-test"];
-    var sophieTickets = pending.filter(function(t) {
-      return qaPhases.includes(t.phase) ||
-        ["To Test", "In Test", "To Test UAT", "In validation", "Reopened"].includes(t.jiraStatus);
-    }).map(function(t) {
-      // Déterminer l'état du ticket
-      var state = "incomplete";
-      var enrichedPath = path.join(__dirname, "inbox", "enriched", t.key + ".json");
-      var hasEnriched = fs.existsSync(enrichedPath);
-      var testDir = path.join(__dirname, "inbox", "tests");
-      var hasTest = fs.existsSync(path.join(testDir, t.key + ".json")) ||
-                    fs.existsSync(path.join(testDir, t.key + "-fix.json"));
+    // Chercher directement dans Jira les tickets QA assignés
+    var sophieStatuses = ["To Test", "In Test", "To Test UAT", "In validation", "Reopened"];
+    var statusClause = sophieStatuses.map(function(s) { return '"' + s + '"'; }).join(", ");
+    var sophieJql = "project = " + CFG.jira.project +
+      " AND assignee = currentUser()" +
+      " AND status in (" + statusClause + ")" +
+      " AND issuetype in (Story, Bug)" +
+      " ORDER BY priority DESC";
+    var sophiePath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(sophieJql) +
+      "&fields=summary,status,issuetype,priority,labels,issuelinks&maxResults=50";
+    var sophieAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
 
-      if (t.phase === "en-test") state = "running";
-      else if (hasTest || hasEnriched) state = "ready";
-      else if (t.phase === "enrichissement") state = "enriching";
-      else state = "incomplete";
+    var sReq = require("https").request({
+      hostname: CFG.jira.host,
+      path: sophiePath,
+      method: "GET",
+      headers: { "Authorization": "Basic " + sophieAuth, "Accept": "application/json" }
+    }, function(sRes) {
+      var sData = "";
+      sRes.on("data", function(c) { sData += c; });
+      sRes.on("end", function() {
+        try {
+          var parsed = JSON.parse(sData);
+          var issues = (parsed.issues || []).map(function(t) {
+            var status = (t.fields.status && t.fields.status.name) || "";
+            var hasLinkedTest = (t.fields.issuelinks || []).some(function(l) {
+              var linked = l.outwardIssue || l.inwardIssue;
+              return linked && linked.fields && linked.fields.issuetype &&
+                (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
+            });
+            // Déterminer l'état
+            var state = "incomplete";
+            var enrichedPath = path.join(__dirname, "inbox", "enriched", t.key + ".json");
+            var hasEnriched = fs.existsSync(enrichedPath);
+            var testDir = path.join(__dirname, "inbox", "tests");
+            var hasTest = fs.existsSync(path.join(testDir, t.key + ".json")) ||
+                          fs.existsSync(path.join(testDir, t.key + "-fix.json"));
 
-      return {
-        key: t.key,
-        summary: t.summary,
-        type: t.type,
-        jiraStatus: t.jiraStatus,
-        priority: t.priority,
-        phase: t.phase,
-        state: state,
-        hasTest: hasTest,
-        hasEnriched: hasEnriched,
-        jiraUrl: "https://" + CFG.jira.host + "/browse/" + t.key
-      };
+            if (hasTest || hasEnriched || hasLinkedTest) state = "ready";
+
+            return {
+              key: t.key,
+              summary: t.fields.summary || "",
+              type: (t.fields.issuetype && t.fields.issuetype.name) || "",
+              jiraStatus: status,
+              priority: (t.fields.priority && t.fields.priority.name) || "",
+              state: state,
+              hasTest: hasTest || hasLinkedTest,
+              hasEnriched: hasEnriched,
+              jiraUrl: "https://" + CFG.jira.host + "/browse/" + t.key
+            };
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(issues));
+        } catch(e) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
     });
-
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify(sophieTickets));
+    sReq.on("error", function(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    sReq.setTimeout(15000, function() { sReq.destroy(); });
+    sReq.end();
     return;
   }
 
