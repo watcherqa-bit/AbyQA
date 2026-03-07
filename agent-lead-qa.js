@@ -738,38 +738,87 @@ async function analyzeAgentError(ctx) {
 }
 
 // ── DIAGNOSTIC PLAYWRIGHT — analyse les logs d'un run échoué ─────────────────
+// Retourne une structure normalisée pour le bouton "Corriger" universel
 async function analyzePlaywrightFail(logs, resultData) {
-  var logsText = (logs || []).slice(-100).join("\n");
-  var failLines = (logs || []).filter(function(l) {
+  var logsText = (Array.isArray(logs) ? logs : (logs || "").split("\n")).slice(-100).join("\n");
+  var logsArr = Array.isArray(logs) ? logs : (logs || "").split("\n");
+  var failLines = logsArr.filter(function(l) {
     return l.includes("[FAIL]") || l.includes("FAIL") || l.includes("[ERR]") || l.includes("Error");
   }).slice(0, 20).join("\n");
-  var bugList = (resultData.bugs || []).map(function(b) { return "- " + b.title; }).join("\n");
+  var bugList = (resultData.bugs || []).map(function(b) { return "- " + (b.title || b); }).join("\n");
 
-  var prompt = "Tu es Lead QA expert Playwright et développeur web senior. " +
-    "Un run Playwright a échoué. Analyse les logs et fournis un diagnostic clair en français.\n\n" +
-    "Mode: " + (resultData.mode || "?") + " | Env: " + (resultData.env || "?") +
+  var prompt = "Tu es Lead QA expert Playwright et développeur web senior.\n" +
+    "Un run Playwright a échoué. Analyse les logs et fournis un diagnostic structuré.\n\n" +
+    "Ticket: " + (resultData.ticketKey || "?") + " | Mode: " + (resultData.mode || "?") +
+    " | Env: " + (resultData.env || "?") +
     " | Pass: " + (resultData.pass || 0) + "/" + (resultData.total || 0) + "\n\n" +
     "LIGNES D'ERREUR :\n" + (failLines || "voir logs complets") + "\n\n" +
     "LOGS COMPLETS (fin) :\n" + logsText + "\n\n" +
     (bugList ? "BUGS DÉTECTÉS :\n" + bugList + "\n\n" : "") +
-    "Réponds UNIQUEMENT en JSON strict (pas de markdown, pas de texte avant/après) :\n" +
-    '{"diagnosis":"Explication claire du problème (2-3 phrases)",' +
-    '"cause":"Cause probable (sélecteur cassé / timeout / régression / env indisponible / authentification...)",' +
-    '"fix":"Action corrective précise : fichier et ligne à modifier, sélecteur CSS à corriger, ou étape de debug",' +
-    '"priority":"high|medium|low",' +
-    '"affectedPages":["liste des pages/URLs en échec"]}';
+    "Réponds UNIQUEMENT en JSON strict :\n" +
+    "{\n" +
+    '  "diagnostic": "Explication claire du problème (2-3 phrases)",\n' +
+    '  "causeProbable": "Cause technique précise",\n' +
+    '  "typeErreur": "SYNTAX_JIRA | PARSING | CONFIG | UNKNOWN",\n' +
+    '  "correction": "Action corrective détaillée",\n' +
+    '  "actionSuggérée": {\n' +
+    '    "type": "OPEN_JIRA | AUTO_FIX | OPEN_CONFIG | CLAUDE_CODE",\n' +
+    '    "valeur": "valeur spécifique (URL, champ config, etc.)",\n' +
+    '    "code": "snippet de code à appliquer si AUTO_FIX (optionnel)"\n' +
+    "  },\n" +
+    '  "priorité": "HIGH | MEDIUM | LOW",\n' +
+    '  "pages": ["URLs en échec"]\n' +
+    "}\n\n" +
+    "RÈGLES pour typeErreur :\n" +
+    "- SYNTAX_JIRA : si l'erreur vient du ticket Jira (encodage, caractères spéciaux, syntaxe)\n" +
+    "- PARSING : si l'erreur vient du parsing/extraction (URL malformée, sélecteur cassé, caractères spéciaux dans les données)\n" +
+    "- CONFIG : si l'erreur vient d'un mauvais paramétrage (variable d'env, config, authentification, session expirée)\n" +
+    "- UNKNOWN : si l'erreur est complexe ou ne rentre dans aucune catégorie\n\n" +
+    "RÈGLES pour actionSuggérée.type :\n" +
+    "- OPEN_JIRA : ouvrir le ticket Jira pour corriger manuellement\n" +
+    "- AUTO_FIX : correction automatique applicable par le code (fournir le snippet dans 'code')\n" +
+    "- OPEN_CONFIG : rediriger vers les paramètres AbyQA\n" +
+    "- CLAUDE_CODE : erreur complexe nécessitant une analyse approfondie";
+
+  var fallback = {
+    diagnostic: "Erreur analyse",
+    causeProbable: "Inconnue",
+    typeErreur: "UNKNOWN",
+    correction: "Consulter les logs",
+    "actionSuggérée": { type: "CLAUDE_CODE", valeur: "", code: "" },
+    "priorité": "MEDIUM",
+    pages: []
+  };
 
   try {
     var response = await client.messages.create({
-      model: MODEL_FAST, max_tokens: 700,
+      model: MODEL_FAST, max_tokens: 900,
       messages: [{ role: "user", content: prompt }]
     });
     var text = response.content[0].text;
     var match = text.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    return { diagnosis: text, cause: "Analyse incomplète", fix: "Consulter les logs", priority: "medium", affectedPages: [] };
+    if (match) {
+      var parsed = JSON.parse(match[0]);
+      // Normaliser : garantir la structure attendue
+      return {
+        diagnostic:      parsed.diagnostic || parsed.diagnosis || fallback.diagnostic,
+        causeProbable:   parsed.causeProbable || parsed.cause || fallback.causeProbable,
+        typeErreur:      (parsed.typeErreur || "UNKNOWN").toUpperCase(),
+        correction:      parsed.correction || parsed.fix || fallback.correction,
+        "actionSuggérée": parsed["actionSuggérée"] || parsed.actionSuggeree || parsed.actionSuggested || fallback["actionSuggérée"],
+        "priorité":      (parsed["priorité"] || parsed.priority || "MEDIUM").toUpperCase(),
+        pages:           parsed.pages || parsed.affectedPages || [],
+        // Rétrocompatibilité avec l'ancien format (dashboard existant)
+        diagnosis:       parsed.diagnostic || parsed.diagnosis || fallback.diagnostic,
+        cause:           parsed.causeProbable || parsed.cause || fallback.causeProbable,
+        fix:             parsed.correction || parsed.fix || fallback.correction,
+        priority:        (parsed["priorité"] || parsed.priority || "MEDIUM").toLowerCase(),
+        affectedPages:   parsed.pages || parsed.affectedPages || []
+      };
+    }
+    return Object.assign({}, fallback, { diagnostic: text, diagnosis: text });
   } catch(e) {
-    return { diagnosis: "Erreur analyse : " + e.message, cause: "?", fix: "Consulter les logs", priority: "medium", affectedPages: [] };
+    return Object.assign({}, fallback, { diagnostic: "Erreur analyse : " + e.message, diagnosis: "Erreur analyse : " + e.message });
   }
 }
 
@@ -792,6 +841,72 @@ function extractUrlsFromDescription(text) {
     });
 }
 
+// ── 14. GÉNÉRER DES SCÉNARIOS EXÉCUTABLES PLAYWRIGHT ────────────────────────
+// Prend un ticket (key, summary, description, type, urls) et retourne des scénarios normalisés
+async function generateExecutableScenarios(ticket) {
+  var key     = ticket.key || "?";
+  var summary = ticket.summary || "";
+  var desc    = ticket.description || extractText((ticket.fields && ticket.fields.description) || "");
+  var type    = ticket.type || (ticket.fields && ticket.fields.issuetype && ticket.fields.issuetype.name) || "";
+  var urls    = ticket.urls || [];
+
+  var prompt =
+    ANTI_HALLU +
+    "Tu dois générer des scénarios de test Playwright EXÉCUTABLES pour ce ticket Jira.\n\n" +
+    "Ticket  : " + key + "\n" +
+    "Type    : " + type + "\n" +
+    "Résumé  : " + summary + "\n" +
+    "Description : " + desc.substring(0, 2000) + "\n" +
+    "URLs disponibles : " + (urls.length > 0 ? urls.map(function(u) { return u.url || u; }).join(", ") : "[aucune URL dans le ticket]") + "\n\n" +
+    "STRUCTURE OBLIGATOIRE pour chaque scénario :\n" +
+    "{\n" +
+    '  "id": "scenario-1",\n' +
+    '  "titre": "Titre descriptif du test",\n' +
+    '  "type": "AUTO" ou "MANUEL",\n' +
+    '  "actions": [\n' +
+    '    { "type": "navigate", "url": "https://..." },\n' +
+    '    { "type": "click", "selector": "css-selector" },\n' +
+    '    { "type": "fill", "selector": "css-selector", "value": "texte" },\n' +
+    '    { "type": "waitForURL", "value": "pattern" },\n' +
+    '    { "type": "waitForEvent", "event": "popup" },\n' +
+    '    { "type": "hover", "selector": "css-selector" },\n' +
+    '    { "type": "press", "key": "Enter" },\n' +
+    '    { "type": "wait", "value": "1000" },\n' +
+    '    { "type": "scroll", "selector": "css-selector" }\n' +
+    "  ],\n" +
+    '  "assertions": [\n' +
+    '    { "type": "url", "operator": "toContain", "value": "/path" },\n' +
+    '    { "type": "url", "operator": "toBe", "value": "https://full-url" },\n' +
+    '    { "type": "url", "operator": "notToContain", "value": "error" },\n' +
+    '    { "type": "element", "operator": "toBeVisible", "selector": "css-selector" },\n' +
+    '    { "type": "element", "operator": "toHaveText", "selector": "css-selector", "value": "texte" },\n' +
+    '    { "type": "popup", "operator": "toBeTruthy" },\n' +
+    '    { "type": "title", "operator": "toContain", "value": "texte" }\n' +
+    "  ]\n" +
+    "}\n\n" +
+    "RÈGLES STRICTES :\n" +
+    "1. Un scénario AUTO DOIT avoir au minimum 1 action navigate + 1 assertion vérifiable.\n" +
+    "2. Les sélecteurs CSS doivent être réalistes (balises HTML standard, classes CSS courantes).\n" +
+    "3. Si tu ne peux PAS générer d'actions/assertions concrètes → mets type: \"MANUEL\".\n" +
+    "4. Utilise uniquement les URLs du ticket. Si aucune URL → navigate vers la page d'accueil.\n" +
+    "5. Pour un Bug : teste la correction (le scénario doit vérifier que le bug est corrigé).\n" +
+    "6. Pour une US : teste les critères d'acceptation (AC).\n" +
+    "7. Pour un Test : exécute les étapes décrites dans le cas de test.\n" +
+    "8. Génère entre 1 et 6 scénarios maximum.\n\n" +
+    "Retourne un JSON : { \"scenarios\": [ ... ] }";
+
+  try {
+    var result = await askJSON(prompt, MODEL_QUALITY);
+    if (result && result.scenarios && Array.isArray(result.scenarios)) {
+      return result.scenarios;
+    }
+    return [];
+  } catch (e) {
+    console.log("[LEAD-QA] Erreur génération scénarios : " + e.message.substring(0, 80));
+    return [];
+  }
+}
+
 // ── EXPORT ────────────────────────────────────────────────────────────────────
 module.exports = {
   // Analyse & décision
@@ -812,6 +927,8 @@ module.exports = {
   analyzePlaywrightFail,
   // Auto-debug agent errors
   analyzeAgentError,
+  // Scénarios Playwright exécutables
+  generateExecutableScenarios,
   // Extraction URLs
   extractUrlsFromDescription,
   // LLM bas niveau (pour routes custom du serveur)

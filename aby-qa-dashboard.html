@@ -7099,30 +7099,229 @@ function opsShowTestResult(result, diagnostic) {
   wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function opsRenderDiagnostic(diag) {
+// ── DIAGNOSTIC UNIVERSEL + BOUTON CORRIGER ────────────────────────────────────
+// Fonction générique appelée pour TOUS les types de tickets (Bug, US, Test, Task)
+// Ne conditionne JAMAIS le comportement sur le type de ticket — uniquement sur le contenu du diagnostic
+function renderDiagnosticBlock(diag, ticketKey) {
+  if (!diag) return '';
   var h = '<div style="font-size:13px;line-height:1.6">';
-  h += '<div style="font-weight:700;color:var(--orange);font-size:14px;margin-bottom:10px">🔍 Analyse des logs</div>';
-  if (diag.diagnosis) {
-    h += '<div style="margin-bottom:8px"><span style="color:var(--cyan);font-weight:600">Diagnostic :</span> <span style="color:var(--text)">' + escHtml(diag.diagnosis) + '</span></div>';
+  h += '<div style="font-weight:700;color:var(--orange);font-size:14px;margin-bottom:10px">🔍 DIAGNOSTIC IA</div>';
+
+  // Texte du diagnostic (compatible ancien + nouveau format)
+  var diagText = diag.diagnostic || diag.diagnosis || '';
+  var causeText = diag.causeProbable || diag.cause || '';
+  var fixText = diag.correction || diag.fix || '';
+  var prioText = (diag["priorité"] || diag.priority || 'medium').toUpperCase();
+  var typeErreur = (diag.typeErreur || '').toUpperCase();
+  var pages = diag.pages || diag.affectedPages || [];
+  var action = diag["actionSuggérée"] || diag.actionSuggeree || null;
+
+  if (diagText) {
+    h += '<div style="margin-bottom:8px"><span style="color:var(--cyan);font-weight:600">Diagnostic :</span> <span style="color:var(--text)">' + escHtml(diagText) + '</span></div>';
   }
-  if (diag.cause) {
-    h += '<div style="margin-bottom:8px"><span style="color:var(--red);font-weight:600">Cause :</span> <span style="color:var(--text)">' + escHtml(diag.cause) + '</span></div>';
+  if (causeText) {
+    h += '<div style="margin-bottom:8px"><span style="color:var(--red);font-weight:600">Cause probable :</span> <span style="color:var(--text)">' + escHtml(causeText) + '</span></div>';
   }
-  if (diag.fix) {
-    h += '<div style="margin-bottom:8px"><span style="color:var(--green);font-weight:600">Correction :</span> <span style="color:var(--text)">' + escHtml(diag.fix) + '</span></div>';
+  if (fixText) {
+    h += '<div style="margin-bottom:8px"><span style="color:var(--green);font-weight:600">Correction :</span> <span style="color:var(--text);font-family:var(--mono);font-size:11px">' + escHtml(fixText) + '</span></div>';
   }
-  if (diag.priority) {
-    var prioColor = diag.priority === 'critical' ? '#ef4444' : diag.priority === 'high' ? '#f97316' : diag.priority === 'medium' ? '#eab308' : '#6b7280';
-    h += '<div style="margin-bottom:8px"><span style="font-weight:600;color:' + prioColor + '">Priorité : ' + escHtml(diag.priority).toUpperCase() + '</span></div>';
-  }
-  if (diag.affectedPages && diag.affectedPages.length) {
-    h += '<div style="margin-bottom:4px"><span style="color:var(--text2);font-weight:600">Pages affectées :</span></div>';
-    h += '<ul style="margin:0 0 0 16px;padding:0;color:var(--text2);font-size:12px">';
-    diag.affectedPages.forEach(function(p) { h += '<li>' + escHtml(p) + '</li>'; });
-    h += '</ul>';
+
+  // Priorité + Type d'erreur
+  var prioColor = prioText === 'HIGH' ? '#f97316' : prioText === 'MEDIUM' ? '#eab308' : '#6b7280';
+  h += '<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">';
+  h += '<span style="font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;background:rgba(255,255,255,.06);color:' + prioColor + '">PRIORITÉ ' + escHtml(prioText) + '</span>';
+  if (typeErreur) {
+    var teColor = typeErreur === 'SYNTAX_JIRA' ? 'var(--blue)' : typeErreur === 'PARSING' ? 'var(--green)' : typeErreur === 'CONFIG' ? 'var(--orange)' : '#a78bfa';
+    h += '<span style="font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;background:rgba(255,255,255,.06);color:' + teColor + '">' + escHtml(typeErreur) + '</span>';
   }
   h += '</div>';
+
+  // Pages affectées
+  if (pages.length) {
+    h += '<div style="margin-bottom:8px"><span style="color:var(--text2);font-weight:600;font-size:11px">Pages affectées :</span>';
+    h += '<ul style="margin:4px 0 0 16px;padding:0;color:var(--text2);font-size:11px;font-family:var(--mono)">';
+    pages.forEach(function(p) { h += '<li>' + escHtml(p) + '</li>'; });
+    h += '</ul></div>';
+  }
+
+  // ── BOUTON CORRIGER ─────────────────────────────────────────────────────────
+  // Visible uniquement si une correction est suggérée
+  if (fixText || action) {
+    var btnType = _detectCorrectionType(diag);
+    var btnCfg = {
+      OPEN_JIRA:   { icon: '🔗', label: 'Ouvrir Jira',  color: 'var(--blue)',   bg: 'rgba(59,111,255,.15)', border: 'rgba(59,111,255,.35)' },
+      AUTO_FIX:    { icon: '🔧', label: 'Fix auto',      color: 'var(--green)',  bg: 'rgba(0,232,122,.15)',  border: 'rgba(0,232,122,.35)' },
+      OPEN_CONFIG: { icon: '⚙️', label: 'Config',       color: 'var(--orange)', bg: 'rgba(245,158,11,.15)', border: 'rgba(245,158,11,.35)' },
+      CLAUDE_CODE: { icon: '🤖', label: 'Analyser',      color: '#a78bfa',       bg: 'rgba(139,92,246,.15)', border: 'rgba(139,92,246,.35)' }
+    };
+    var cfg = btnCfg[btnType] || btnCfg.CLAUDE_CODE;
+    var diagB64 = btoa(unescape(encodeURIComponent(JSON.stringify(diag))));
+    var keyArg = ticketKey ? escHtml(ticketKey) : '';
+
+    h += '<div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">';
+    h += '<button onclick="diagCorrection(\'' + btnType + '\',\'' + keyArg + '\',\'' + diagB64 + '\')" ' +
+      'style="background:' + cfg.bg + ';border:1px solid ' + cfg.border + ';color:' + cfg.color + ';border-radius:8px;padding:8px 18px;cursor:pointer;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px">' +
+      cfg.icon + ' ' + cfg.label + '</button>';
+    // Feedback zone
+    h += '<span id="diag-feedback-' + keyArg + '" style="font-size:12px;font-family:var(--mono);color:var(--text3)"></span>';
+    h += '</div>';
+  }
+
+  h += '</div>';
   return h;
+}
+
+// Détecte le type de correction basé sur le CONTENU du diagnostic (jamais sur le type de ticket)
+function _detectCorrectionType(diag) {
+  // 1. Si le LLM a déjà catégorisé → utiliser sa réponse
+  var action = diag["actionSuggérée"] || diag.actionSuggeree || null;
+  if (action && action.type) {
+    var t = action.type.toUpperCase();
+    if (['OPEN_JIRA', 'AUTO_FIX', 'OPEN_CONFIG', 'CLAUDE_CODE'].indexOf(t) !== -1) return t;
+  }
+  var typeErreur = (diag.typeErreur || '').toUpperCase();
+  if (typeErreur === 'SYNTAX_JIRA') return 'OPEN_JIRA';
+  if (typeErreur === 'PARSING') return 'AUTO_FIX';
+  if (typeErreur === 'CONFIG') return 'OPEN_CONFIG';
+  if (typeErreur === 'UNKNOWN') return 'CLAUDE_CODE';
+
+  // 2. Fallback : détection par mots-clés dans le contenu
+  var all = ((diag.diagnostic || diag.diagnosis || '') + ' ' + (diag.causeProbable || diag.cause || '') + ' ' + (diag.correction || diag.fix || '')).toLowerCase();
+  if (/ticket jira|syntaxe|encodage|caract.re sp.cial.*jira/i.test(all)) return 'OPEN_JIRA';
+  if (/parsing|extraction|url malform|s.lecteur cass|regex/i.test(all)) return 'AUTO_FIX';
+  if (/config|param.trage|variable|session expir|authentification|\.env/i.test(all)) return 'OPEN_CONFIG';
+  return 'CLAUDE_CODE';
+}
+
+// ── ACTIONS DE CORRECTION ─────────────────────────────────────────────────────
+function diagCorrection(type, ticketKey, diagB64) {
+  var diag;
+  try { diag = JSON.parse(decodeURIComponent(escape(atob(diagB64)))); } catch(e) { diag = {}; }
+  var action = diag["actionSuggérée"] || diag.actionSuggeree || {};
+  var fb = document.getElementById('diag-feedback-' + ticketKey);
+  var ts = new Date().toISOString();
+
+  switch (type) {
+    case 'OPEN_JIRA':
+      var jiraUrl = 'https://' + (window.CFG_JIRA_HOST || 'eurelis.atlassian.net') + '/browse/' + ticketKey;
+      window.open(jiraUrl, '_blank');
+      if (fb) fb.innerHTML = '<span style="color:var(--blue)">🔗 Jira ouvert dans un nouvel onglet</span>';
+      // Afficher la correction suggérée à copier
+      if (diag.correction || diag.fix) {
+        var fixText = diag.correction || diag.fix || '';
+        if (fb) fb.innerHTML += '<div style="margin-top:8px;padding:10px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;font-family:var(--mono);font-size:11px;color:var(--text);cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent);showToast(\'Copié\',\'📋\')" title="Cliquer pour copier">' + escHtml(fixText) + '</div>';
+      }
+      _logDiagAction(ts, ticketKey, 'OPEN_JIRA', 'Ticket Jira ouvert');
+      break;
+
+    case 'AUTO_FIX':
+      if (fb) fb.innerHTML = '<span style="color:var(--orange)">⏳ Application du fix...</span>';
+      var fixCode = action.code || '';
+      if (!fixCode) {
+        // Pas de code snippet → relancer le test directement
+        if (fb) fb.innerHTML = '<span style="color:var(--green)">🔧 Relance du test...</span>';
+        _rerunLastTest(ticketKey, fb);
+      } else {
+        // Appliquer le fix via /api/apply-fix, puis relancer
+        fetch(SERVER + '/api/apply-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: action.valeur || '', oldCode: '', newCode: fixCode })
+        }).then(function(r) { return r.json(); })
+          .then(function(d) {
+            if (d.ok) {
+              if (fb) fb.innerHTML = '<span style="color:var(--green)">✅ Fix appliqué — relance du test...</span>';
+              _logDiagAction(ts, ticketKey, 'AUTO_FIX', 'Fix appliqué : ' + (d.file || ''));
+              _rerunLastTest(ticketKey, fb);
+            } else {
+              if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ Erreur : ' + escHtml(d.error || 'inconnu') + '</span>';
+              _logDiagAction(ts, ticketKey, 'AUTO_FIX', 'Erreur : ' + (d.error || 'inconnu'));
+            }
+          }).catch(function(e) {
+            if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ ' + escHtml(e.message) + '</span>';
+          });
+      }
+      break;
+
+    case 'OPEN_CONFIG':
+      showPanel('settings');
+      if (fb) fb.innerHTML = '<span style="color:var(--orange)">⚙️ Panel Config ouvert</span>';
+      // Tenter de mettre en surbrillance le champ concerné
+      var configField = action.valeur || '';
+      if (configField) {
+        setTimeout(function() {
+          var labels = document.querySelectorAll('#panel-settings label, #panel-settings .card-title');
+          for (var i = 0; i < labels.length; i++) {
+            if (labels[i].textContent.toLowerCase().includes(configField.toLowerCase())) {
+              labels[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+              labels[i].style.outline = '2px solid var(--orange)';
+              labels[i].style.outlineOffset = '4px';
+              labels[i].style.borderRadius = '4px';
+              setTimeout(function(el) { el.style.outline = 'none'; }.bind(null, labels[i]), 5000);
+              break;
+            }
+          }
+        }, 300);
+      }
+      _logDiagAction(ts, ticketKey, 'OPEN_CONFIG', 'Config ouvert' + (configField ? ' : ' + configField : ''));
+      break;
+
+    case 'CLAUDE_CODE':
+      if (fb) fb.innerHTML = '<span style="color:#a78bfa">⏳ Envoi à Claude Code...</span>';
+      var prompt = 'Analyse ce diagnostic de test Playwright pour le ticket ' + (ticketKey || '?') + ' et propose une correction :\n\n' +
+        'Diagnostic : ' + (diag.diagnostic || diag.diagnosis || '') + '\n' +
+        'Cause : ' + (diag.causeProbable || diag.cause || '') + '\n' +
+        'Correction suggérée : ' + (diag.correction || diag.fix || '') + '\n' +
+        'Pages : ' + (diag.pages || diag.affectedPages || []).join(', ');
+      fetch(SERVER + '/api/claude-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: prompt })
+      }).then(function() {
+        if (fb) fb.innerHTML = '<span style="color:#a78bfa">🤖 Analyse envoyée à Claude Code — voir le panel Chat</span>';
+        _logDiagAction(ts, ticketKey, 'CLAUDE_CODE', 'Analyse envoyée');
+      }).catch(function(e) {
+        if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ ' + escHtml(e.message) + '</span>';
+      });
+      break;
+  }
+}
+
+// Relance le dernier test pour un ticket
+function _rerunLastTest(ticketKey, fb) {
+  if (!ticketKey) { if (fb) fb.innerHTML = '<span style="color:var(--red)">Pas de ticket à relancer</span>'; return; }
+  fetch(SERVER + '/api/run-agent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ agent: 'playwright-direct', params: { key: ticketKey, source: 'jira-key', mode: 'ui' } })
+  }).then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) {
+        if (fb) fb.innerHTML = '<span style="color:var(--green)">✅ Test relancé — résultats en cours...</span>';
+      } else {
+        if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ Erreur relance : ' + escHtml(d.error || '') + '</span>';
+      }
+    }).catch(function(e) {
+      if (fb) fb.innerHTML = '<span style="color:var(--red)">❌ ' + escHtml(e.message) + '</span>';
+    });
+}
+
+// Log des actions de correction dans le panel Logs
+function _logDiagAction(timestamp, ticketKey, actionType, result) {
+  var logEntry = { type: 'diag-correction', timestamp: timestamp, ticketKey: ticketKey || '—', actionType: actionType, result: result };
+  // Envoyer au serveur pour persistance
+  fetch(SERVER + '/api/log-event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(logEntry)
+  }).catch(function() {}); // best-effort
+  // Afficher dans la console
+  console.log('[DIAG] ' + timestamp + ' | ' + (ticketKey || '—') + ' | ' + actionType + ' | ' + result);
+}
+
+// Alias rétrocompatible pour le panel Opérations
+function opsRenderDiagnostic(diag) {
+  return renderDiagnosticBlock(diag, (window._opsLastResult && window._opsLastResult.ticketKey) || '');
 }
 
 function opsRequestLogAnalysis() {
@@ -7139,7 +7338,8 @@ function opsRequestLogAnalysis() {
   }).then(function(r) { return r.json(); })
     .then(function(d) {
       window._opsLastDiagnostic = d;
-      if (zone) zone.innerHTML = opsRenderDiagnostic(d);
+      var tk = (window._opsLastResult && window._opsLastResult.ticketKey) || '';
+      if (zone) zone.innerHTML = renderDiagnosticBlock(d, tk);
       if (btn) { btn.disabled = false; btn.textContent = '🔄 Re-analyser les logs'; }
     }).catch(function(e) {
       if (zone) zone.innerHTML = '<div style="color:var(--red);font-size:13px">Erreur d\'analyse : ' + escHtml(e.message) + '</div>';
@@ -9976,18 +10176,8 @@ function loadPlaywrightReports() {
           : ((res.fail || 0) + " test(s) en échec sur " + (res.total || "?") + " — voir le diagnostic");
 
         if (!isOk && r.diagnostic) {
-          var d = r.diagnostic;
-          var prioColor = d.priority === "high" ? "var(--red)" : d.priority === "medium" ? "var(--orange)" : "var(--green)";
           diagHtml = '<div id="diag-' + escHtml(r.filename) + '" style="display:none;margin-top:12px;background:rgba(255,59,92,.05);border:1px solid rgba(255,59,92,.2);border-radius:8px;padding:14px;font-size:12px">' +
-            '<div style="font-family:var(--mono);font-size:10px;color:var(--red);letter-spacing:.08em;margin-bottom:8px">🔍 DIAGNOSTIC IA</div>' +
-            '<div style="margin-bottom:8px"><span style="color:var(--text3);font-family:var(--mono);font-size:10px">Diagnostic :</span><div style="color:var(--text);margin-top:3px">' + escHtml(d.diagnosis || "—") + '</div></div>' +
-            '<div style="margin-bottom:8px"><span style="color:var(--text3);font-family:var(--mono);font-size:10px">Cause probable :</span><div style="color:var(--orange);margin-top:3px">' + escHtml(d.cause || "—") + '</div></div>' +
-            '<div style="margin-bottom:8px"><span style="color:var(--text3);font-family:var(--mono);font-size:10px">Correction :</span><div style="color:var(--cyan);margin-top:3px;font-family:var(--mono);font-size:11px">' + escHtml(d.fix || "—") + '</div></div>' +
-            '<div style="display:flex;align-items:center;gap:8px">' +
-              '<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">Priorité :</span>' +
-              '<span style="font-family:var(--mono);font-size:10px;color:' + prioColor + ';font-weight:700">' + (d.priority||"?").toUpperCase() + '</span>' +
-            (d.affectedPages && d.affectedPages.length ? '<span style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-left:12px">Pages : ' + d.affectedPages.join(", ") + '</span>' : '') +
-            '</div>' +
+            renderDiagnosticBlock(r.diagnostic, r.ticketKey || '') +
           '</div>';
         }
 

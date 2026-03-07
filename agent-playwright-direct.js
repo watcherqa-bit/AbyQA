@@ -19,6 +19,9 @@ const REPORTS_DIR     = CFG.paths.reports;
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
 const BASE_DIR        = __dirname;
 const reporterUtils   = require("./reporter-utils");
+const scenarioExec    = require("./scenario-executor");
+var leadQA;
+try { leadQA = require("./agent-lead-qa"); } catch(e) { leadQA = null; }
 
 var args = process.argv.slice(2);
 function arg(name) {
@@ -41,6 +44,8 @@ var XML_FILE = arg("xml")     || null;
 var TEXT     = arg("text")    || null;
 var URLS_RAW = arg("urls")    || null;
 var TICKET_INFO = null; // Enrichi par getUrlsFromJiraKey si --key fourni
+var PROPOSED_TESTS = []; // Scénarios AUTO/MANUEL depuis le ticket enrichi
+var SCENARIO_RESULTS = []; // Résultats d'exécution des scénarios
 
 // Support --urls-file= (fichier temporaire, évite les problèmes shell Windows avec &quot;)
 var URLS_FILE_ARG = args.find(function(a) { return a.startsWith("--urls-file="); });
@@ -260,6 +265,36 @@ async function getUrlsFromJiraKey(key) {
       return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);
     }).map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket " + key }; });
   if (urls.length === 0) urls = [{ url: ENV_URL + "/fr", label: "Accueil (fallback)", context: "ticket " + key }];
+  // Charger les scénarios proposés depuis le ticket enrichi
+  var enrichedKey = TICKET_INFO.parentKey || TICKET_INFO.key;
+  var enrichedPath = path.join(BASE_DIR, "inbox", "enriched", enrichedKey + ".json");
+  if (fs.existsSync(enrichedPath)) {
+    try {
+      var enrichedData = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
+      if (enrichedData.proposedTests && enrichedData.proposedTests.length) {
+        PROPOSED_TESTS = enrichedData.proposedTests;
+        console.log("  [SCENARIOS] " + PROPOSED_TESTS.length + " scénario(s) chargé(s) depuis " + enrichedKey);
+      }
+      if (enrichedData.fixTests && enrichedData.fixTests.length) {
+        // Convertir fixTests en format proposedTests MANUEL
+        enrichedData.fixTests.forEach(function(ft) {
+          PROPOSED_TESTS.push({ name: ft, type: "manual", steps: [ft], expectedResult: "Vérification manuelle OK" });
+        });
+      }
+      if (enrichedData.testCases && enrichedData.testCases.length) {
+        enrichedData.testCases.forEach(function(tc) {
+          PROPOSED_TESTS.push({
+            name: tc.id ? tc.id + " — " + (tc.action || "").substring(0, 50) : (tc.action || "").substring(0, 50),
+            type: "manual",
+            steps: [tc.action || ""],
+            expectedResult: tc.expected || "",
+            data: tc.data || ""
+          });
+        });
+      }
+    } catch(e) { /* pas de scénarios enrichis */ }
+  }
+
   console.log("  [OK] " + urls.length + " URL(s) extraite(s) de " + key);
   return urls;
 }
@@ -701,6 +736,136 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
   return result;
 }
 
+/**
+ * Génère et exécute les scénarios Playwright pour un ticket.
+ * @param {Array} targets — URLs résolues
+ * @param {string} envName — environnement
+ * @returns {Promise<Array>} résultats par scénario
+ */
+async function runScenarios(targets, envName) {
+  if (!leadQA || !TICKET_INFO) {
+    console.log("[SCENARIOS] Pas de ticket info ou lead-qa indisponible — skip");
+    return [];
+  }
+
+  // 1. Générer les scénarios exécutables via Claude
+  console.log("\n[SCENARIOS] Génération des scénarios exécutables via Claude...");
+  var scenarios = [];
+  try {
+    scenarios = await leadQA.generateExecutableScenarios({
+      key: TICKET_INFO.key,
+      summary: TICKET_INFO.summary,
+      description: TICKET_INFO.description,
+      type: TICKET_INFO.type,
+      urls: targets
+    });
+  } catch(e) {
+    console.log("[SCENARIOS] Erreur génération : " + e.message.substring(0, 80));
+    return [];
+  }
+
+  if (!scenarios || scenarios.length === 0) {
+    console.log("[SCENARIOS] Aucun scénario généré");
+    return [];
+  }
+
+  console.log("[SCENARIOS] " + scenarios.length + " scénario(s) généré(s)");
+
+  // 2. Valider et basculer les scénarios invalides en MANUEL
+  var validScenarios = scenarios.map(function(s, i) {
+    s.id = s.id || ("scenario-" + (i + 1));
+    s.titre = s.titre || s.title || ("Scénario " + (i + 1));
+    s.type = (s.type || "AUTO").toUpperCase();
+
+    if (s.type === "AUTO") {
+      var validation = scenarioExec.validateScenario(s);
+      if (!validation.valid) {
+        console.log("  [" + s.id + "] AUTO -> MANUEL (invalide : " + validation.reason + ")");
+        s.type = "MANUEL";
+        s.downgradeReason = validation.reason;
+      }
+    }
+    return s;
+  });
+
+  // 3. Exécuter les scénarios AUTO
+  var results = [];
+  var thisEnv = envName || ENV_NAME;
+
+  for (var i = 0; i < validScenarios.length; i++) {
+    var scenario = validScenarios[i];
+    var sr = {
+      id: scenario.id,
+      titre: scenario.titre,
+      type: scenario.type,
+      pass: null,
+      error: null,
+      actionsExecuted: [],
+      assertionsChecked: [],
+      screenshot: null,
+      downgradeReason: scenario.downgradeReason || null
+    };
+
+    if (scenario.type === "MANUEL") {
+      console.log("  [" + scenario.id + "] MANUEL — " + scenario.titre + (sr.downgradeReason ? " (" + sr.downgradeReason + ")" : ""));
+      results.push(sr);
+      continue;
+    }
+
+    // Exécuter le scénario AUTO
+    console.log("  [" + scenario.id + "] AUTO — " + scenario.titre + "...");
+    var browser = null;
+    var page = null;
+    try {
+      var BT = BROWSER_MAP[BROWSERS[0]] || chromium;
+      browser = await BT.launch({
+        headless: true,
+        args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-infobars"]
+      });
+      var ctxOpts = {
+        viewport: { width: DEVICES[0].w, height: DEVICES[0].h },
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        extraHTTPHeaders: { "Accept-Language": "fr-FR,fr;q=0.9" }
+      };
+      if (thisEnv === "sophie" || thisEnv === "paulo") {
+        ctxOpts.httpCredentials = { username: CFG.drupal.user, password: CFG.drupal.pass };
+      }
+      var authFile = path.join(BASE_DIR, "auth", thisEnv + ".json");
+      if (fs.existsSync(authFile)) ctxOpts.storageState = authFile;
+
+      var context = await browser.newContext(ctxOpts);
+      await context.addInitScript(function() {
+        Object.defineProperty(navigator, "webdriver", { get: function() { return undefined; } });
+      });
+      page = await context.newPage();
+
+      var execResult = await scenarioExec.executeScenario(page, scenario, { timeout: 15000 });
+      sr.pass = execResult.pass;
+      sr.error = execResult.error;
+      sr.actionsExecuted = execResult.actionsExecuted;
+      sr.assertionsChecked = execResult.assertionsChecked;
+
+      // Screenshot post-exécution
+      try {
+        var shotName = "scenario_" + scenario.id + "_" + thisEnv + "_" + Date.now() + ".png";
+        sr.screenshot = path.join(SCREENSHOTS_DIR, shotName);
+        await page.screenshot({ path: sr.screenshot, fullPage: false });
+      } catch(e) {}
+
+      var statusIcon = sr.pass ? "PASS" : "FAIL";
+      console.log("    -> " + statusIcon + (sr.error ? " — " + sr.error.substring(0, 60) : ""));
+    } catch(e) {
+      sr.pass = false;
+      sr.error = "Erreur exécution : " + e.message.substring(0, 100);
+      console.log("    -> FAIL — " + sr.error);
+    }
+    if (browser) await browser.close().catch(function(){});
+    results.push(sr);
+  }
+
+  return results;
+}
+
 async function createBugJira(result, mode) {
   if (DRY_RUN) { console.log("  [DRY_RUN] Bug Jira ignoré : " + result.label); return null; }
   var date = new Date().toLocaleString("fr-FR");
@@ -819,6 +984,9 @@ var PRINT_CSS =
   ".anomalies-section h2{color:#c53030!important;font-size:12px!important}" +
   ".anomaly-card{background:#fff!important;border:1px solid #eee!important;border-left:3px solid #e53e3e!important;border-radius:4px!important;padding:12px!important;margin-bottom:10px!important;page-break-inside:avoid}" +
   ".anomaly-card div,.anomaly-card span,.anomaly-card pre{color:#333!important}" +
+  /* Scenario cards */
+  ".scenario-card{background:#f8f9fa!important;border:1px solid #dee2e6!important;border-radius:6px!important;padding:12px!important;margin-bottom:10px!important;page-break-inside:avoid}" +
+  ".scenario-card div,.scenario-card span{color:#333!important}" +
   /* Screenshots — miniatures dans le tableau */
   "table img{max-width:100px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
   /* Screenshots plein format dans la section dédiée */
@@ -837,6 +1005,106 @@ function failTypeBadge(ft) {
   };
   var c = cfg[ft] || { label: ft, color: "#ff3b5c", bg: "rgba(255,59,92,.18)" };
   return "<span style='font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:monospace;background:" + c.bg + ";color:" + c.color + "'>" + c.label + "</span>";
+}
+
+/**
+ * Construit la section SCÉNARIOS EXÉCUTÉS dans le rapport.
+ * Utilise les vrais résultats d'exécution de SCENARIO_RESULTS.
+ */
+function buildScenariosHtml(scenarioResults) {
+  if (!scenarioResults || scenarioResults.length === 0) return "";
+
+  function esc(s) { return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+  var autoResults = scenarioResults.filter(function(s) { return s.type === "AUTO"; });
+  var manuelResults = scenarioResults.filter(function(s) { return s.type === "MANUEL"; });
+  var autoPass = autoResults.filter(function(s) { return s.pass === true; }).length;
+  var autoTotal = autoResults.length;
+  var scoreColor = autoTotal === 0 ? "#8892a4" : (autoPass === autoTotal ? "#00e87a" : autoPass >= autoTotal/2 ? "#f59e0b" : "#ff3b5c");
+
+  var html = "<div style='margin-bottom:24px'>" +
+    "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:14px'>" +
+    "<h2 style='font-size:14px;margin:0;color:#8892a4'>SCÉNARIOS EXÉCUTÉS</h2>" +
+    "<div style='font-family:monospace;font-size:13px;font-weight:700;color:" + scoreColor + "'>" +
+    (autoTotal > 0 ? "Score : " + autoPass + "/" + autoTotal + " AUTO" : "Aucun scénario AUTO") +
+    (manuelResults.length > 0 ? " + " + manuelResults.length + " MANUEL" : "") +
+    "</div></div>";
+
+  // Scénarios AUTO
+  scenarioResults.forEach(function(sr) {
+    var isAuto = sr.type === "AUTO";
+    var badgeColor = isAuto ? "#00e87a" : "#f59e0b";
+    var badgeLabel = isAuto ? "AUTO" : "MANUEL";
+    var badgeBg = isAuto ? "rgba(0,232,122,.15)" : "rgba(245,158,11,.15)";
+
+    var statusHtml = "";
+    if (isAuto && sr.pass === true) {
+      statusHtml = "<span style='font-weight:700;color:#00e87a;font-size:12px'>✅ PASS</span>";
+    } else if (isAuto && sr.pass === false) {
+      statusHtml = "<span style='font-weight:700;color:#ff3b5c;font-size:12px'>❌ FAIL</span>";
+    } else if (!isAuto) {
+      statusHtml = "<span style='color:#f59e0b;font-size:11px;font-weight:600'>⚠️ Vérification manuelle requise</span>";
+    }
+
+    // Bordure couleur selon résultat
+    var borderColor = !isAuto ? "#f59e0b" : (sr.pass ? "#00e87a" : "#ff3b5c");
+
+    html += "<div class='scenario-card' style='margin-bottom:12px;padding:14px;background:#111520;border:1px solid #1e2536;border-radius:8px;border-left:3px solid " + borderColor + ";page-break-inside:avoid'>" +
+      "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>" +
+      "<div style='display:flex;align-items:center;gap:10px'>" +
+      "<span style='font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:monospace;background:" + badgeBg + ";color:" + badgeColor + "'>" + badgeLabel + "</span>" +
+      "<span style='font-family:monospace;font-size:12px;color:#e2e8f0;font-weight:600'>" + esc(sr.titre) + "</span>" +
+      "</div>" +
+      statusHtml +
+      "</div>";
+
+    // Downgrade reason
+    if (sr.downgradeReason) {
+      html += "<div style='font-size:10px;color:#f59e0b;margin-bottom:6px;font-family:monospace'>⚠️ Scénario non couvert automatiquement — " + esc(sr.downgradeReason) + "</div>";
+    }
+
+    // Actions exécutées (pour AUTO)
+    if (isAuto && sr.actionsExecuted && sr.actionsExecuted.length > 0) {
+      html += "<div style='margin-bottom:6px'>";
+      sr.actionsExecuted.forEach(function(a, ai) {
+        var aColor = a.pass ? "#94a3b8" : "#ff3b5c";
+        var aIcon = a.pass ? "✓" : "✗";
+        html += "<div style='font-size:11px;color:" + aColor + ";padding:2px 0 2px 12px;font-family:monospace'>" +
+          aIcon + " " + (ai+1) + ". " + esc(a.type) + " — " + esc(a.detail || a.error || "") + "</div>";
+      });
+      html += "</div>";
+    }
+
+    // Assertions vérifiées (pour AUTO)
+    if (isAuto && sr.assertionsChecked && sr.assertionsChecked.length > 0) {
+      html += "<div style='margin-bottom:6px;padding:8px 12px;background:rgba(100,116,139,.06);border-radius:4px'>" +
+        "<div style='font-size:10px;color:#64748b;font-weight:700;margin-bottom:4px;font-family:monospace'>ASSERTIONS</div>";
+      sr.assertionsChecked.forEach(function(a) {
+        var aColor = a.pass ? "#00e87a" : "#ff3b5c";
+        var aIcon = a.pass ? "✅" : "❌";
+        html += "<div style='font-size:11px;color:" + aColor + ";padding:1px 0;font-family:monospace'>" +
+          aIcon + " " + esc(a.type) + " " + esc(a.operator || "") + " " + esc(a.expected || "") +
+          (!a.pass && a.error ? " <span style='color:#8892a4;font-size:10px'>— " + esc(a.error.substring(0, 80)) + "</span>" : "") +
+          "</div>";
+      });
+      html += "</div>";
+    }
+
+    // Erreur globale
+    if (sr.error && isAuto) {
+      html += "<div style='font-size:11px;color:#ff3b5c;font-family:monospace;margin-top:4px'>Erreur : " + esc(sr.error.substring(0, 120)) + "</div>";
+    }
+
+    // Screenshot
+    if (sr.screenshot) {
+      html += "<div style='margin-top:8px'>" + reporterUtils.buildScreenshotHtml(sr.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"180px", clickToZoom:true }) + "</div>";
+    }
+
+    html += "</div>";
+  });
+
+  html += "</div>";
+  return html;
 }
 
 /**
@@ -1092,6 +1360,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
     "</div>" +
     buildTicketContextHtml(TICKET_INFO) +
+    buildScenariosHtml(SCENARIO_RESULTS) +
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
     "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
@@ -1408,6 +1677,21 @@ async function main() {
   var targets = MODE === "tnr" ? getTNRPages() : await resolveTargets();
   console.log("[CIBLES] " + targets.length + " URL(s)");
 
+  // ── EXÉCUTION DES SCÉNARIOS (si ticket Jira) ──────────────────────────────
+  if (KEY && SOURCE === "jira-key" && MODE !== "tnr") {
+    try {
+      SCENARIO_RESULTS = await runScenarios(targets, ENV_NAME);
+      if (SCENARIO_RESULTS.length > 0) {
+        var autoR = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
+        var autoP = autoR.filter(function(s) { return s.pass === true; }).length;
+        var manR = SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; });
+        console.log("[SCENARIOS] " + autoP + "/" + autoR.length + " AUTO PASS" + (manR.length > 0 ? " + " + manR.length + " MANUEL" : ""));
+      }
+    } catch(e) {
+      console.log("[SCENARIOS] Erreur : " + e.message.substring(0, 80));
+    }
+  }
+
   var allResults = [];
   for (var bi = 0; bi < BROWSERS.length; bi++) {
     for (var di = 0; di < DEVICES.length; di++) {
@@ -1466,7 +1750,15 @@ async function main() {
     }
   }
 
-  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null }));
+  // Résumé scénarios pour le JSON
+  var scenarioSummary = null;
+  if (SCENARIO_RESULTS.length > 0) {
+    var sAuto = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
+    var sAutoPass = sAuto.filter(function(s) { return s.pass === true; }).length;
+    var sManuel = SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; });
+    scenarioSummary = { autoPass: sAutoPass, autoTotal: sAuto.length, manuelTotal: sManuel.length, total: SCENARIO_RESULTS.length };
+  }
+  console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
   var fullForDashboard = allResults.map(function(r) {
     return { label:r.label, url:r.url, status:r.status, device:r.device, browser:r.browser, issues:r.issues, steps:r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
   });

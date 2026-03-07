@@ -3031,7 +3031,26 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/claude-code  —  exÃ©cuter claude --print <prompt>
+  // POST /api/log-event  — log une action (diagnostic, correction, etc.)
+  if (method === "POST" && url === "/api/log-event") {
+    var leChunks = [];
+    req.on("data", function(c) { leChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var logEvt = JSON.parse(Buffer.concat(leChunks).toString());
+        var logsDir = path.join(BASE_DIR, "inbox", "logs");
+        if (!fs.existsSync(logsDir)) { try { fs.mkdirSync(logsDir, { recursive: true }); } catch(e) {} }
+        var logFile = path.join(logsDir, "diag-actions.jsonl");
+        fs.appendFileSync(logFile, JSON.stringify(logEvt) + "\n", "utf8");
+        res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: true }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/claude-code  —  executer claude --print <prompt>
   if (method === "POST" && url === "/api/claude-code") {
     var ccChunks = [];
     req.on("data", function(c) { ccChunks.push(c); });
