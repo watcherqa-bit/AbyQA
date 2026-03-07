@@ -107,38 +107,31 @@ async function fetchTicketsInQA() {
   return (r.data && r.data.issues) || [];
 }
 
-// ── PROCESS USER STORY ──────────────────────────────────────────────────────
+// ── PROCESS USER STORY (analyse locale uniquement) ──────────────────────────
 async function processUS(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
   var summary = fields.summary || "";
   var desc = extractDesc(fields);
+  var jiraStatus = (fields.status && fields.status.name) || "";
 
-  log("[US] " + key + " — " + summary);
+  log("[US] " + key + " — " + summary + " [" + jiraStatus + "]");
   sse({ type: "daily-job-progress", step: "us", key: key, summary: summary, message: "US " + key + " — " + summary });
 
   try {
-    // Verifier completude
+    // Analyser la completude (lecture seule)
     var review = await leadQA.reviewUS(ticket);
     var isComplete = review.score >= 70 && (!review.missingElements || review.missingElements.length === 0);
 
+    // Preparer l'enrichissement LOCAL (sans toucher Jira)
+    var enrichedMarkdown = null;
     if (!isComplete) {
-      // Enrichir
-      log("[US] " + key + " — Score " + review.score + "/100, enrichissement...");
+      log("[US] " + key + " — Score " + review.score + "/100, preparation enrichissement...");
       var enriched = await leadQA.enrichUS(ticket);
-      var filepath = leadQA.saveMarkdown(enriched.markdown, "US", key + "-enrichi");
-
-      // Mettre a jour Jira
-      await jiraApi("PUT", "/rest/api/3/issue/" + key, {
-        fields: { description: {
-          type: "doc", version: 1,
-          content: [{ type: "paragraph", content: [{ type: "text", text: enriched.markdown }] }]
-        }}
-      });
-      await postComment(key, "[AbyQA Daily] US enrichie — score " + review.score + "/100\n" +
-        "Elements ajoutes : " + (review.missingElements || []).join(", "));
+      enrichedMarkdown = enriched.markdown;
+      leadQA.saveMarkdown(enriched.markdown, "US", key + "-enrichi");
       report.usEnrichies++;
-      log("[US] " + key + " — Enrichie et mise a jour dans Jira");
+      log("[US] " + key + " — Enrichissement prepare localement (inbox/enriched/)");
     }
 
     // Verifier si ticket TEST lie existe
@@ -148,55 +141,36 @@ async function processUS(ticket, report) {
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
+    var localTestFile = null;
     if (!linkedTest) {
-      // Generer ticket TEST
-      log("[US] " + key + " — Generation ticket TEST...");
+      // Generer ticket TEST localement (sans creer dans Jira)
+      log("[US] " + key + " — Generation ticket TEST local...");
       var analysis = await leadQA.analyzeUS(ticket);
       var strategy = await leadQA.decideStrategy(ticket);
       var testResult = await leadQA.generateTestTicket(
         { key: key, epic: analysis.epic, summary: summary, description: desc },
         strategy.decision, summary
       );
-      leadQA.saveMarkdown(testResult.markdown, "TEST", key);
-
-      // Creer dans Jira
-      var jiraTest = await createJiraIssue({
-        project: { key: CFG.jira.project },
-        summary: testResult.title,
-        issuetype: { name: "Test" },
-        description: { type: "doc", version: 1,
-          content: [{ type: "paragraph", content: [{ type: "text", text: testResult.markdown }] }] },
-        labels: ["aby-qa-v3", "auto-generated", "daily-job"],
-        priority: { name: analysis.priority === "Critique" ? "Highest" : analysis.priority === "Haute" ? "High" : "Medium" }
-      });
-      var testKey = (jiraTest.data && jiraTest.data.key) || "";
-      if (testKey) {
-        // Lier au ticket source
-        await jiraApi("POST", "/rest/api/3/issueLink", {
-          type: { name: "Test" },
-          inwardIssue: { key: testKey },
-          outwardIssue: { key: key }
-        }).catch(function() {});
-        log("[US] " + key + " — Ticket TEST cree : " + testKey);
-      }
+      localTestFile = leadQA.saveMarkdown(testResult.markdown, "TEST", key);
       report.testsGeneres++;
 
-      // Generer CSV cas de test
+      // Generer CSV cas de test localement
       var csvContent = await leadQA.generateTestCasesCSV(
         { key: key, summary: summary, description: desc, automationType: strategy.decision },
         analysis.testCount || 5
       );
       leadQA.saveCSV(csvContent, key + "-cas-test");
       report.casTestImportesXray++;
-      log("[US] " + key + " — CSV cas de test genere");
+      log("[US] " + key + " — TEST + CSV prepares localement");
     } else {
-      log("[US] " + key + " — Ticket TEST deja lie, skip generation");
+      log("[US] " + key + " — Ticket TEST deja lie");
     }
 
     report.ticketsTraites++;
     report.details.push({ key: key, type: "US", summary: summary, status: "OK",
+      jiraStatus: jiraStatus, score: review.score,
       enriched: !isComplete, testGenerated: !linkedTest,
-      testKey: (!linkedTest && testKey) || null });
+      localOnly: true });
   } catch(e) {
     log("[US] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "US", error: e.message });
@@ -204,15 +178,16 @@ async function processUS(ticket, report) {
   }
 }
 
-// ── PROCESS BUG ─────────────────────────────────────────────────────────────
+// ── PROCESS BUG (analyse locale uniquement) ─────────────────────────────────
 async function processBug(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
   var summary = fields.summary || "";
   var desc = extractDesc(fields);
   var urls = extractUrls(desc + " " + summary);
+  var jiraStatus = (fields.status && fields.status.name) || "";
 
-  log("[BUG] " + key + " — " + summary);
+  log("[BUG] " + key + " — " + summary + " [" + jiraStatus + "]");
   sse({ type: "daily-job-progress", step: "bug", key: key, summary: summary, message: "Bug " + key + " — " + summary });
 
   try {
@@ -224,45 +199,21 @@ async function processBug(ticket, report) {
     });
 
     if (!linkedTest) {
-      log("[BUG] " + key + " — Generation ticket TEST non-regression...");
-      var bugAnalysis = await leadQA.generateBugTicket({
-        sourceUS: key, usSummary: summary, page: urls[0] || "",
-        fonction: summary, description: desc,
-        actual: "Bug signale", expected: "Comportement correct",
-        severity: (fields.priority && fields.priority.name) || "Medium",
-        evidence: "A verifier"
-      });
-      leadQA.saveMarkdown(bugAnalysis.markdown, "BUG", key);
-
-      // Creer ticket TEST de non-regression
+      // Preparer localement un test de non-regression (sans creer dans Jira)
+      log("[BUG] " + key + " — Preparation test non-regression local...");
       var testResult = await leadQA.generateTestTicket(
         { key: key, epic: "", summary: "TEST - " + summary, description: desc },
         "e2e", summary
       );
-      var jiraTest = await createJiraIssue({
-        project: { key: CFG.jira.project },
-        summary: "TEST - [" + summary.substring(0, 40) + "] - Non-regression",
-        issuetype: { name: "Test" },
-        labels: ["aby-qa-v3", "auto-generated", "daily-job", "non-regression"],
-        priority: { name: "High" }
-      });
-      var testKey = (jiraTest.data && jiraTest.data.key) || "";
-      if (testKey) {
-        await jiraApi("POST", "/rest/api/3/issueLink", {
-          type: { name: "Test" },
-          inwardIssue: { key: testKey },
-          outwardIssue: { key: key }
-        }).catch(function() {});
-        log("[BUG] " + key + " — Ticket TEST non-regression cree : " + testKey);
-      }
+      leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
       report.testsGeneres++;
-      report.casTestImportesXray++;
+      log("[BUG] " + key + " — TEST non-regression prepare localement");
     }
 
-    await postComment(key, "[AbyQA Daily] Bug analyse — pret pour test");
     report.ticketsTraites++;
     report.details.push({ key: key, type: "Bug", summary: summary, status: "OK",
-      testGenerated: !linkedTest, testKey: (!linkedTest && testKey) || null });
+      jiraStatus: jiraStatus, testGenerated: !linkedTest,
+      localOnly: true });
   } catch(e) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Bug", error: e.message });
@@ -270,20 +221,22 @@ async function processBug(ticket, report) {
   }
 }
 
-// ── PROCESS TEST ────────────────────────────────────────────────────────────
+// ── PROCESS TEST (analyse + execution Playwright, resultats locaux) ─────────
 async function processTest(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
   var summary = fields.summary || "";
+  var jiraStatus = (fields.status && fields.status.name) || "";
 
-  log("[TEST] " + key + " — " + summary);
+  log("[TEST] " + key + " — " + summary + " [" + jiraStatus + "]");
   sse({ type: "daily-job-progress", step: "test", key: key, summary: summary, message: "Test " + key + " — " + summary });
 
   try {
-    // Lancer Playwright
+    // Determiner la strategie de test
     var strategy = await leadQA.decideStrategy(ticket);
     log("[TEST] " + key + " — Mode : " + strategy.decision);
 
+    // Lancer Playwright (execution locale, rapport local)
     var { spawn } = require("child_process");
     var pwResult = await new Promise(function(resolve) {
       var args = ["agent-playwright-direct.js",
@@ -307,9 +260,9 @@ async function processTest(ticket, report) {
     report.testsExecutes++;
     if (pwResult.hasFail) {
       report.fail++;
-      log("[TEST] " + key + " — FAIL");
+      log("[TEST] " + key + " — FAIL (rapport local)");
 
-      // Creer ticket BUG
+      // Preparer un ticket BUG localement (sans creer dans Jira)
       var bugResult = await leadQA.generateBugTicket({
         sourceUS: key, usSummary: summary,
         page: summary, fonction: summary,
@@ -317,39 +270,20 @@ async function processTest(ticket, report) {
         actual: "Test FAIL", expected: "Test PASS",
         severity: "Majeure", evidence: "Rapport Playwright"
       });
-      var jiraBug = await createJiraIssue({
-        project: { key: CFG.jira.project },
-        summary: bugResult.title,
-        issuetype: { name: "Bug" },
-        labels: ["aby-qa-v3", "auto-generated", "daily-job"],
-        priority: { name: "High" }
-      });
-      var bugKey = (jiraBug.data && jiraBug.data.key) || "";
-      if (bugKey) {
-        report.bugsCreees++;
-        log("[TEST] " + key + " — Bug cree : " + bugKey);
-        // Attacher rapport comme commentaire
-        await postComment(bugKey,
-          "[AbyQA Daily] Bug auto-genere depuis test FAIL " + key + "\n" +
-          "Rapport : voir /reports/");
-      }
-      await transitionIssue(key, "In Progress");
+      leadQA.saveMarkdown(bugResult.markdown, "BUG", key + "-fail");
+      report.bugsCreees++;
+      log("[TEST] " + key + " — Bug prepare localement (a valider)");
     } else {
       report.pass++;
       log("[TEST] " + key + " — PASS");
-      await transitionIssue(key, "Done");
     }
-
-    await postComment(key,
-      "[AbyQA Daily] Execution automatique\n" +
-      "Resultat : " + (pwResult.hasFail ? "FAIL" : "PASS") + "\n" +
-      "Mode : " + strategy.decision);
 
     report.ticketsTraites++;
     report.details.push({ key: key, type: "Test", summary: summary,
+      jiraStatus: jiraStatus,
       status: pwResult.hasFail ? "FAIL" : "PASS",
-      bugKey: (pwResult.hasFail && bugKey) || null,
-      mode: strategy.decision });
+      bugPrepared: pwResult.hasFail, mode: strategy.decision,
+      localOnly: true });
   } catch(e) {
     log("[TEST] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Test", error: e.message });

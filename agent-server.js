@@ -2254,7 +2254,7 @@ var server = http.createServer(function(req, res) {
           comment += "\n";
         }
 
-        comment += "_Généré par AbyQA — agent-playwright-direct.js_";
+        comment += "_QA Automation — agent-playwright-direct.js_";
 
         // POST commentaire Jira
         var commentPayload = JSON.stringify({ body: comment });
@@ -3356,7 +3356,7 @@ var server = http.createServer(function(req, res) {
             issuetype:   { name: tc.type || "Test Case" },
             description: tc.description || "",
             priority:    { name: tc.priority || "Medium" },
-            labels:      ["aby-qa-v3", "cascade-auto"]
+            labels:      ["qa-auto", "cascade-auto"]
           }
         });
         try {

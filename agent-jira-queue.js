@@ -405,11 +405,11 @@ async function workflowBacklog(ticket) {
 
     // 5. Commenter sur le ticket
     await postComment(key,
-      "[AbyQA] 📋 US enrichie par Lead QA\n" +
+      "[QA Auto]📋 US enrichie par Lead QA\n" +
       "Score initial : " + review.score + "/100\n" +
       "Éléments ajoutés : " + (review.missingElements || []).join(", ") + "\n" +
       "Fichier : " + path.basename(filepath) + "\n" +
-      "🤖 AbyQA V3 — Lead QA Claude"
+      "🤖 QA Automation — Lead QA Claude"
     );
 
     statsToday.enriched++;
@@ -494,7 +494,7 @@ async function workflowUS(ticket) {
         type: "doc", version: 1,
         content: [{ type: "paragraph", content: [{ type: "text", text: testResult.markdown }] }]
       },
-      labels: ["aby-qa-v3", "auto-generated"],
+      labels: ["qa-auto", "auto-generated"],
       priority: { name: analysis.priority === "Critique" ? "Highest" :
                          analysis.priority === "Haute"    ? "High"    :
                          analysis.priority === "Basse"    ? "Low"     : "Medium" }
@@ -543,13 +543,13 @@ async function workflowUS(ticket) {
       : "📋 Tests manuels à exécuter";
 
     await postComment(key,
-      "[AbyQA] Pipeline QA terminé\n" +
+      "[QA Auto]Pipeline QA terminé\n" +
       "Stratégie : " + strategy.decision + " (" + strategy.confidence + "% confiance)\n" +
       "Ticket TEST : " + (testKey ? testKey + " — " : "") + testResult.title + "\n" +
       "CSV cas de test : " + path.basename(csvFilepath) + "\n" +
       "Résultat Playwright : " + resultLine + "\n" +
       "Release : " + version + "\n" +
-      "🤖 AbyQA V3 — Lead QA Claude"
+      "🤖 QA Automation — Lead QA Claude"
     );
 
     // 9. Transition statut
@@ -645,7 +645,7 @@ async function workflowBug(ticket) {
         type: "doc", version: 1,
         content: [{ type: "paragraph", content: [{ type: "text", text: bugResult.markdown }] }]
       },
-      labels:   ["aby-qa-v3", "auto-generated"],
+      labels:   ["qa-auto", "auto-generated"],
       priority: { name: reproduced ? "High" : "Medium" }
     });
     newBugKey = (jiraBugResult.data && jiraBugResult.data.key) ? jiraBugResult.data.key : "";
@@ -676,10 +676,10 @@ async function workflowBug(ticket) {
 
     // 6. Commenter sur le ticket source
     await postComment(key,
-      "[AbyQA] " + (reproduced ? "❌ Bug REPRODUIT" : "⚠️ Bug non reproduit automatiquement") + "\n" +
+      "[QA Auto]" + (reproduced ? "❌ Bug REPRODUIT" : "⚠️ Bug non reproduit automatiquement") + "\n" +
       "Ticket BUG créé : " + (newBugKey || "N/A") + " — " + bugResult.title + "\n" +
       (reproduced ? "Screenshots disponibles dans /screenshots/\n" : "Vérification manuelle recommandée\n") +
-      "🤖 AbyQA V3 — Lead QA Claude"
+      "🤖 QA Automation — Lead QA Claude"
     );
 
     // 7. Transition
@@ -765,7 +765,7 @@ async function workflowTest(ticket) {
           project:   { key: CFG.jira.project },
           summary:   bugResult.title,
           issuetype: { name: "Bug" },
-          labels:    ["aby-qa-v3", "auto-generated"],
+          labels:    ["qa-auto", "auto-generated"],
           priority:  { name: "High" }
         });
         bugKey = (jiraBug.data && jiraBug.data.key) ? jiraBug.data.key : "";
@@ -777,18 +777,18 @@ async function workflowTest(ticket) {
       project:   { key: CFG.jira.project },
       summary:   "Test Execution - " + version + " - " + key + " - " + dateStr,
       issuetype: { name: "Test Execution" },
-      labels:    ["aby-qa-v3", "auto-generated"]
+      labels:    ["qa-auto", "auto-generated"]
     });
     var execKey = (execResult.data && execResult.data.key) ? execResult.data.key : "";
 
     // 6. Commenter
     await postComment(key,
-      "[AbyQA] Exécution terminée\n" +
+      "[QA Auto]Exécution terminée\n" +
       "Résultat : " + (hasFail ? "❌ FAIL" : "✅ PASS") + "\n" +
       "Test Execution : " + (execKey || "N/A") + "\n" +
       (bugKey ? "BUG créé : " + bugKey + "\n" : "") +
       "Mode : " + strategy.decision + "\n" +
-      "🤖 AbyQA V3 — Lead QA Claude"
+      "🤖 QA Automation — Lead QA Claude"
     );
 
     await transitionIssue(key, hasFail ? "In Progress" : "Done");
@@ -909,7 +909,7 @@ function stop() {
 // Standalone : node agent-jira-queue.js
 if (require.main === module) {
   console.log("══════════════════════════════════════════════════");
-  console.log("  AbyQA V3 — Surveillance Jira");
+  console.log("  QA Automation — Surveillance Jira");
   console.log("══════════════════════════════════════════════════");
   console.log("  Projet  : " + CFG.jira.project);
   console.log("  Compte  : " + CFG.jira.email);

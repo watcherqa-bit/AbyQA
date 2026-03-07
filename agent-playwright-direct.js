@@ -949,7 +949,7 @@ async function createBugJira(result, mode) {
         project: { key: CFG.jira.project }, issuetype: { name: "Bug" },
         summary: "[PW-DIRECT]["+mode.toUpperCase()+"] FAIL — " + result.label,
         description: desc, priority: { name: result.issues.length>2?"High":"Medium" },
-        labels: ["pw-direct", mode, result.env, "aby-qa-v2"]
+        labels: ["pw-direct", mode, result.env, "qa-auto"]
       }
     });
     if (bug.key) {
