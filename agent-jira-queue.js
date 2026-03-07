@@ -230,11 +230,14 @@ function createJiraIssue(fields) {
   return jiraApiAsync("POST", "/rest/api/3/issue", { fields: fields });
 }
 
+// Verrou mémoire anti-doublon (empêche les créations concurrentes)
+var _inProgress = new Set();
+
 // Check si un bug auto-généré existe déjà pour ce ticket (évite les doublons)
 async function bugAlreadyExists(sourceKey) {
   var jql = "project = " + CFG.jira.project +
     " AND issuetype = Bug" +
-    " AND labels = \"auto-generated\"" +
+    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
     " AND text ~ \"" + sourceKey + "\"" +
     " AND created >= -7d";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) + "&fields=key,summary&maxResults=5";
@@ -246,7 +249,32 @@ async function bugAlreadyExists(sourceKey) {
       return true;
     }
   } catch(e) {
-    log("[DEDUP] Erreur vérification doublon : " + e.message);
+    log("[DEDUP] Erreur vérification doublon bug : " + e.message);
+  }
+  return false;
+}
+
+// Check si un ticket TEST existe déjà pour ce ticket source (évite les doublons TEST)
+async function testAlreadyExists(sourceKey) {
+  // Vérifier le verrou mémoire d'abord
+  if (_inProgress.has("TEST-" + sourceKey)) {
+    log("[DEDUP] TEST pour " + sourceKey + " — création déjà en cours (verrou mémoire)");
+    return true;
+  }
+  var jql = "project = " + CFG.jira.project +
+    " AND issuetype in (Test, \"Test Case\")" +
+    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
+    " AND text ~ \"" + sourceKey + "\"";
+  var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) + "&fields=key,summary&maxResults=5";
+  try {
+    var r = await jiraApiAsync("GET", searchPath, null);
+    var issues = (r.data && r.data.issues) || [];
+    if (issues.length > 0) {
+      log("[DEDUP] TEST déjà existant pour " + sourceKey + " : " + issues.map(function(i) { return i.key; }).join(", "));
+      return true;
+    }
+  } catch(e) {
+    log("[DEDUP] Erreur vérification doublon test : " + e.message);
   }
   return false;
 }

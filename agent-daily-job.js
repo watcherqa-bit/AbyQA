@@ -18,6 +18,7 @@ var _lastRunDate = null;
 var _sendSSE = null;
 var _running = false;
 var _lastReport = null;
+var _inProgress = new Set(); // verrou mémoire anti-doublon
 
 // ── JIRA API ─────────────────────────────────────────────────────────────────
 function jiraApi(method, apiPath, body) {
@@ -112,6 +113,27 @@ async function fetchQATickets() {
   return (r.data && r.data.issues) || [];
 }
 
+// ── ANTI-DOUBLON TEST (verifie si un TEST existe deja dans Jira pour ce ticket)
+async function checkTestExists(sourceKey) {
+  var jql = "project = " + CFG.jira.project +
+    " AND issuetype in (Test, \"Test Case\")" +
+    " AND labels in (\"auto-generated\", \"aby-qa-v3\")" +
+    " AND text ~ \"" + sourceKey + "\"";
+  var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +
+    "&fields=key,summary&maxResults=5";
+  try {
+    var r = await jiraApi("GET", searchPath, null);
+    var issues = (r.data && r.data.issues) || [];
+    if (issues.length > 0) {
+      log("[DEDUP] TEST deja existant pour " + sourceKey + " : " + issues.map(function(i) { return i.key; }).join(", "));
+      return true;
+    }
+  } catch(e) {
+    log("[DEDUP] Erreur verification doublon test : " + e.message);
+  }
+  return false;
+}
+
 // ── ROUTAGE AUTOMATIQUE PAR TYPE ─────────────────────────────────────────────
 async function routeTicket(ticket, report) {
   var type = ticket.fields.issuetype.name;
@@ -167,25 +189,47 @@ async function pipelineUS(ticket, report) {
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
-    // Etape 4 : Generer TEST + CSV si pas de TEST lie
+    // Etape 4 : Generer TEST + CSV si pas de TEST lie (avec anti-doublon)
     var generatedFiles = [];
+    var skipTest = false;
     if (!linkedTest) {
-      log("[US] " + key + " — Generation TEST + CSV...");
-      var testAndCSV = await leadQA.generateTestAndCSV(
-        { key: key, epic: result.epic || "", summary: summary, description: desc },
-        strategy.decision || "e2e", summary, analysis.testCount || 5
-      );
-      leadQA.saveMarkdown(testAndCSV.markdown, "TEST", key);
-      generatedFiles.push("TEST-" + key + ".md");
-      report.testsCascade++;
-      if (testAndCSV.csv) {
-        leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
-        generatedFiles.push(key + "-cas-test.csv");
-        report.casTestImportesXray++;
-        report.csvReady = report.csvReady || [];
-        report.csvReady.push({ key: key, csv: testAndCSV.csv });
+      // Verrou memoire
+      if (_inProgress.has("TEST-" + key)) {
+        log("[US] " + key + " — TEST en cours de creation (verrou) — ignore");
+        skipTest = true;
+      } else {
+        // Verifier dans Jira si un TEST existe deja
+        var testExists = await checkTestExists(key);
+        if (testExists) {
+          log("[US] " + key + " — TEST deja existant dans Jira — creation ignoree");
+          skipTest = true;
+        }
       }
-      phase = "test-genere";
+      if (!skipTest) {
+        _inProgress.add("TEST-" + key);
+        try {
+          log("[US] " + key + " — Generation TEST + CSV...");
+          var testAndCSV = await leadQA.generateTestAndCSV(
+            { key: key, epic: result.epic || "", summary: summary, description: desc },
+            strategy.decision || "e2e", summary, analysis.testCount || 5
+          );
+          leadQA.saveMarkdown(testAndCSV.markdown, "TEST", key);
+          generatedFiles.push("TEST-" + key + ".md");
+          report.testsCascade++;
+          if (testAndCSV.csv) {
+            leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
+            generatedFiles.push(key + "-cas-test.csv");
+            report.casTestImportesXray++;
+            report.csvReady = report.csvReady || [];
+            report.csvReady.push({ key: key, csv: testAndCSV.csv });
+          }
+          phase = "test-genere";
+        } finally {
+          _inProgress.delete("TEST-" + key);
+        }
+      } else {
+        phase = "pret-a-tester";
+      }
     } else {
       phase = "pret-a-tester";
     }
@@ -234,17 +278,35 @@ async function pipelineBug(ticket, report) {
     var phase = "pret-a-tester";
     var generatedFiles = [];
 
-    // Etape 2 : Generer TEST si pas lie
+    // Etape 2 : Generer TEST si pas lie (avec anti-doublon)
     if (!linkedTest) {
-      log("[BUG] " + key + " — Generation test non-regression...");
-      var testResult = await leadQA.generateTestTicket(
-        { key: key, epic: "", summary: summary, description: desc },
-        "e2e", "Non-regression - " + summary
-      );
-      leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
-      generatedFiles.push("TEST-" + key + "-nonreg.md");
-      report.testsCascade++;
-      phase = "test-genere";
+      var skipBugTest = false;
+      if (_inProgress.has("TEST-" + key)) {
+        log("[BUG] " + key + " — TEST en cours de creation (verrou) — ignore");
+        skipBugTest = true;
+      } else {
+        var bugTestExists = await checkTestExists(key);
+        if (bugTestExists) {
+          log("[BUG] " + key + " — TEST deja existant dans Jira — creation ignoree");
+          skipBugTest = true;
+        }
+      }
+      if (!skipBugTest) {
+        _inProgress.add("TEST-" + key);
+        try {
+          log("[BUG] " + key + " — Generation test non-regression...");
+          var testResult = await leadQA.generateTestTicket(
+            { key: key, epic: "", summary: summary, description: desc },
+            "e2e", "Non-regression - " + summary
+          );
+          leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
+          generatedFiles.push("TEST-" + key + "-nonreg.md");
+          report.testsCascade++;
+          phase = "test-genere";
+        } finally {
+          _inProgress.delete("TEST-" + key);
+        }
+      }
     }
 
     report.ticketsTraites++;

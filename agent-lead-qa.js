@@ -21,12 +21,12 @@ const MODEL_QUALITY = "claude-sonnet-4-6";           // Génération de contenu 
 const ANTI_HALLU =
   "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
   "1. Génère UNIQUEMENT du contenu basé sur les données du ticket source fourni ci-dessous.\n" +
-  "2. Tu dois EXPLOITER TOUTES les informations présentes dans le ticket source : description, AC, URLs, valeurs de test, noms de champs.\n" +
-  "3. Ne JAMAIS écrire [À préciser] ou [URL à préciser] si l'information est présente dans le ticket source.\n" +
-  "4. Si une information manque RÉELLEMENT dans le ticket source, indique EXPLICITEMENT : \"MANQUANT : [ce qui manque et pourquoi c'est nécessaire]\".\n" +
-  "5. URLs → réutilise celles du ticket source. Si aucune URL n'est mentionnée → \"MANQUANT : URL de la page à tester\".\n" +
+  "2. EXPLOITE TOUTES les informations présentes dans le ticket source : description, AC, URLs, valeurs de test, noms de champs.\n" +
+  "3. Ne JAMAIS écrire [À préciser], [URL à préciser], [À compléter] ou toute placeholder entre crochets.\n" +
+  "4. Si une information manque, OMETS le champ ou la section entièrement — ne mets PAS de placeholder.\n" +
+  "5. URLs → réutilise celles du ticket source. Si aucune URL → n'invente pas, omets la ligne.\n" +
   "6. Noms de champs, boutons, composants → exactement ceux décrits dans le ticket source.\n" +
-  "7. Tu ne complètes JAMAIS un contenu manquant par supposition ou invention.\n\n";
+  "7. Ne complète JAMAIS un contenu manquant par supposition ou invention.\n\n";
 
 // ── SYSTEM PROMPT — RÈGLES QA SAFRAN ─────────────────────────────────────────
 const SYSTEM_QA = `Tu es Aby QA — Lead QA Senior et expert en automatisation pour Safran Group.
@@ -330,25 +330,30 @@ async function enrichUS(ticket) {
   var summary = (ticket.fields && ticket.fields.summary) || ticket.summary || "";
   var desc    = extractText((ticket.fields && ticket.fields.description) || ticket.description);
   var epic    = extractEpic(ticket);
-  var status  = (ticket.fields && ticket.fields.status && ticket.fields.status.name) || "Backlog";
 
   var prompt =
     ANTI_HALLU +
-    "Améliore cette User Story pour qu'elle soit complète, actionnable et prête à tester.\n\n" +
-    "Clé    : " + key + "\n" +
-    "Epic   : " + epic + "\n" +
-    "Statut : " + status + "\n" +
-    "Résumé actuel : " + summary + "\n" +
-    "Description actuelle : " + (desc || "Vide — à générer entièrement") + "\n\n" +
-    "Génère le ticket US complet en Markdown. RESPECTE STRICTEMENT le template.\n" +
-    "Nomenclature titre : \"User Story - [" + epic + "] - " + summary + "\"\n\n" +
-    "OBLIGATOIRE :\n" +
-    "1. Description complète (En tant que / Je veux / Afin de)\n" +
-    "2. Type de test recommandé\n" +
-    "3. 2 à 6 AC en format Gherkin (Étant donné / Lorsque / Alors)\n" +
-    "4. Section Couverture des tests (nombre estimé, types)\n" +
-    "5. Informations Jira (Espace: SAFWBST, Epic: " + epic + ")\n" +
-    "6. Date du jour : " + new Date().toLocaleDateString("fr-FR");
+    "Tu enrichis la description de cette User Story pour Jira. Le contenu sera pushé DIRECTEMENT dans le champ description Jira.\n\n" +
+    "=== TICKET SOURCE ===\n" +
+    "Clé : " + key + "\n" +
+    "Résumé : " + summary + "\n" +
+    "Description actuelle : " + (desc || "(vide)") + "\n" +
+    "=== FIN TICKET SOURCE ===\n\n" +
+    "RÈGLES DE FORMAT — STRICTES :\n" +
+    "- PAS de titres ## avec emojis\n" +
+    "- PAS de bloc RÉSUMÉ ni INFORMATIONS JIRA (ces métadonnées sont déjà dans Jira)\n" +
+    "- PAS de [À préciser] ni [URL à préciser] — si l'info manque, OMETS le champ entièrement\n" +
+    "- PAS de métadonnées redondantes (Espace, Clé, Type, Epic, Créé le, Statut)\n" +
+    "- Texte brut ou markdown léger (listes à puces, gras) uniquement\n\n" +
+    "STRUCTURE EXACTE À PRODUIRE (rien d'autre) :\n\n" +
+    "En tant que [persona], je veux [action], afin de [bénéfice].\n\n" +
+    "[Description fonctionnelle enrichie — 2 à 5 phrases max, basée sur le ticket source]\n\n" +
+    "Critères d'acceptation :\n" +
+    "- Étant donné [contexte], lorsque [action], alors [résultat attendu]\n" +
+    "(2 à 6 critères Gherkin)\n\n" +
+    "Couverture de tests :\n" +
+    "- [liste simple des types de tests nécessaires, ex: test fonctionnel, test API, test visuel]\n\n" +
+    "NE RIEN AJOUTER D'AUTRE.";
 
   var markdown = await ask(prompt, MODEL_QUALITY);
   return { key: key, summary: summary, epic: epic, markdown: markdown };
