@@ -449,12 +449,33 @@ async function runDailyQAJob() {
   log("  Duree : " + Math.round(report.dureeMs / 1000) + "s");
   log("========================================");
 
+  _lastReport = report;
   sse({ type: "daily-job-completed", report: report });
   _running = false;
-  // Garder le rapport en memoire meme si saveReport echoue
-  _lastReport = report;
   return report;
 }
+
+// Wrapper avec timeout + finally pour garantir _running = false
+var _origRunDailyQAJob = runDailyQAJob;
+runDailyQAJob = async function() {
+  var timeout = setTimeout(function() {
+    log("TIMEOUT — job force a s'arreter apres 5 min");
+    _running = false;
+  }, 5 * 60 * 1000);
+  try {
+    return await _origRunDailyQAJob();
+  } catch(e) {
+    log("CRASH runDailyQAJob : " + e.message + "\n" + (e.stack || ""));
+    _running = false;
+    var crashReport = { date: new Date().toISOString(), ticketsTraites: 0, erreurs: [{ key:"crash", type:"system", error: e.message }], details:[], pass:0, fail:0, bugsCreees:0, usEnrichies:0, testsGeneres:0, casTestImportesXray:0, testsExecutes:0, dureeMs: 0 };
+    _lastReport = crashReport;
+    try { saveReport(crashReport); } catch(se) {}
+    sse({ type: "daily-job-completed", report: crashReport });
+    return crashReport;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 // ── PERSISTENCE RAPPORT ─────────────────────────────────────────────────────
 function saveReport(report) {
