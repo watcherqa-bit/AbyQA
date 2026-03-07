@@ -733,13 +733,13 @@ async function createBugsForFails(ticket, results) {
 
 // ── RAPPORT FINAL ─────────────────────────────────────────────────────────────
 function generateFinalReport(ticket, createdTests, planKey, execKey, playwrightResults, bugs) {
-  var date = new Date().toLocaleString("fr-FR");
+  var date = new Date().toLocaleDateString("fr-FR");
   var pass = playwrightResults.filter(function(r) { return r.status === "PASS"; }).length;
   var fail = playwrightResults.filter(function(r) { return r.status === "FAIL"; }).length;
   var todo = playwrightResults.filter(function(r) { return r.status === "TODO"; }).length;
 
   var md = "# Rapport Pipeline QA - " + ticket.key + "\n\n";
-  md += "> Genere par Aby QA V2 le " + date + "\n\n---\n\n";
+  md += "> Rapport généré automatiquement le " + date + "\n\n---\n\n";
   md += "## Bilan\n\n";
   md += "| Element | Valeur |\n|---|---|\n";
   md += "| Ticket source | [" + ticket.key + "](https://eurelis.atlassian.net/browse/" + ticket.key + ") |\n";
@@ -905,7 +905,7 @@ function buildXrayTicketContextHtml(ticket) {
 
 // ── Rapport PDF simple (HTML converti) ────────────────────────────────────────
 function generateHTMLReport(ticket, playwrightResults, bugs, csvPath, envArg) {
-  var date  = new Date().toLocaleString("fr-FR");
+  var date  = new Date().toLocaleDateString("fr-FR");
   var pass  = playwrightResults.filter(function(r) { return r.status === "PASS"; }).length;
   var fail  = playwrightResults.filter(function(r) { return r.status === "FAIL"; }).length;
   var todo  = playwrightResults.filter(function(r) { return r.status === "TODO"; }).length;
@@ -992,7 +992,7 @@ ${buildXrayTicketContextHtml(ticket)}
   <tbody>${resultsRows}</tbody></table>
 </div>
 ${bugsSection}
-<div class="footer">Généré automatiquement par Aby QA V2 · ${date}</div>
+<div class="footer">Rapport généré automatiquement · ${date}</div>
 </body></html>`;
 
   var reportFilename = (allPass ? "RAPPORT-OK-" : "RAPPORT-FAIL-") + ticket.key + "-" + Date.now() + ".html";
@@ -1014,10 +1014,10 @@ async function convertHtmlToPdf(htmlPath) {
     await pg.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
 
     var headerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
-      "<span style='font-weight:700;color:#1a237e'>AbyQA</span>" +
-      "<span>Rapport de test automatique</span></div>";
+      "<span style='font-weight:700;color:#1a237e'>Rapport de test</span>" +
+      "<span>" + new Date().toLocaleDateString("fr-FR") + "</span></div>";
     var footerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
-      "<span>Safran Group — Aby QA V2</span>" +
+      "<span>Rapport généré automatiquement</span>" +
       "<span>Page <span class='pageNumber'></span> / <span class='totalPages'></span></span></div>";
 
     await pg.pdf({

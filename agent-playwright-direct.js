@@ -467,10 +467,10 @@ async function annotateScreenshot(page, steps) {
         "padding:6px 16px", "display:flex", "gap:16px", "align-items:center",
         "z-index:2147483648", "border-top:1px solid rgba(255,255,255,.15)"
       ].join(";");
-      bar.innerHTML = "<span style='color:#8892a4'>AbyQA</span>" +
+      bar.innerHTML = "<span style='color:#8892a4'>QA Report</span>" +
         "<span style='color:#00e87a'>✅ " + pass + " PASS</span>" +
         (fail > 0 ? "<span style='color:#ff3b5c'>❌ " + fail + " FAIL</span>" : "") +
-        "<span style='color:#8892a4;margin-left:auto;font-size:9px'>" + new Date().toLocaleString("fr-FR") + "</span>";
+        "<span style='color:#8892a4;margin-left:auto;font-size:9px'>" + new Date().toLocaleDateString("fr-FR") + "</span>";
       overlay.appendChild(bar);
     }, steps);
   } catch(e) { /* annotations non critiques — ne pas bloquer le screenshot */ }
@@ -759,7 +759,7 @@ async function createBugJira(result, mode) {
     (devSection || "") +
     "h3. Environnement\n*Env* : "+result.env+" | *Browser* : "+result.browser+" | *Device* : "+result.device+" | *Date* : "+date+"\n\n" +
     "h3. Impact\n*Page* : "+result.label+" | *Sévérité* : "+(result.issues.length>2?"Majeur":"Mineur")+"\n\n" +
-    "_Généré par Aby QA V2 — agent-playwright-direct.js_";
+    "_Généré automatiquement — test Playwright_";
   try {
     var bug = await jiraRequest("POST", "/rest/api/2/issue", {
       fields: {
@@ -970,7 +970,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
   var fail=allResults.filter(function(r){return r.status==="FAIL";}).length;
   var total=allResults.length;
   var pct=total>0?Math.round(pass/total*100):0;
-  var date=new Date().toLocaleString("fr-FR");
+  var date=new Date().toLocaleDateString("fr-FR");
   var pctColor=pct>=80?"#00e87a":pct>=50?"#ff9500":"#ff3b5c";
 
   var rows = allResults.map(function(r, idx) {
@@ -1082,7 +1082,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     PRINT_CSS + "</style></head>" +
     "<body><div style='max-width:1100px;margin:0 auto'>" +
     "<div class='report-header' style='display:flex;align-items:center;gap:16px;margin-bottom:32px'>" +
-    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
+    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>QA</div>" +
     "<div><h1 style='font-size:20px;margin:0'>Rapport Playwright Direct — <span style='color:#00d4ff'>"+mode.toUpperCase()+"</span></h1>" +
     "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>"+sourceLabelHtml+" · "+ENV_NAME+" · "+date+(DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"")+"</p></div></div>" +
     "<div class='stats-grid' style='display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px'>" +
@@ -1118,7 +1118,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
         }).join("") +
         "</div>";
     })() +
-    "<p class='report-footer' style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js</p>" +
+    "<p class='report-footer' style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Rapport généré automatiquement — test Playwright</p>" +
     "</div></body></html>";
 
   var prefix = fail===0 ? "RAPPORT-OK-PW-DIRECT-" : "RAPPORT-FAIL-PW-DIRECT-";
@@ -1145,11 +1145,11 @@ async function convertHtmlToPdf(htmlPath) {
     await page.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
 
     var headerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
-      "<span style='font-weight:700;color:#1a237e'>AbyQA</span>" +
-      "<span>Rapport de test automatique</span>" +
+      "<span style='font-weight:700;color:#1a237e'>Rapport de test</span>" +
+      "<span>" + new Date().toLocaleDateString("fr-FR") + "</span>" +
       "</div>";
     var footerHtml = "<div style='width:100%;font-family:Arial,sans-serif;font-size:8px;color:#999;display:flex;justify-content:space-between;padding:0 12px'>" +
-      "<span>Safran Group — Aby QA V2</span>" +
+      "<span>Rapport généré automatiquement</span>" +
       "<span>Page <span class='pageNumber'></span> / <span class='totalPages'></span></span>" +
       "</div>";
 
@@ -1173,7 +1173,7 @@ async function convertHtmlToPdf(htmlPath) {
 
 function generateComparisonReport(allEnvResults, mode) {
   var envNames = allEnvResults.map(function(e) { return e.envName; });
-  var date = new Date().toLocaleString("fr-FR");
+  var date = new Date().toLocaleDateString("fr-FR");
 
   // Per-env stats
   var envStats = allEnvResults.map(function(e) {
@@ -1288,7 +1288,7 @@ function generateComparisonReport(allEnvResults, mode) {
     PRINT_CSS + "</style></head>" +
     "<body><div style='max-width:1200px;margin:0 auto'>" +
     "<div class='report-header' style='display:flex;align-items:center;gap:16px;margin-bottom:28px'>" +
-    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>AQ</div>" +
+    "<div class='aq-logo' style='background:linear-gradient(135deg,#3b6fff,#00d4ff);border-radius:10px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-family:monospace;font-weight:700;font-size:14px;color:#fff'>QA</div>" +
     "<div><h1 style='font-size:20px;margin:0'>Rapport Comparatif — <span style='color:#00d4ff'>" + mode.toUpperCase() + "</span> — " +
     envNames.map(function(en,i){ return i===0 ? en : "<span style='color:#ff9500'>vs</span> " + en; }).join(" ") + "</h1>" +
     "<p style='margin:4px 0 0;font-size:12px;color:#8892a4;font-family:monospace'>" + date + (DRY_RUN?" · <span style='color:#ff9500'>DRY RUN</span>":"") + "</p></div></div>" +
@@ -1300,7 +1300,7 @@ function generateComparisonReport(allEnvResults, mode) {
     thEnvs +
     "<th style='padding:10px 14px;font-family:monospace;font-size:10px;color:#4a5568;text-align:center;background:#171c2b;text-transform:uppercase'>Delta</th>" +
     "</tr></thead><tbody>" + rows + "</tbody></table>" +
-    "<p style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js (comparaison multi-env)</p>" +
+    "<p style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Rapport généré automatiquement — test Playwright (comparaison multi-env)</p>" +
     "</div></body></html>";
 
   var prefix = hasAnyFail ? "RAPPORT-FAIL-PW-DIRECT-COMPARE-" : "RAPPORT-OK-PW-DIRECT-COMPARE-";
