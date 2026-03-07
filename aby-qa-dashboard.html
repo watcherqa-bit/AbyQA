@@ -4096,9 +4096,10 @@ function handleSSE(data) {
     var djIcon = data.step === "us" ? "📋" : data.step === "bug" ? "🐛" : data.step === "test" ? "🧪" : data.step === "fetch" ? "🔍" : data.step === "sort" ? "📊" : "⏳";
     updateDailyJobCard({ running: true, logLine: djIcon + " " + (data.message || data.step) });
   } else if (data.type === "daily-job-completed") {
-    updateDailyJobCard({ running: false, report: data.report, logLine: "✅ Terminé" });
+    updateDailyJobCard({ running: false, report: data.report, logLine: "✅ Termine" });
     var r = data.report || {};
-    showToast("Check journalier terminé — " + (r.ticketsTraites||0) + " traités, " + (r.pass||0) + " PASS, " + (r.fail||0) + " FAIL", r.fail > 0 ? "❌" : "✅");
+    var hasErr = r.erreurs && r.erreurs.length > 0;
+    showToast("Check journalier termine — " + (r.usTraitees||0) + " US, " + (r.bugsTraites||0) + " Bug, " + (r.testsCascade||0) + " tests cascade", hasErr ? "⚠️" : "✅");
   } else if (data.type === "done") {
     var ok = data.code === 0;
     if (isLLM) {
@@ -8498,9 +8499,10 @@ function updateDailyJobCard(opts) {
   }
   if (opts.report) {
     var r = opts.report;
-    if (label) label.textContent = (r.fail > 0 ? "❌ " : "✅ ") + (r.ticketsTraites||0) + " tickets traités";
+    var hasErr = r.erreurs && r.erreurs.length > 0;
+    if (label) label.textContent = (hasErr ? "⚠️ " : "✅ ") + (r.ticketsTraites||0) + " tickets traités";
     if (lastRun) lastRun.textContent = "Dernier run : " + new Date(r.date).toLocaleString("fr-FR");
-    if (summary) summary.textContent = (r.pass||0) + " PASS / " + (r.fail||0) + " FAIL — " + (r.usEnrichies||0) + " US, " + (r.testsGeneres||0) + " tests, " + (r.bugsCreees||0) + " bugs";
+    if (summary) summary.textContent = (r.usTraitees||0) + " US, " + (r.bugsTraites||0) + " Bug — " + (r.testsCascade||0) + " tests cascade, " + (r.casTestImportesXray||0) + " CSV Xray";
     if (rptBtn) rptBtn.style.display = "";
     _djStepCount = 0;
   }
@@ -8524,66 +8526,53 @@ function viewDailyReport() {
       var modal = document.getElementById("dj-report-modal");
       var dateEl = document.getElementById("dj-rpt-date");
       var body = document.getElementById("dj-rpt-body");
-      if (!modal || !body) return;
+      if (!modal || !body) { showToast("Erreur : modal introuvable", "🔴"); return; }
 
       var dt = new Date(d.date);
       var dateStr = dt.toLocaleDateString("fr-FR", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
       var timeStr = dt.toLocaleTimeString("fr-FR");
       var duree = ((d.dureeMs||0)/1000).toFixed(1);
-      if (dateEl) dateEl.textContent = dateStr + " à " + timeStr + " — Durée : " + duree + "s";
+      if (dateEl) dateEl.textContent = dateStr + " a " + timeStr + " — Duree : " + duree + "s";
 
       var jiraBase = "https://" + (CFG_JIRA_HOST || "eurelis.atlassian.net") + "/browse/";
       var html = "";
 
-      // Résumé global
-      var hasErr = d.erreurs && d.erreurs.length;
+      // Resume global — 4 cartes
       html += '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">';
-      html += djStatCard(d.ticketsTraites||0, "Tickets traités", "var(--purple)");
-      html += djStatCard((d.pass||0) + " / " + (d.fail||0), "PASS / FAIL", d.fail > 0 ? "var(--red)" : "var(--green)");
-      html += djStatCard(d.testsGeneres||0, "Tests générés", "var(--cyan)");
-      html += djStatCard(d.bugsCreees||0, "Bugs créés", d.bugsCreees > 0 ? "var(--orange)" : "var(--text3)");
+      html += djStatCard(d.usTraitees||0, "US traitees", "var(--blue)");
+      html += djStatCard(d.bugsTraites||0, "BUG traites", "var(--orange)");
+      html += djStatCard(d.testsCascade||0, "Tests cascade", "var(--cyan)");
+      html += djStatCard(d.casTestImportesXray||0, "CSV Xray", "var(--green)");
       html += '</div>';
 
-      // Métriques secondaires
+      // Metriques secondaires
       html += '<div style="display:flex;gap:16px;margin-bottom:20px;font-family:var(--mono);font-size:10px;color:var(--text3)">';
+      html += '<span>Total traites : <b style="color:var(--text)">' + (d.ticketsTraites||0) + '</b></span>';
       html += '<span>US enrichies : <b style="color:var(--text)">' + (d.usEnrichies||0) + '</b></span>';
-      html += '<span>Tests exécutés : <b style="color:var(--text)">' + (d.testsExecutes||0) + '</b></span>';
-      html += '<span>CSV Xray : <b style="color:var(--text)">' + (d.casTestImportesXray||0) + '</b></span>';
+      html += '<span>Erreurs : <b style="color:' + ((d.erreurs && d.erreurs.length) ? 'var(--red)' : 'var(--text)') + '">' + ((d.erreurs && d.erreurs.length)||0) + '</b></span>';
       html += '</div>';
 
-      // Détails par ticket
+      // Details par ticket — separes US / Bug
       var details = d.details || [];
-      if (details.length > 0) {
-        html += djSectionTitle("TICKETS TRAITÉS");
-        html += '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">';
-        details.forEach(function(t) {
-          var icon = t.type === "US" ? "📋" : t.type === "Bug" ? "🐛" : t.type === "Test" ? "🧪" : "📄";
-          var statusColor = t.status === "PASS" ? "var(--green)" : t.status === "FAIL" ? "var(--red)" : t.status === "ERROR" ? "var(--red)" : "var(--text)";
-          var statusLabel = t.status === "OK" ? "✅ Traité" : t.status === "PASS" ? "✅ PASS" : t.status === "FAIL" ? "❌ FAIL" : "⚠️ " + t.status;
-          var extra = [];
-          if (t.enriched) extra.push("enrichi");
-          if (t.testGenerated && t.testKey) extra.push('test → <a href="' + jiraBase + t.testKey + '" target="_blank" style="color:var(--cyan)">' + t.testKey + '</a>');
-          else if (t.testGenerated) extra.push("test généré");
-          if (t.bugKey) extra.push('bug → <a href="' + jiraBase + t.bugKey + '" target="_blank" style="color:var(--orange)">' + t.bugKey + '</a>');
-          if (t.mode) extra.push("mode " + t.mode);
-          if (t.error) extra.push('<span style="color:var(--red)">' + t.error + '</span>');
+      var usDetails = details.filter(function(t) { return t.type === "US"; });
+      var bugDetails = details.filter(function(t) { return t.type === "Bug"; });
 
-          html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">';
-          html += '<span>' + icon + '</span>';
-          html += '<a href="' + jiraBase + t.key + '" target="_blank" style="color:var(--cyan);font-family:var(--mono);font-size:11px;font-weight:700;text-decoration:none;min-width:100px">' + t.key + '</a>';
-          html += '<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (t.summary||'').replace(/"/g,'&quot;') + '">' + (t.summary||'—') + '</span>';
-          html += '<span style="font-size:10px;font-family:var(--mono);color:' + statusColor + ';white-space:nowrap">' + statusLabel + '</span>';
-          html += '</div>';
-          if (extra.length) {
-            html += '<div style="margin-left:32px;font-size:10px;color:var(--text3);font-family:var(--mono)">' + extra.join(' · ') + '</div>';
-          }
-        });
-        html += '</div>';
-      } else {
-        html += '<div style="text-align:center;color:var(--text3);font-size:12px;padding:20px">Aucun ticket traité lors de ce run</div>';
+      if (usDetails.length > 0) {
+        html += djSectionTitle("USER STORIES TRAITEES (" + usDetails.length + ")");
+        html += djRenderDetails(usDetails, jiraBase);
+      }
+
+      if (bugDetails.length > 0) {
+        html += djSectionTitle("BUGS TRAITES (" + bugDetails.length + ")");
+        html += djRenderDetails(bugDetails, jiraBase);
+      }
+
+      if (details.length === 0) {
+        html += '<div style="text-align:center;color:var(--text3);font-size:12px;padding:20px">Aucun ticket traite lors de ce run</div>';
       }
 
       // Erreurs
+      var hasErr = d.erreurs && d.erreurs.length;
       if (hasErr) {
         html += djSectionTitle("ERREURS (" + d.erreurs.length + ")");
         html += '<div style="display:flex;flex-direction:column;gap:4px;margin-bottom:16px">';
@@ -8601,7 +8590,32 @@ function viewDailyReport() {
       body.innerHTML = html;
       modal.style.display = "flex";
     })
-    .catch(function() { showToast("Serveur inaccessible", "🔴"); });
+    .catch(function(err) { showToast("Erreur chargement rapport : " + (err.message || "serveur inaccessible"), "🔴"); });
+}
+
+function djRenderDetails(items, jiraBase) {
+  var html = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">';
+  items.forEach(function(t) {
+    var icon = t.type === "US" ? "📋" : "🐛";
+    var statusColor = t.status === "OK" ? "var(--green)" : t.status === "ERROR" ? "var(--red)" : "var(--text)";
+    var statusLabel = t.status === "OK" ? "✅ Traite" : t.status === "ERROR" ? "❌ Erreur" : "⚠️ " + t.status;
+    var extra = [];
+    if (t.enriched) extra.push("📝 enrichi (score " + (t.score||"?") + "/100)");
+    if (t.testGenerated) extra.push("🧪 ticket TEST genere en cascade");
+    if (t.error) extra.push('<span style="color:var(--red)">' + t.error + '</span>');
+
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">';
+    html += '<span>' + icon + '</span>';
+    html += '<a href="' + jiraBase + t.key + '" target="_blank" style="color:var(--cyan);font-family:var(--mono);font-size:11px;font-weight:700;text-decoration:none;min-width:100px">' + t.key + '</a>';
+    html += '<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (t.summary||'').replace(/"/g,'&quot;') + '">' + (t.summary||'—') + '</span>';
+    html += '<span style="font-size:10px;font-family:var(--mono);color:' + statusColor + ';white-space:nowrap">' + statusLabel + '</span>';
+    html += '</div>';
+    if (extra.length) {
+      html += '<div style="margin-left:32px;font-size:10px;color:var(--text3);font-family:var(--mono)">' + extra.join(' · ') + '</div>';
+    }
+  });
+  html += '</div>';
+  return html;
 }
 
 function djStatCard(value, label, color) {
@@ -8643,27 +8657,36 @@ function exportDJReportPDF() {
   h += '<p>' + dateStr + ' à ' + timeStr + ' — Durée : ' + ((d.dureeMs||0)/1000).toFixed(1) + 's</p>';
 
   h += '<div class="stats">';
-  h += '<div class="stat"><b>' + (d.ticketsTraites||0) + '</b><span>Tickets traités</span></div>';
-  h += '<div class="stat"><b class="' + (d.fail > 0 ? 'fail' : 'pass') + '">' + (d.pass||0) + ' / ' + (d.fail||0) + '</b><span>PASS / FAIL</span></div>';
-  h += '<div class="stat"><b>' + (d.testsGeneres||0) + '</b><span>Tests générés</span></div>';
-  h += '<div class="stat"><b>' + (d.bugsCreees||0) + '</b><span>Bugs créés</span></div>';
+  h += '<div class="stat"><b>' + (d.usTraitees||0) + '</b><span>US traitees</span></div>';
+  h += '<div class="stat"><b>' + (d.bugsTraites||0) + '</b><span>BUG traites</span></div>';
+  h += '<div class="stat"><b>' + (d.testsCascade||0) + '</b><span>Tests cascade</span></div>';
+  h += '<div class="stat"><b>' + (d.casTestImportesXray||0) + '</b><span>CSV Xray</span></div>';
   h += '</div>';
 
-  h += '<p style="font-size:12px;color:#666">US enrichies : ' + (d.usEnrichies||0) + ' · Tests exécutés : ' + (d.testsExecutes||0) + ' · CSV Xray : ' + (d.casTestImportesXray||0) + '</p>';
+  h += '<p style="font-size:12px;color:#666">Total traites : ' + (d.ticketsTraites||0) + ' · US enrichies : ' + (d.usEnrichies||0) + ' · Erreurs : ' + ((d.erreurs&&d.erreurs.length)||0) + '</p>';
 
   var details = d.details || [];
-  if (details.length) {
-    h += '<h2>TICKETS TRAITÉS</h2><table><tr><th>Type</th><th>Clé</th><th>Résumé</th><th>Statut</th><th>Actions</th></tr>';
-    details.forEach(function(t) {
-      var cls = t.status === "PASS" ? "pass" : t.status === "FAIL" || t.status === "ERROR" ? "fail" : "";
+  var usDetails = details.filter(function(t) { return t.type === "US"; });
+  var bugDetails = details.filter(function(t) { return t.type === "Bug"; });
+
+  if (usDetails.length) {
+    h += '<h2>USER STORIES TRAITEES (' + usDetails.length + ')</h2><table><tr><th>Cle</th><th>Resume</th><th>Statut</th><th>Actions cascade</th></tr>';
+    usDetails.forEach(function(t) {
       var acts = [];
-      if (t.enriched) acts.push("enrichi");
-      if (t.testKey) acts.push("test → " + t.testKey);
-      else if (t.testGenerated) acts.push("test généré");
-      if (t.bugKey) acts.push("bug → " + t.bugKey);
-      if (t.mode) acts.push("mode " + t.mode);
+      if (t.enriched) acts.push("enrichi (score " + (t.score||"?") + "/100)");
+      if (t.testGenerated) acts.push("ticket TEST genere");
       if (t.error) acts.push("Erreur: " + t.error);
-      h += '<tr><td>' + (t.type||"—") + '</td><td><a href="' + jiraBase + t.key + '">' + t.key + '</a></td><td>' + (t.summary||"—") + '</td><td class="' + cls + '">' + (t.status||"—") + '</td><td>' + (acts.join(", ")||"—") + '</td></tr>';
+      h += '<tr><td><a href="' + jiraBase + t.key + '">' + t.key + '</a></td><td>' + (t.summary||"—") + '</td><td>' + (t.status||"—") + '</td><td>' + (acts.join(", ")||"—") + '</td></tr>';
+    });
+    h += '</table>';
+  }
+  if (bugDetails.length) {
+    h += '<h2>BUGS TRAITES (' + bugDetails.length + ')</h2><table><tr><th>Cle</th><th>Resume</th><th>Statut</th><th>Actions cascade</th></tr>';
+    bugDetails.forEach(function(t) {
+      var acts = [];
+      if (t.testGenerated) acts.push("test non-regression genere");
+      if (t.error) acts.push("Erreur: " + t.error);
+      h += '<tr><td><a href="' + jiraBase + t.key + '">' + t.key + '</a></td><td>' + (t.summary||"—") + '</td><td>' + (t.status||"—") + '</td><td>' + (acts.join(", ")||"—") + '</td></tr>';
     });
     h += '</table>';
   }

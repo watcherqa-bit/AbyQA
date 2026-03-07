@@ -94,11 +94,12 @@ function extractUrls(text) {
   });
 }
 
-// ── FETCH TICKETS IN QA ─────────────────────────────────────────────────────
+// ── FETCH TICKETS IN QA (Story + Bug en colonne "Sophie" / "In QA") ─────────
 async function fetchTicketsInQA() {
   var jql = "project = " + CFG.jira.project +
     " AND assignee = currentUser()" +
-    " AND status in (\"To Test\",\"In Test\",\"To Test UAT\",\"In validation\",\"Reopened\")" +
+    " AND status = \"In QA\"" +
+    " AND issuetype in (Story, Bug)" +
     " ORDER BY priority DESC";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +
     "&fields=summary,description,status,issuetype,priority,fixVersions,labels,issuelinks,subtasks,customfield_10014" +
@@ -152,7 +153,7 @@ async function processUS(ticket, report) {
         strategy.decision, summary
       );
       localTestFile = leadQA.saveMarkdown(testResult.markdown, "TEST", key);
-      report.testsGeneres++;
+      report.testsCascade++;
 
       // Generer CSV cas de test localement
       var csvContent = await leadQA.generateTestCasesCSV(
@@ -167,6 +168,7 @@ async function processUS(ticket, report) {
     }
 
     report.ticketsTraites++;
+    report.usTraitees++;
     report.details.push({ key: key, type: "US", summary: summary, status: "OK",
       jiraStatus: jiraStatus, score: review.score,
       enriched: !isComplete, testGenerated: !linkedTest,
@@ -206,11 +208,12 @@ async function processBug(ticket, report) {
         "e2e", summary
       );
       leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
-      report.testsGeneres++;
+      report.testsCascade++;
       log("[BUG] " + key + " — TEST non-regression prepare localement");
     }
 
     report.ticketsTraites++;
+    report.bugsTraites++;
     report.details.push({ key: key, type: "Bug", summary: summary, status: "OK",
       jiraStatus: jiraStatus, testGenerated: !linkedTest,
       localOnly: true });
@@ -218,76 +221,6 @@ async function processBug(ticket, report) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Bug", error: e.message });
     report.details.push({ key: key, type: "Bug", summary: summary, status: "ERROR", error: e.message });
-  }
-}
-
-// ── PROCESS TEST (analyse + execution Playwright, resultats locaux) ─────────
-async function processTest(ticket, report) {
-  var key = ticket.key;
-  var fields = ticket.fields;
-  var summary = fields.summary || "";
-  var jiraStatus = (fields.status && fields.status.name) || "";
-
-  log("[TEST] " + key + " — " + summary + " [" + jiraStatus + "]");
-  sse({ type: "daily-job-progress", step: "test", key: key, summary: summary, message: "Test " + key + " — " + summary });
-
-  try {
-    // Determiner la strategie de test
-    var strategy = await leadQA.decideStrategy(ticket);
-    log("[TEST] " + key + " — Mode : " + strategy.decision);
-
-    // Lancer Playwright (execution locale, rapport local)
-    var { spawn } = require("child_process");
-    var pwResult = await new Promise(function(resolve) {
-      var args = ["agent-playwright-direct.js",
-        "--mode=" + (strategy.playwrightMode || "ui"),
-        "--source=text",
-        "--text=" + summary.replace(/ /g, "_").substring(0, 60),
-        "--env=sophie"];
-      var proc = spawn("node", args, { cwd: __dirname });
-      var stdout = "";
-      proc.stdout.on("data", function(d) { stdout += d.toString(); });
-      proc.stderr.on("data", function(d) { stdout += d.toString(); });
-      proc.on("close", function(code) {
-        var hasFail = /FAIL/i.test(stdout) || code !== 0;
-        var resultMatch = stdout.match(/PLAYWRIGHT_DIRECT_RESULT:(.+)/);
-        var result = null;
-        if (resultMatch) try { result = JSON.parse(resultMatch[1]); } catch(e) {}
-        resolve({ code: code, hasFail: hasFail, result: result, stdout: stdout });
-      });
-    });
-
-    report.testsExecutes++;
-    if (pwResult.hasFail) {
-      report.fail++;
-      log("[TEST] " + key + " — FAIL (rapport local)");
-
-      // Preparer un ticket BUG localement (sans creer dans Jira)
-      var bugResult = await leadQA.generateBugTicket({
-        sourceUS: key, usSummary: summary,
-        page: summary, fonction: summary,
-        description: "Echec test " + key,
-        actual: "Test FAIL", expected: "Test PASS",
-        severity: "Majeure", evidence: "Rapport Playwright"
-      });
-      leadQA.saveMarkdown(bugResult.markdown, "BUG", key + "-fail");
-      report.bugsCreees++;
-      log("[TEST] " + key + " — Bug prepare localement (a valider)");
-    } else {
-      report.pass++;
-      log("[TEST] " + key + " — PASS");
-    }
-
-    report.ticketsTraites++;
-    report.details.push({ key: key, type: "Test", summary: summary,
-      jiraStatus: jiraStatus,
-      status: pwResult.hasFail ? "FAIL" : "PASS",
-      bugPrepared: pwResult.hasFail, mode: strategy.decision,
-      localOnly: true });
-  } catch(e) {
-    log("[TEST] " + key + " — ERREUR : " + e.message);
-    report.erreurs.push({ key: key, type: "Test", error: e.message });
-    report.details.push({ key: key, type: "Test", summary: summary, status: "ERROR", error: e.message });
   }
 }
 
@@ -308,14 +241,12 @@ async function runDailyQAJob() {
   var report = {
     date: new Date().toISOString(),
     ticketsTraites: 0,
+    usTraitees: 0,
+    bugsTraites: 0,
     usEnrichies: 0,
-    testsGeneres: 0,
+    testsCascade: 0,
     casTestImportesXray: 0,
-    testsExecutes: 0,
     details: [],
-    pass: 0,
-    fail: 0,
-    bugsCreees: 0,
     erreurs: [],
     dureeMs: 0
   };
@@ -344,29 +275,20 @@ async function runDailyQAJob() {
       return report;
     }
 
-    // 2. Trier par type
+    // 2. Trier par type (uniquement US et Bug — les Tests sont crees en cascade)
     var stories = tickets.filter(function(t) { return t.fields.issuetype.name === "Story"; });
     var bugs = tickets.filter(function(t) { return t.fields.issuetype.name === "Bug"; });
-    var tests = tickets.filter(function(t) {
-      return t.fields.issuetype.name === "Test" || t.fields.issuetype.name === "Test Case";
-    });
-    var tasks = tickets.filter(function(t) { return t.fields.issuetype.name === "Task"; });
 
-    log("Repartition : " + stories.length + " US, " + bugs.length + " Bug, " + tests.length + " Test, " + tasks.length + " Task");
-    sse({ type: "daily-job-progress", step: "sort", message: stories.length + " US, " + bugs.length + " Bug, " + tests.length + " Test, " + tasks.length + " Task" });
+    log("Repartition : " + stories.length + " US, " + bugs.length + " Bug");
+    sse({ type: "daily-job-progress", step: "sort", message: stories.length + " US, " + bugs.length + " Bug" });
 
-    // 3. Traiter dans l'ordre : US → Bug → Test
+    // 3. Traiter dans l'ordre : US → Bug (les tickets Test ne sont jamais un point d'entree)
     for (var i = 0; i < stories.length; i++) {
       await processUS(stories[i], report);
     }
     for (var j = 0; j < bugs.length; j++) {
       await processBug(bugs[j], report);
     }
-    for (var k = 0; k < tests.length; k++) {
-      await processTest(tests[k], report);
-    }
-    // Tasks : juste compter
-    report.ticketsTraites += tasks.length;
 
   } catch(e) {
     log("ERREUR GLOBALE : " + e.message);
@@ -377,9 +299,11 @@ async function runDailyQAJob() {
   try { saveReport(report); } catch(saveErr) { log("ERREUR saveReport : " + saveErr.message); }
 
   log("========================================");
-  log("  RAPPORT : " + report.ticketsTraites + " traites | " +
-    report.pass + " PASS | " + report.fail + " FAIL | " +
-    report.bugsCreees + " bugs | " + report.erreurs.length + " erreurs");
+  log("  RAPPORT : " + report.ticketsTraites + " traites (" +
+    report.usTraitees + " US, " + report.bugsTraites + " Bug) | " +
+    report.testsCascade + " tests cascade | " +
+    report.casTestImportesXray + " CSV Xray | " +
+    report.erreurs.length + " erreurs");
   log("  Duree : " + Math.round(report.dureeMs / 1000) + "s");
   log("========================================");
 
@@ -401,7 +325,7 @@ runDailyQAJob = async function() {
   } catch(e) {
     log("CRASH runDailyQAJob : " + e.message + "\n" + (e.stack || ""));
     _running = false;
-    var crashReport = { date: new Date().toISOString(), ticketsTraites: 0, erreurs: [{ key:"crash", type:"system", error: e.message }], details:[], pass:0, fail:0, bugsCreees:0, usEnrichies:0, testsGeneres:0, casTestImportesXray:0, testsExecutes:0, dureeMs: 0 };
+    var crashReport = { date: new Date().toISOString(), ticketsTraites: 0, usTraitees:0, bugsTraites:0, usEnrichies:0, testsCascade:0, casTestImportesXray:0, erreurs: [{ key:"crash", type:"system", error: e.message }], details:[], dureeMs: 0 };
     _lastReport = crashReport;
     try { saveReport(crashReport); } catch(se) {}
     sse({ type: "daily-job-completed", report: crashReport });
