@@ -17,6 +17,7 @@ var _cronTimer = null;
 var _lastRunDate = null;
 var _sendSSE = null;
 var _running = false;
+var _lastReport = null;
 
 // ── JIRA API ─────────────────────────────────────────────────────────────────
 function jiraApi(method, apiPath, body) {
@@ -388,7 +389,13 @@ async function runDailyQAJob() {
   try {
     // 1. Recuperer les tickets
     log("Recuperation des tickets In QA...");
-    var tickets = await fetchTicketsInQA();
+    var tickets = [];
+    try {
+      tickets = await fetchTicketsInQA();
+    } catch(fetchErr) {
+      log("ERREUR fetch Jira : " + fetchErr.message);
+      report.erreurs.push({ key: "fetch", type: "system", error: fetchErr.message });
+    }
     log(tickets.length + " ticket(s) a traiter");
     sse({ type: "daily-job-progress", step: "fetch", count: tickets.length, message: tickets.length + " ticket(s) trouves" });
 
@@ -396,7 +403,8 @@ async function runDailyQAJob() {
       log("Aucun ticket a traiter — fin du job");
       sse({ type: "daily-job-progress", step: "done", message: "Aucun ticket a traiter" });
       report.dureeMs = Date.now() - startTime;
-      saveReport(report);
+      try { saveReport(report); } catch(se) { log("ERREUR saveReport : " + se.message); }
+      _lastReport = report;
       sse({ type: "daily-job-completed", report: report });
       _running = false;
       return report;
@@ -432,7 +440,7 @@ async function runDailyQAJob() {
   }
 
   report.dureeMs = Date.now() - startTime;
-  saveReport(report);
+  try { saveReport(report); } catch(saveErr) { log("ERREUR saveReport : " + saveErr.message); }
 
   log("========================================");
   log("  RAPPORT : " + report.ticketsTraites + " traites | " +
@@ -443,6 +451,8 @@ async function runDailyQAJob() {
 
   sse({ type: "daily-job-completed", report: report });
   _running = false;
+  // Garder le rapport en memoire meme si saveReport echoue
+  _lastReport = report;
   return report;
 }
 
@@ -457,7 +467,7 @@ function saveReport(report) {
 
 function getLastReport() {
   try { return JSON.parse(fs.readFileSync(REPORT_FILE, "utf8")); }
-  catch(e) { return null; }
+  catch(e) { return _lastReport; }
 }
 
 // ── CRON (setInterval maison comme agent-cycle.js) ──────────────────────────
