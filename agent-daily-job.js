@@ -94,10 +94,10 @@ function extractUrls(text) {
   });
 }
 
-// ── FETCH TICKETS IN QA (Story + Bug dans les colonnes QA du workflow SAF-v3) ─
+// ── FETCH TICKETS QA (Story + Bug dans les colonnes QA du workflow SAF-v3) ──
 var QA_STATUSES = ["To Test", "In Test", "Reopened", "To Test UAT", "In validation"];
 
-async function fetchTicketsInQA() {
+async function fetchQATickets() {
   var statusClause = QA_STATUSES.map(function(s) { return '"' + s + '"'; }).join(", ");
   var jql = "project = " + CFG.jira.project +
     " AND assignee = currentUser()" +
@@ -112,72 +112,99 @@ async function fetchTicketsInQA() {
   return (r.data && r.data.issues) || [];
 }
 
-// ── PROCESS USER STORY (analyse locale uniquement) ──────────────────────────
-async function processUS(ticket, report) {
+// ── ROUTAGE AUTOMATIQUE PAR TYPE ─────────────────────────────────────────────
+async function routeTicket(ticket, report) {
+  var type = ticket.fields.issuetype.name;
+  var key = ticket.key;
+  var status = (ticket.fields.status && ticket.fields.status.name) || "";
+
+  log("[ROUTE] " + key + " — " + type + " [" + status + "]");
+  sse({ type: "daily-job-progress", step: "route", key: key, message: "Routage " + key + " (" + type + ")" });
+
+  if (type === "Story") {
+    await pipelineUS(ticket, report);
+  } else if (type === "Bug") {
+    await pipelineBug(ticket, report);
+  } else {
+    log("[ROUTE] " + key + " — Type " + type + " ignore");
+  }
+}
+
+// ── PIPELINE USER STORY ─────────────────────────────────────────────────────
+async function pipelineUS(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
   var summary = fields.summary || "";
   var desc = extractDesc(fields);
   var jiraStatus = (fields.status && fields.status.name) || "";
 
-  log("[US] " + key + " — " + summary + " [" + jiraStatus + "]");
+  log("[US] " + key + " — Pipeline US — " + summary + " [" + jiraStatus + "]");
   sse({ type: "daily-job-progress", step: "us", key: key, summary: summary, message: "US " + key + " — " + summary });
 
   try {
-    // Appel unique : analyse + revue + strategie (1 appel Claude au lieu de 3)
+    // Etape 1 : Analyse + Revue
     var result = await leadQA.analyzeAndReviewUS(ticket);
     var review = result.review || {};
     var analysis = result.analysis || {};
     var strategy = result.strategy || {};
-    var isComplete = (review.score || 0) >= 70 && (!review.missingElements || review.missingElements.length === 0);
+    var score = review.score || 0;
+    var isComplete = score >= 70 && (!review.missingElements || review.missingElements.length === 0);
 
-    // Preparer l'enrichissement LOCAL (sans toucher Jira)
+    // Etape 2 : Enrichissement si necessaire
+    var phase = "pret";
     if (!isComplete) {
-      log("[US] " + key + " — Score " + (review.score||0) + "/100, preparation enrichissement...");
+      phase = "enrichissement";
+      log("[US] " + key + " — Score " + score + "/100 → enrichissement");
       var enriched = await leadQA.enrichUS(ticket);
       leadQA.saveMarkdown(enriched.markdown, "US", key + "-enrichi");
       report.usEnrichies++;
-      log("[US] " + key + " — Enrichissement prepare localement (inbox/enriched/)");
     }
 
-    // Verifier si ticket TEST lie existe
+    // Etape 3 : Verifier ticket TEST lie
     var linkedTest = (fields.issuelinks || []).find(function(l) {
       var linked = l.outwardIssue || l.inwardIssue;
       return linked && linked.fields && linked.fields.issuetype &&
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
+    // Etape 4 : Generer TEST + CSV si pas de TEST lie
+    var generatedFiles = [];
     if (!linkedTest) {
-      // Appel unique : ticket TEST + CSV (1 appel Claude au lieu de 2)
-      log("[US] " + key + " — Generation ticket TEST + CSV...");
+      log("[US] " + key + " — Generation TEST + CSV...");
       var testAndCSV = await leadQA.generateTestAndCSV(
         { key: key, epic: result.epic || "", summary: summary, description: desc },
         strategy.decision || "e2e", summary, analysis.testCount || 5
       );
       leadQA.saveMarkdown(testAndCSV.markdown, "TEST", key);
+      generatedFiles.push("TEST-" + key + ".md");
       report.testsCascade++;
       if (testAndCSV.csv) {
         leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
+        generatedFiles.push(key + "-cas-test.csv");
         report.casTestImportesXray++;
+        report.csvReady = report.csvReady || [];
+        report.csvReady.push({ key: key, csv: testAndCSV.csv });
       }
-      log("[US] " + key + " — TEST + CSV prepares localement");
+      phase = "test-genere";
     } else {
-      log("[US] " + key + " — Ticket TEST deja lie");
+      phase = "pret-a-tester";
     }
 
     report.ticketsTraites++;
     report.usTraitees++;
-    report.details.push({ key: key, type: "US", summary: summary, status: "OK",
-      jiraStatus: jiraStatus, score: review.score || 0,
+    report.details.push({
+      key: key, type: "US", summary: summary, status: "OK",
+      jiraStatus: jiraStatus, score: score,
+      phase: phase,
       enriched: !isComplete, testGenerated: !linkedTest,
       jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
       treatedAt: new Date().toISOString(),
-      files: [
-        !isComplete ? "inbox/enriched/" + key + "-enrichi.md" : null,
-        !linkedTest ? "inbox/enriched/TEST-" + key + ".md" : null,
-        (!linkedTest && testAndCSV && testAndCSV.csv) ? "inbox/enriched/" + key + "-cas-test.csv" : null
-      ].filter(Boolean),
-      localOnly: true });
+      files: generatedFiles,
+      localOnly: true
+    });
+
+    log("[US] " + key + " — Phase finale : " + phase);
+
   } catch(e) {
     log("[US] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "US", error: e.message });
@@ -185,48 +212,55 @@ async function processUS(ticket, report) {
   }
 }
 
-// ── PROCESS BUG (analyse locale uniquement) ─────────────────────────────────
-async function processBug(ticket, report) {
+// ── PIPELINE BUG ────────────────────────────────────────────────────────────
+async function pipelineBug(ticket, report) {
   var key = ticket.key;
   var fields = ticket.fields;
   var summary = fields.summary || "";
   var desc = extractDesc(fields);
-  var urls = extractUrls(desc + " " + summary);
   var jiraStatus = (fields.status && fields.status.name) || "";
 
-  log("[BUG] " + key + " — " + summary + " [" + jiraStatus + "]");
+  log("[BUG] " + key + " — Pipeline Bug — " + summary + " [" + jiraStatus + "]");
   sse({ type: "daily-job-progress", step: "bug", key: key, summary: summary, message: "Bug " + key + " — " + summary });
 
   try {
-    // Verifier si ticket TEST de non-regression existe
+    // Etape 1 : Verifier ticket TEST de non-regression
     var linkedTest = (fields.issuelinks || []).find(function(l) {
       var linked = l.outwardIssue || l.inwardIssue;
       return linked && linked.fields && linked.fields.issuetype &&
         (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
     });
 
+    var phase = "pret-a-tester";
+    var generatedFiles = [];
+
+    // Etape 2 : Generer TEST si pas lie
     if (!linkedTest) {
-      // Preparer localement un test de non-regression (sans creer dans Jira)
-      log("[BUG] " + key + " — Preparation test non-regression local...");
+      log("[BUG] " + key + " — Generation test non-regression...");
       var testResult = await leadQA.generateTestTicket(
         { key: key, epic: "", summary: summary, description: desc },
         "e2e", "Non-regression - " + summary
       );
       leadQA.saveMarkdown(testResult.markdown, "TEST", key + "-nonreg");
+      generatedFiles.push("TEST-" + key + "-nonreg.md");
       report.testsCascade++;
-      log("[BUG] " + key + " — TEST non-regression prepare localement");
+      phase = "test-genere";
     }
 
     report.ticketsTraites++;
     report.bugsTraites++;
-    report.details.push({ key: key, type: "Bug", summary: summary, status: "OK",
-      jiraStatus: jiraStatus, testGenerated: !linkedTest,
+    report.details.push({
+      key: key, type: "Bug", summary: summary, status: "OK",
+      jiraStatus: jiraStatus, phase: phase,
+      testGenerated: !linkedTest,
       jiraUrl: "https://" + CFG.jira.host + "/browse/" + key,
       treatedAt: new Date().toISOString(),
-      files: [
-        !linkedTest ? "inbox/enriched/TEST-" + key + "-nonreg.md" : null
-      ].filter(Boolean),
-      localOnly: true });
+      files: generatedFiles,
+      localOnly: true
+    });
+
+    log("[BUG] " + key + " — Phase finale : " + phase);
+
   } catch(e) {
     log("[BUG] " + key + " — ERREUR : " + e.message);
     report.erreurs.push({ key: key, type: "Bug", error: e.message });
@@ -263,10 +297,10 @@ async function runDailyQAJob() {
 
   try {
     // 1. Recuperer les tickets
-    log("Recuperation des tickets In QA...");
+    log("Recuperation des tickets QA...");
     var tickets = [];
     try {
-      tickets = await fetchTicketsInQA();
+      tickets = await fetchQATickets();
     } catch(fetchErr) {
       log("ERREUR fetch Jira : " + fetchErr.message);
       report.erreurs.push({ key: "fetch", type: "system", error: fetchErr.message });
@@ -285,19 +319,12 @@ async function runDailyQAJob() {
       return report;
     }
 
-    // 2. Trier par type (uniquement US et Bug — les Tests sont crees en cascade)
-    var stories = tickets.filter(function(t) { return t.fields.issuetype.name === "Story"; });
-    var bugs = tickets.filter(function(t) { return t.fields.issuetype.name === "Bug"; });
+    // 2. Router chaque ticket selon son type
+    log("Routage de " + tickets.length + " ticket(s)...");
+    sse({ type: "daily-job-progress", step: "route", message: tickets.length + " ticket(s) a router" });
 
-    log("Repartition : " + stories.length + " US, " + bugs.length + " Bug");
-    sse({ type: "daily-job-progress", step: "sort", message: stories.length + " US, " + bugs.length + " Bug" });
-
-    // 3. Traiter dans l'ordre : US → Bug (les tickets Test ne sont jamais un point d'entree)
-    for (var i = 0; i < stories.length; i++) {
-      await processUS(stories[i], report);
-    }
-    for (var j = 0; j < bugs.length; j++) {
-      await processBug(bugs[j], report);
+    for (var i = 0; i < tickets.length; i++) {
+      await routeTicket(tickets[i], report);
     }
 
   } catch(e) {

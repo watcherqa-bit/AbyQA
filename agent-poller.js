@@ -41,6 +41,38 @@ function saveSeen(seen) {
   } catch(e) {}
 }
 
+// ── BACKLOG PERSISTANT ──────────────────────────────────────────────────────
+var BACKLOG_FILE = path.join(__dirname, "inbox", "backlog", "backlog.json");
+
+function loadBacklog() {
+  try {
+    if (fs.existsSync(BACKLOG_FILE)) return JSON.parse(fs.readFileSync(BACKLOG_FILE, "utf8"));
+  } catch(e) {}
+  return {};
+}
+
+function saveBacklog(backlog) {
+  var dir = path.dirname(BACKLOG_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(BACKLOG_FILE, JSON.stringify(backlog, null, 2), "utf8");
+}
+
+function getBacklogList() {
+  var backlog = loadBacklog();
+  return Object.keys(backlog).map(function(k) { return backlog[k]; })
+    .sort(function(a, b) { return (a.priority === "Highest" ? 0 : a.priority === "High" ? 1 : 2) - (b.priority === "Highest" ? 0 : b.priority === "High" ? 1 : 2); });
+}
+
+function determinePhase(status) {
+  if (["Backlog", "Prepare", "Approve", "Ready for Dev"].includes(status)) return "entrant";
+  if (["In progress", "Blocked"].includes(status)) return "dev";
+  if (["To Test", "In Test"].includes(status)) return "pret-a-tester";
+  if (["To Test UAT", "In validation", "Reopened"].includes(status)) return "uat";
+  if (["To Release"].includes(status)) return "pre-release";
+  if (["Terminé(e)", "Done", "Closed"].includes(status)) return "termine";
+  return "entrant";
+}
+
 // ── STATUTS QA à surveiller (synchronisés avec le WORKFLOW du dashboard) ───────
 var QA_STATUSES = [
   "To Test", "In Test", "To Test UAT", "In validation", "Reopened"
@@ -51,7 +83,8 @@ function fetchJiraUpdates(intervalMin, callback) {
   // Marge : intervalMin + 20% pour ne pas manquer de tickets au bord
   var sinceMin = Math.ceil(intervalMin * 1.2);
   var jql = "project = " + CFG.jira.project +
-    " AND issuetype in (Story, Bug, \"Test Case\", Task)" +
+    " AND assignee = currentUser()" +
+    " AND issuetype in (Story, Bug)" +
     " AND updated >= \"-" + sinceMin + "m\"" +
     " ORDER BY updated DESC";
 
@@ -169,6 +202,44 @@ function runPoll() {
     saveSeen(seen);
     _status.lastCount = newItems.length;
 
+    // ── Persistance backlog local ──
+    if (newItems.length > 0) {
+      var backlog = loadBacklog();
+      var backlogChanged = false;
+      newItems.forEach(function(t) {
+        // Uniquement les tickets assignés (Story/Bug déjà filtré par JQL)
+        if (t.assignee) {
+          var existing = backlog[t.key];
+          if (!existing || existing.status !== t.status) {
+            backlog[t.key] = {
+              key:        t.key,
+              summary:    t.summary,
+              type:       t.type,
+              status:     t.status,
+              priority:   t.priority,
+              phase:      determinePhase(t.status),
+              assignedAt: (existing && existing.assignedAt) || new Date().toISOString(),
+              updatedAt:  new Date().toISOString(),
+              labels:     t.labels
+            };
+            backlogChanged = true;
+          }
+        }
+      });
+      if (backlogChanged) {
+        saveBacklog(backlog);
+        var backlogList = getBacklogList();
+        if (_sendSSE) {
+          _sendSSE("default", {
+            type:    "backlog-updated",
+            tickets: backlogList,
+            count:   backlogList.length
+          });
+        }
+        console.log("[POLLER] Backlog mis à jour — " + backlogList.length + " ticket(s)");
+      }
+    }
+
     var now = new Date();
     var timeLabel = now.getHours().toString().padStart(2, "0") + ":" +
                     now.getMinutes().toString().padStart(2, "0");
@@ -277,4 +348,4 @@ function getStatus() {
   };
 }
 
-module.exports = { start, stop, restart, getStatus };
+module.exports = { start, stop, restart, getStatus, getBacklogList };

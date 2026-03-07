@@ -2428,6 +2428,46 @@
         <div id="releaseFiles"><div style="color:var(--text3);font-size:12px">Aucune release chargée</div></div>
       </div>
 
+      <!-- ── TEST PLAN par release ── -->
+      <div class="form-card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">📋 TEST PLAN</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span id="testplan-progress" style="font-family:var(--mono);font-size:11px;color:var(--text3)">0/0 exécutés</span>
+            <button onclick="launchTestPlanAll()" class="btn" style="font-size:10px;padding:4px 10px;background:var(--green);border-color:var(--green)">▶ Tout lancer</button>
+          </div>
+        </div>
+        <div id="testplan-list" style="max-height:400px;overflow-y:auto">
+          <div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sélectionne une release</div>
+        </div>
+      </div>
+
+      <!-- ── TEST EXECUTION historique ── -->
+      <div class="form-card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">🧪 HISTORIQUE D'EXECUTION</div>
+          <button onclick="exportTestExecution()" class="btn btn-secondary" style="font-size:10px;padding:4px 10px">📄 Export PDF</button>
+        </div>
+        <div id="test-execution-list" style="max-height:500px;overflow-y:auto">
+          <div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sélectionne une release</div>
+        </div>
+      </div>
+
+      <!-- ── BIBLIOTHÈQUE DE TESTS ── -->
+      <div class="form-card" style="padding:0;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">📚 BIBLIOTHÈQUE DE TESTS</div>
+          <div style="display:flex;gap:6px">
+            <button onclick="filterTestLib('all')" class="bl-phase-btn active" id="lib-filter-all" style="font-size:10px;padding:2px 8px">Tous</button>
+            <button onclick="filterTestLib('auto')" class="bl-phase-btn" id="lib-filter-auto" style="font-size:10px;padding:2px 8px">AUTO</button>
+            <button onclick="filterTestLib('manual')" class="bl-phase-btn" id="lib-filter-manual" style="font-size:10px;padding:2px 8px">MANUEL</button>
+          </div>
+        </div>
+        <div id="test-library-list" style="max-height:500px;overflow-y:auto">
+          <div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sélectionne une release</div>
+        </div>
+      </div>
+
     </div>
 
     <div class="panel" id="panel-matrix">
@@ -3067,6 +3107,7 @@
         </div>
         <div class="bl-toolbar-sep"></div>
         <button class="bl-phase-btn" id="bl-tab-archives" onclick="switchBacklogTab('done')">🗄️ Archivés <span class="bl-badge" id="badge-archives">0</span></button>
+        <button class="bl-phase-btn" id="bl-tab-sophie" onclick="switchBacklogTab('sophie')" style="color:var(--cyan)">🔬 Sophie <span class="bl-badge" id="badge-sophie">0</span></button>
         <div class="bl-toolbar-sep"></div>
         <div class="bl-toolbar-group">
           <span class="bl-toolbar-label">Vue</span>
@@ -3128,6 +3169,37 @@
         </div>
         <div id="bl-done-list" style="display:flex;flex-direction:column;gap:8px">
           <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>
+        </div>
+      </div>
+
+      <!-- COLONNE SOPHIE -->
+      <div id="bl-section-sophie" style="display:none;padding:16px 28px;overflow-y:auto;flex:1">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:800;color:var(--cyan)">COLONNE SOPHIE</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">Tickets en phase QA — prêts à tester</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button onclick="loadSophieColumn()" class="bl-ghost-btn" style="font-size:11px">↺ Rafraîchir</button>
+            <button id="sophie-launch-all" onclick="sophieLaunchAll()" class="btn" style="background:var(--green);border-color:var(--green);font-size:11px;padding:6px 14px;display:none">▶ Tout lancer en séquence</button>
+          </div>
+        </div>
+        <div id="sophie-stats" style="display:flex;gap:12px;margin-bottom:16px">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">
+            <span id="sophie-ready-count" style="color:var(--green);font-weight:700">0</span> prêts ·
+            <span id="sophie-running-count" style="color:var(--purple);font-weight:700">0</span> en cours ·
+            <span id="sophie-incomplete-count" style="color:var(--orange);font-weight:700">0</span> incomplets
+          </div>
+        </div>
+        <div id="sophie-list" style="display:flex;flex-direction:column;gap:8px">
+          <div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement...</div>
+        </div>
+        <div id="sophie-progress" style="display:none;margin-top:16px;padding:16px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">
+          <div style="font-family:var(--mono);font-size:11px;color:var(--text3);margin-bottom:8px">PROGRESSION</div>
+          <div id="sophie-progress-bar" style="background:var(--bg3);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px">
+            <div id="sophie-progress-fill" style="height:100%;background:var(--green);width:0%;transition:width .5s ease"></div>
+          </div>
+          <div id="sophie-progress-text" style="font-family:var(--mono);font-size:11px;color:var(--text2)">0 / 0</div>
         </div>
       </div>
 
@@ -5300,6 +5372,233 @@ function showRelease(release) {
       return "<div><div style='font-size:11px;color:var(--text3);margin-bottom:4px;font-family:var(--mono)'>"+t.key+"</div><div>"+items+"</div></div>";
     }).join("");
   }
+
+  // Charger les sous-sections
+  loadTestPlan(release);
+  loadTestExecution(release);
+  loadTestLibrary(release);
+}
+
+// ── TEST PLAN ────────────────────────────────────────────────────────────────
+function loadTestPlan(release) {
+  if (!release || !releaseTracker[release]) return;
+  var data = releaseTracker[release];
+  var tickets = (data.tickets || []).filter(function(t) { return t.type === "Test" || t.type === "Test Case" || t.hasTest; });
+
+  // Si pas de tickets test, utiliser tous les tickets
+  if (tickets.length === 0) tickets = data.tickets || [];
+
+  var executed = tickets.filter(function(t) { return t.status === "PASS" || t.status === "FAIL"; }).length;
+  var progressEl = document.getElementById("testplan-progress");
+  if (progressEl) progressEl.textContent = executed + "/" + tickets.length + " exécutés";
+
+  var list = document.getElementById("testplan-list");
+  if (!list) return;
+
+  if (tickets.length === 0) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Aucun test dans cette release</div>';
+    return;
+  }
+
+  list.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+    '<thead><tr style="background:var(--bg3)">' +
+    '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:left">TICKET</th>' +
+    '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:left">RÉSUMÉ</th>' +
+    '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">STATUT</th>' +
+    '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">ACTION</th>' +
+    '</tr></thead><tbody>' +
+    tickets.map(function(t) {
+      var statusBadge = t.status === "PASS"
+        ? '<span style="background:rgba(0,232,122,.15);color:var(--green);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">✅ PASS</span>'
+        : t.status === "FAIL"
+        ? '<span style="background:rgba(255,59,92,.15);color:var(--red);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">❌ FAIL</span>'
+        : '<span style="background:var(--bg3);color:var(--text3);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px">⏳ Non exécuté</span>';
+      var actionBtn = (t.status !== "PASS" && t.status !== "FAIL")
+        ? '<button onclick="launchTestPlanTicket(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:4px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶</button>'
+        : '';
+      return '<tr style="border-bottom:1px solid var(--border)">' +
+        '<td style="padding:8px 14px;font-family:var(--mono);font-size:11px"><a href="https://' + (CFG_JIRA_HOST||"eurelis.atlassian.net") + '/browse/' + t.key + '" target="_blank" style="color:var(--blue);text-decoration:none">' + t.key + '</a></td>' +
+        '<td style="padding:8px 14px;font-size:11px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (t.summary||"").substring(0,60) + '</td>' +
+        '<td style="padding:8px 14px;text-align:center">' + statusBadge + '</td>' +
+        '<td style="padding:8px 14px;text-align:center">' + actionBtn + '</td>' +
+        '</tr>';
+    }).join("") +
+    '</tbody></table>';
+}
+
+function launchTestPlanTicket(key) {
+  showToast("Lancement " + key + "...", "▶");
+  fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) showToast(key + " lancé", "🧪");
+      else showToast("Erreur : " + (d.error || "?"), "⚠️");
+    })
+    .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+function launchTestPlanAll() {
+  var sel = document.getElementById("releaseSelector");
+  var release = sel ? sel.value : "";
+  if (!release) { showToast("Sélectionne une release", "⚠️"); return; }
+  showToast("Lancement séquence release " + release + "...", "▶");
+  fetch(SERVER + "/api/cycle/tnr-release", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ release: release })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) showToast("Séquence lancée pour " + release, "🧪");
+      else showToast("Erreur : " + (d.error || "?"), "⚠️");
+    })
+    .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+// ── TEST EXECUTION HISTORIQUE ────────────────────────────────────────────────
+function loadTestExecution(release) {
+  if (!release || !releaseTracker[release]) return;
+  var data = releaseTracker[release];
+  var tickets = data.tickets || [];
+
+  var list = document.getElementById("test-execution-list");
+  if (!list) return;
+
+  // Grouper par ticket, dernier run en premier
+  var grouped = {};
+  tickets.forEach(function(t) {
+    if (!grouped[t.key]) grouped[t.key] = { key: t.key, summary: t.summary, runs: [] };
+    grouped[t.key].runs.push({
+      status: t.status,
+      date: t.date,
+      pass: t.pass || 0,
+      fail: t.fail || 0,
+      total: t.total || 0,
+      reportPath: t.reportPath
+    });
+  });
+
+  var keys = Object.keys(grouped);
+  if (keys.length === 0) {
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Aucun historique</div>';
+    return;
+  }
+
+  list.innerHTML = keys.map(function(k) {
+    var g = grouped[k];
+    var runs = g.runs.sort(function(a, b) { return new Date(b.date || 0) - new Date(a.date || 0); });
+
+    return '<div style="border-bottom:1px solid var(--border);padding:12px 16px">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">' +
+        '<span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--blue)">' + g.key + '</span>' +
+        '<span style="font-size:11px;color:var(--text2)">' + (g.summary||"").substring(0,50) + '</span>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px">' +
+      runs.map(function(run, idx) {
+        var isLatest = idx === 0;
+        var opacity = isLatest ? "1" : "0.6";
+        var badge = run.status === "PASS"
+          ? '<span style="color:var(--green);font-weight:700">✅ PASS</span>'
+          : run.status === "FAIL"
+          ? '<span style="color:var(--red);font-weight:700">❌ FAIL</span>'
+          : '<span style="color:var(--text3)">⏳ TODO</span>';
+        var latestTag = isLatest ? ' <span style="background:var(--cyan);color:#000;font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700">DERNIER RUN</span>' : '';
+        var reportBtn = run.reportPath ? ' <button data-dl="' + run.reportPath + '" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">📄</button>' : '';
+
+        return '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);padding:3px 8px;opacity:' + opacity + '">' +
+          badge + latestTag +
+          ' <span style="margin:0 6px">' + (run.date ? new Date(run.date).toLocaleDateString("fr-FR") : "—") + '</span>' +
+          '<span style="color:var(--green)">' + run.pass + '</span>/<span style="color:var(--red)">' + run.fail + '</span>/' + run.total +
+          reportBtn +
+          '</div>';
+      }).join("") +
+      '</div></div>';
+  }).join("");
+}
+
+function exportTestExecution() {
+  var content = document.getElementById("test-execution-list");
+  if (!content) return;
+  // Simple export : print la zone
+  var w = window.open("", "_blank");
+  w.document.write('<html><head><title>Rapport Execution</title><style>body{font-family:monospace;font-size:11px;padding:20px}span{font-size:11px}</style></head><body>');
+  w.document.write('<h2>Rapport d\'execution — ' + (document.getElementById("releaseSelector").value || "?") + '</h2>');
+  w.document.write(content.innerHTML);
+  w.document.write('</body></html>');
+  w.document.close();
+  w.print();
+}
+
+// ── BIBLIOTHÈQUE DE TESTS ────────────────────────────────────────────────────
+var _testLibFilter = "all";
+
+function loadTestLibrary(release) {
+  fetch(SERVER + "/api/backlog/done")
+    .then(function(r) { return r.json(); })
+    .then(function(done) {
+      var list = document.getElementById("test-library-list");
+      if (!list) return;
+
+      // Filtrer les tests
+      var tests = done.filter(function(t) { return t.type === "Test" || t.type === "Test Case" || (t.key && t.key.includes("TEST")); });
+
+      // Si une release est sélectionnée, ajouter aussi les tests du tracker
+      if (release && releaseTracker[release]) {
+        var relTickets = (releaseTracker[release].tickets || []);
+        relTickets.forEach(function(rt) {
+          if (!tests.find(function(t) { return t.key === rt.key; })) {
+            tests.push({ key: rt.key, summary: rt.summary, type: "Test", result: rt.status, release: release, date: rt.date });
+          }
+        });
+      }
+
+      // Appliquer filtre
+      var filtered = tests;
+      if (_testLibFilter === "auto") filtered = tests.filter(function(t) { return !t.manual; });
+      if (_testLibFilter === "manual") filtered = tests.filter(function(t) { return t.manual; });
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Aucun test dans la bibliothèque</div>';
+        return;
+      }
+
+      list.innerHTML = '<table style="width:100%;border-collapse:collapse">' +
+        '<thead><tr style="background:var(--bg3)">' +
+        '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:left">TICKET</th>' +
+        '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:left">RÉSUMÉ</th>' +
+        '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">TYPE</th>' +
+        '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">STATUT</th>' +
+        '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">RELEASE</th>' +
+        '</tr></thead><tbody>' +
+        filtered.map(function(t) {
+          var typeBadge = t.manual
+            ? '<span style="background:rgba(245,158,11,.15);color:var(--orange);font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">MANUEL</span>'
+            : '<span style="background:rgba(0,232,122,.15);color:var(--green);font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700">AUTO</span>';
+          var statusBadge = t.result === "PASS"
+            ? '<span style="color:var(--green);font-weight:700">✅</span>'
+            : t.result === "FAIL"
+            ? '<span style="color:var(--red);font-weight:700">❌</span>'
+            : '<span style="color:var(--text3)">—</span>';
+          return '<tr style="border-bottom:1px solid var(--border)">' +
+            '<td style="padding:6px 14px;font-family:var(--mono);font-size:11px"><a href="https://' + (CFG_JIRA_HOST||"eurelis.atlassian.net") + '/browse/' + t.key + '" target="_blank" style="color:var(--blue);text-decoration:none">' + t.key + '</a></td>' +
+            '<td style="padding:6px 14px;font-size:11px;color:var(--text2);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (t.summary||"").substring(0,50) + '</td>' +
+            '<td style="padding:6px 14px;text-align:center">' + typeBadge + '</td>' +
+            '<td style="padding:6px 14px;text-align:center">' + statusBadge + '</td>' +
+            '<td style="padding:6px 14px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--text3)">' + (t.release || release || "—") + '</td>' +
+            '</tr>';
+        }).join("") +
+        '</tbody></table>';
+    })
+    .catch(function() {});
+}
+
+function filterTestLib(filter) {
+  _testLibFilter = filter;
+  document.querySelectorAll("#lib-filter-all,#lib-filter-auto,#lib-filter-manual").forEach(function(b) { b.classList.remove("active"); });
+  var el = document.getElementById("lib-filter-" + filter);
+  if (el) el.classList.add("active");
+  var sel = document.getElementById("releaseSelector");
+  loadTestLibrary(sel ? sel.value : "");
 }
 
 function downloadReport(filename) {
@@ -12406,6 +12705,22 @@ function switchBacklogTab(tab) {
     if (archBtn) archBtn.classList.add("active");
     document.querySelectorAll(".bl-phase-btn[data-phase]").forEach(function(b) { b.classList.remove("active"); });
   }
+
+  var secS = document.getElementById("bl-section-sophie");
+  var sophieBtn = document.getElementById("bl-tab-sophie");
+
+  if (tab === "sophie") {
+    if (secP) secP.style.display = "none";
+    if (secD) secD.style.display = "none";
+    if (secS) secS.style.display = "block";
+    if (archBtn) archBtn.classList.remove("active");
+    if (sophieBtn) sophieBtn.classList.add("active");
+    document.querySelectorAll(".bl-phase-btn[data-phase]").forEach(function(b) { b.classList.remove("active"); });
+    loadSophieColumn();
+  } else {
+    if (secS) secS.style.display = "none";
+    if (sophieBtn) sophieBtn.classList.remove("active");
+  }
 }
 
 function filterBacklog(phase) {
@@ -12735,6 +13050,133 @@ function renderBacklogDone() {
       (t.xrayExecution ? '<a href="https://' + CFG_JIRA_HOST + '/browse/' + t.xrayExecution + '" target="_blank" class="btn btn-secondary" style="font-size:10px;padding:2px 8px;text-decoration:none">🔗 Xray</a>' : '') +
     '</div>';
   }).join("");
+}
+
+// ── COLONNE SOPHIE ─────────────────────────────────────────────────────────
+var _sophieTickets = [];
+var _sophieRunning = false;
+
+function loadSophieColumn() {
+  fetch(SERVER + "/api/sophie-column")
+    .then(function(r) { return r.json(); })
+    .then(function(tickets) {
+      _sophieTickets = Array.isArray(tickets) ? tickets : [];
+      renderSophieColumn();
+      var badge = document.getElementById("badge-sophie");
+      if (badge) badge.textContent = _sophieTickets.length;
+    })
+    .catch(function() { _sophieTickets = []; renderSophieColumn(); });
+}
+
+function renderSophieColumn() {
+  var list = document.getElementById("sophie-list");
+  if (!list) return;
+
+  var ready = _sophieTickets.filter(function(t) { return t.state === "ready"; });
+  var running = _sophieTickets.filter(function(t) { return t.state === "running"; });
+  var incomplete = _sophieTickets.filter(function(t) { return t.state === "incomplete" || t.state === "enriching"; });
+
+  var readyEl = document.getElementById("sophie-ready-count");
+  var runningEl = document.getElementById("sophie-running-count");
+  var incompleteEl = document.getElementById("sophie-incomplete-count");
+  if (readyEl) readyEl.textContent = ready.length;
+  if (runningEl) runningEl.textContent = running.length;
+  if (incompleteEl) incompleteEl.textContent = incomplete.length;
+
+  var launchBtn = document.getElementById("sophie-launch-all");
+  if (launchBtn) launchBtn.style.display = ready.length > 0 ? "inline-block" : "none";
+
+  if (_sophieTickets.length === 0) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Aucun ticket en phase QA</div>';
+    return;
+  }
+
+  var STATE_BADGE = {
+    ready:     '<span style="background:rgba(0,232,122,.15);color:var(--green);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">✅ Prêt</span>',
+    running:   '<span style="background:rgba(139,92,246,.15);color:var(--purple);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">🔄 En test</span>',
+    enriching: '<span style="background:rgba(245,158,11,.15);color:var(--orange);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">⏳ En cours</span>',
+    incomplete:'<span style="background:rgba(255,59,92,.15);color:var(--red);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">⚠️ Incomplet</span>'
+  };
+
+  var TYPE_ICON = { Story: "📖", Bug: "🐛", "Test Case": "🧪", Test: "🧪", Task: "📋" };
+
+  list.innerHTML = _sophieTickets.map(function(t) {
+    var badge = STATE_BADGE[t.state] || STATE_BADGE.incomplete;
+    var icon = TYPE_ICON[t.type] || "🎫";
+    var testBtn = t.state === "ready"
+      ? '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Tester</button>'
+      : t.state === "running"
+      ? '<span style="font-family:var(--mono);font-size:10px;color:var(--purple)">En cours...</span>'
+      : '';
+
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;border-left:3px solid ' + (t.state==="ready"?"var(--green)":t.state==="running"?"var(--purple)":"var(--orange)") + '">' +
+      '<span style="font-size:16px">' + icon + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="display:flex;align-items:center;gap:8px">' +
+          '<a href="' + t.jiraUrl + '" target="_blank" style="font-family:var(--mono);font-size:12px;color:var(--blue);text-decoration:none;font-weight:700">' + t.key + '</a>' +
+          badge +
+          '<span style="font-family:var(--mono);font-size:10px;color:var(--text3)">' + (t.jiraStatus || "") + '</span>' +
+        '</div>' +
+        '<div style="font-size:12px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t.summary || "") + '</div>' +
+      '</div>' +
+      '<div style="flex-shrink:0">' + testBtn + '</div>' +
+    '</div>';
+  }).join("");
+}
+
+function sophieLaunchOne(key) {
+  showToast("Lancement test " + key + "...", "▶");
+  fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) showToast(key + " lancé", "🧪");
+      else showToast("Erreur : " + (d.error || "?"), "⚠️");
+      setTimeout(loadSophieColumn, 3000);
+    })
+    .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+}
+
+function sophieLaunchAll() {
+  var ready = _sophieTickets.filter(function(t) { return t.state === "ready"; });
+  if (ready.length === 0) { showToast("Aucun ticket prêt", "⚠️"); return; }
+  if (_sophieRunning) { showToast("Séquence déjà en cours", "⚠️"); return; }
+
+  _sophieRunning = true;
+  var progressDiv = document.getElementById("sophie-progress");
+  if (progressDiv) progressDiv.style.display = "block";
+
+  var total = ready.length;
+  var done = 0;
+  var results = { pass: 0, fail: 0 };
+
+  function runNext() {
+    if (done >= total) {
+      _sophieRunning = false;
+      var txt = document.getElementById("sophie-progress-text");
+      if (txt) txt.textContent = "Terminé : " + results.pass + " PASS / " + results.fail + " FAIL";
+      showToast("Séquence terminée : " + results.pass + " PASS, " + results.fail + " FAIL", "🏁");
+      setTimeout(loadSophieColumn, 2000);
+      return;
+    }
+
+    var ticket = ready[done];
+    var fill = document.getElementById("sophie-progress-fill");
+    var txt = document.getElementById("sophie-progress-text");
+    if (fill) fill.style.width = Math.round((done / total) * 100) + "%";
+    if (txt) txt.textContent = (done + 1) + " / " + total + " — " + ticket.key;
+
+    fetch(SERVER + "/api/cycle/ticket/" + ticket.key + "/run", { method: "POST" })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.result === "FAIL") results.fail++;
+        else results.pass++;
+        done++;
+        setTimeout(runNext, 2000);
+      })
+      .catch(function() { results.fail++; done++; setTimeout(runNext, 2000); });
+  }
+
+  runNext();
 }
 
 function blAdvancePhase(key, newPhase) {

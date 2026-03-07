@@ -305,6 +305,75 @@ function buildAgentArgs(agentName, params) {
   }
 }
 
+// ── IMPORT CSV XRAY ─────────────────────────────────────────────────────────
+async function importXrayCSV(ticketKey, csvContent) {
+  var xrayAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+
+  // Construire le multipart/form-data
+  var boundary = "----AbyQA" + Date.now();
+  var body = "--" + boundary + "\r\n" +
+    "Content-Disposition: form-data; name=\"file\"; filename=\"" + ticketKey + "-cas-test.csv\"\r\n" +
+    "Content-Type: text/csv\r\n\r\n" +
+    csvContent + "\r\n" +
+    "--" + boundary + "--\r\n";
+
+  return new Promise(function(resolve, reject) {
+    var reqOpts = {
+      hostname: CFG.jira.host,
+      path: "/rest/raven/1.0/import/test/csv",
+      method: "POST",
+      headers: {
+        "Authorization": "Basic " + xrayAuth,
+        "Content-Type": "multipart/form-data; boundary=" + boundary,
+        "Content-Length": Buffer.byteLength(body),
+        "X-Atlassian-Token": "no-check"
+      }
+    };
+
+    var xReq = require("https").request(reqOpts, function(xRes) {
+      var data = "";
+      xRes.on("data", function(c) { data += c; });
+      xRes.on("end", function() {
+        console.log("[XRAY] Import CSV " + ticketKey + " — HTTP " + xRes.statusCode);
+        if (xRes.statusCode >= 200 && xRes.statusCode < 300) {
+          var result = { ok: true, key: ticketKey, statusCode: xRes.statusCode };
+          try {
+            var parsed = JSON.parse(data);
+            result.testKeys = parsed.testKeys || parsed.keys || [];
+            result.count = result.testKeys.length;
+          } catch(e) {
+            result.rawResponse = data.substring(0, 500);
+          }
+
+          // Commenter sur le ticket Jira
+          var commentAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+          var commentBody = JSON.stringify({
+            body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "[AbyQA] " + (result.count || "?") + " cas de test importes dans Xray via AbyQA" }] }] }
+          });
+          var cReq = require("https").request({
+            hostname: CFG.jira.host,
+            path: "/rest/api/3/issue/" + ticketKey + "/comment",
+            method: "POST",
+            headers: { "Authorization": "Basic " + commentAuth, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(commentBody) }
+          }, function() {});
+          cReq.on("error", function() {});
+          cReq.write(commentBody);
+          cReq.end();
+
+          resolve(result);
+        } else {
+          reject(new Error("Xray HTTP " + xRes.statusCode + " : " + data.substring(0, 300)));
+        }
+      });
+    });
+
+    xReq.on("error", function(e) { reject(e); });
+    xReq.setTimeout(30000, function() { xReq.destroy(); reject(new Error("Timeout Xray import")); });
+    xReq.write(body);
+    xReq.end();
+  });
+}
+
 var server = http.createServer(function(req, res) {
   var url    = req.url.split("?")[0];
   var method = req.method;
@@ -3563,6 +3632,103 @@ var server = http.createServer(function(req, res) {
   if (method === "GET" && url === "/api/daily-job/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ running: dailyJob.isRunning(), mode: DAILY_JOB_MODE ? "daily" : "polling" }));
+    return;
+  }
+
+  // ── XRAY CSV IMPORT ─────────────────────────────────────────────────────
+  if (method === "POST" && url.match(/^\/api\/xray\/import-csv\/[A-Z]+-\d+$/)) {
+    var xrayKey = url.split("/").pop();
+    var xrayBody = "";
+    req.on("data", function(c) { xrayBody += c; });
+    req.on("end", function() {
+      var csvData = "";
+      try {
+        var parsed = JSON.parse(xrayBody);
+        csvData = parsed.csv || "";
+      } catch(e) {
+        csvData = xrayBody;
+      }
+
+      if (!csvData) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "CSV vide" }));
+        return;
+      }
+
+      importXrayCSV(xrayKey, csvData).then(function(result) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      }).catch(function(err) {
+        // Sauvegarder le CSV en local en cas d'échec
+        var fallbackDir = path.join(BASE_DIR, "inbox", "xray-pending");
+        if (!fs.existsSync(fallbackDir)) fs.mkdirSync(fallbackDir, { recursive: true });
+        fs.writeFileSync(path.join(fallbackDir, xrayKey + "-cas-test.csv"), "\uFEFF" + csvData, "utf8");
+
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: err.message, savedLocally: true, path: "inbox/xray-pending/" + xrayKey + "-cas-test.csv" }));
+      });
+    });
+    return;
+  }
+
+  // ── XRAY PENDING CSVs ───────────────────────────────────────────────────
+  if (method === "GET" && url === "/api/xray/pending") {
+    var pendingDir = path.join(BASE_DIR, "inbox", "xray-pending");
+    var pending = [];
+    try {
+      if (fs.existsSync(pendingDir)) {
+        pending = fs.readdirSync(pendingDir)
+          .filter(function(f) { return f.endsWith(".csv"); })
+          .map(function(f) {
+            var key = f.replace("-cas-test.csv", "");
+            return { key: key, file: f, path: "inbox/xray-pending/" + f };
+          });
+      }
+    } catch(e) {}
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(pending));
+    return;
+  }
+
+  // ── COLONNE SOPHIE — tickets QA prêts à tester ─────────────────────────
+  if (method === "GET" && url === "/api/sophie-column") {
+    ensureBacklogDir();
+    var pending = readBacklog(BACKLOG_PENDING);
+    // Filtrer les tickets en phase QA (test, uat) et marquer leur état
+    var qaPhases = ["test", "uat", "pret", "pret-a-tester", "en-test"];
+    var sophieTickets = pending.filter(function(t) {
+      return qaPhases.includes(t.phase) ||
+        ["To Test", "In Test", "To Test UAT", "In validation", "Reopened"].includes(t.jiraStatus);
+    }).map(function(t) {
+      // Déterminer l'état du ticket
+      var state = "incomplete";
+      var enrichedPath = path.join(__dirname, "inbox", "enriched", t.key + ".json");
+      var hasEnriched = fs.existsSync(enrichedPath);
+      var testDir = path.join(__dirname, "inbox", "tests");
+      var hasTest = fs.existsSync(path.join(testDir, t.key + ".json")) ||
+                    fs.existsSync(path.join(testDir, t.key + "-fix.json"));
+
+      if (t.phase === "en-test") state = "running";
+      else if (hasTest || hasEnriched) state = "ready";
+      else if (t.phase === "enrichissement") state = "enriching";
+      else state = "incomplete";
+
+      return {
+        key: t.key,
+        summary: t.summary,
+        type: t.type,
+        jiraStatus: t.jiraStatus,
+        priority: t.priority,
+        phase: t.phase,
+        state: state,
+        hasTest: hasTest,
+        hasEnriched: hasEnriched,
+        jiraUrl: "https://" + CFG.jira.host + "/browse/" + t.key
+      };
+    });
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(sophieTickets));
     return;
   }
 
