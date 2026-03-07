@@ -97,7 +97,7 @@ function extractUrls(text) {
 async function fetchTicketsInQA() {
   var jql = "project = " + CFG.jira.project +
     " AND assignee = currentUser()" +
-    " AND status in (\"In QA\",\"Sophie\",\"TO TEST\",\"To Do\")" +
+    " AND status in (\"To Test\",\"In Test\",\"To Test UAT\",\"In validation\",\"Reopened\")" +
     " ORDER BY priority DESC";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +
     "&fields=summary,description,status,issuetype,priority,fixVersions,labels,issuelinks,subtasks,customfield_10014" +

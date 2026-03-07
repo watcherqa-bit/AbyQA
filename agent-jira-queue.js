@@ -818,7 +818,7 @@ function poll() {
 
   var jql = "project = " + CFG.jira.project +
     " AND assignee = currentUser()" +
-    " AND status in (\"To Do\",\"Sophie\",\"TO TEST\")" +
+    " AND status in (\"To Test\",\"In Test\",\"To Test UAT\",\"In validation\",\"Reopened\")" +
     " AND issuetype in (\"Story\",\"Bug\",\"Test\")" +
     " ORDER BY created ASC";
 
