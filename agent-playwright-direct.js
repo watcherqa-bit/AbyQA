@@ -98,6 +98,87 @@ function jiraRequest(method, apiPath, body) {
   });
 }
 
+/**
+ * Convertit un document ADF (Atlassian Document Format) en texte markdown.
+ * Gère : paragraphs, headings, bulletList, orderedList, codeBlock, table, inlineCard, mentions, links
+ */
+function adfToText(node) {
+  if (!node) return "";
+  if (typeof node === "string") return node;
+  // Texte brut (API v2) — retourner tel quel
+  if (typeof node !== "object") return String(node);
+  // Si c'est déjà du texte (pas un doc ADF)
+  if (!node.type && !node.content) return String(node);
+
+  var text = "";
+  switch (node.type) {
+    case "doc":
+      text = (node.content || []).map(adfToText).join("\n"); break;
+    case "paragraph":
+      text = (node.content || []).map(adfToText).join(""); break;
+    case "heading":
+      var level = node.attrs && node.attrs.level || 2;
+      var prefix = "#".repeat(Math.min(level, 3)) + " ";
+      text = prefix + (node.content || []).map(adfToText).join(""); break;
+    case "text":
+      var t = node.text || "";
+      if (node.marks) {
+        node.marks.forEach(function(m) {
+          if (m.type === "strong") t = "**" + t + "**";
+          if (m.type === "em") t = "*" + t + "*";
+          if (m.type === "link" && m.attrs && m.attrs.href) t = "[" + t + "](" + m.attrs.href + ")";
+          if (m.type === "code") t = "`" + t + "`";
+        });
+      }
+      text = t; break;
+    case "bulletList":
+      text = (node.content || []).map(function(li) {
+        return "- " + (li.content || []).map(adfToText).join("\n  ");
+      }).join("\n"); break;
+    case "orderedList":
+      text = (node.content || []).map(function(li, i) {
+        return (i + 1) + ". " + (li.content || []).map(adfToText).join("\n   ");
+      }).join("\n"); break;
+    case "listItem":
+      text = (node.content || []).map(adfToText).join("\n"); break;
+    case "codeBlock":
+      text = "```\n" + (node.content || []).map(adfToText).join("") + "\n```"; break;
+    case "blockquote":
+      text = (node.content || []).map(function(c) { return "> " + adfToText(c); }).join("\n"); break;
+    case "rule":
+      text = "---"; break;
+    case "table":
+      text = (node.content || []).map(function(row) {
+        return "| " + (row.content || []).map(function(cell) {
+          return (cell.content || []).map(adfToText).join(" ");
+        }).join(" | ") + " |";
+      }).join("\n"); break;
+    case "inlineCard":
+      text = node.attrs && node.attrs.url ? node.attrs.url : ""; break;
+    case "mention":
+      text = "@" + (node.attrs && node.attrs.text || ""); break;
+    case "hardBreak":
+      text = "\n"; break;
+    case "emoji":
+      text = node.attrs && node.attrs.shortName || ""; break;
+    case "mediaSingle": case "media":
+      text = "[media]"; break;
+    default:
+      if (node.content) text = (node.content || []).map(adfToText).join("");
+  }
+  return text;
+}
+
+/**
+ * Normalise une description Jira : convertit ADF objet en markdown, garde le texte tel quel.
+ */
+function normalizeDescription(desc) {
+  if (!desc) return "";
+  if (typeof desc === "string") return desc;
+  if (typeof desc === "object" && desc.type === "doc") return adfToText(desc);
+  return String(desc);
+}
+
 function mimeFromExt(filePath) {
   var ext = path.extname(filePath).toLowerCase();
   if (ext === ".pdf") return "application/pdf";
@@ -129,13 +210,13 @@ function uploadAttachment(issueKey, filePath) {
 
 async function getUrlsFromJiraKey(key) {
   console.log("[->] Lecture du ticket " + key + " dans Jira...");
-  var issue = await jiraRequest("GET", "/rest/api/2/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks");
+  var issue = await jiraRequest("GET", "/rest/api/3/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks");
   if (!issue.key) { return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
-  // Stocker les infos du ticket pour le rapport
+  // Stocker les infos du ticket pour le rapport (ADF → markdown)
   TICKET_INFO = {
     key: issue.key,
     summary: issue.fields.summary || "",
-    description: issue.fields.description || "",
+    description: normalizeDescription(issue.fields.description),
     type: (issue.fields.issuetype && issue.fields.issuetype.name) || ""
   };
   // Si ticket Test, remonter au ticket parent (Bug/US) pour avoir le cas de test complet
@@ -150,17 +231,20 @@ async function getUrlsFromJiraKey(key) {
     }
     if (parentKey) {
       console.log("  [TEST] Ticket Test détecté — chargement du parent " + parentKey + "...");
-      var parent = await jiraRequest("GET", "/rest/api/2/issue/" + parentKey + "?fields=summary,description,issuetype");
+      var parent = await jiraRequest("GET", "/rest/api/3/issue/" + parentKey + "?fields=summary,description,issuetype");
       if (parent && parent.key) {
         TICKET_INFO.parentKey = parent.key;
         TICKET_INFO.parentSummary = parent.fields.summary || "";
-        TICKET_INFO.parentDescription = parent.fields.description || "";
+        TICKET_INFO.parentDescription = normalizeDescription(parent.fields.description);
         TICKET_INFO.parentType = (parent.fields.issuetype && parent.fields.issuetype.name) || "";
       }
     }
   }
-  var desc = (issue.fields.description || "") + " " +
-    ((issue.fields.comment && issue.fields.comment.comments) ? issue.fields.comment.comments.map(function(c){return c.body||"";}).join(" ") : "");
+  var descText = normalizeDescription(issue.fields.description);
+  var commentsText = (issue.fields.comment && issue.fields.comment.comments)
+    ? issue.fields.comment.comments.map(function(c) { return normalizeDescription(c.body); }).join(" ")
+    : "";
+  var desc = descText + " " + commentsText;
   var urlMatches = desc.match(/https?:\/\/[^\s<"'\]]+/g) || [];
   var seen = {};
   var urls = urlMatches
@@ -735,8 +819,10 @@ var PRINT_CSS =
   ".anomalies-section h2{color:#c53030!important;font-size:12px!important}" +
   ".anomaly-card{background:#fff!important;border:1px solid #eee!important;border-left:3px solid #e53e3e!important;border-radius:4px!important;padding:12px!important;margin-bottom:10px!important;page-break-inside:avoid}" +
   ".anomaly-card div,.anomaly-card span,.anomaly-card pre{color:#333!important}" +
-  /* Screenshots — plus grands en PDF */
-  "img{max-width:200px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
+  /* Screenshots — miniatures dans le tableau */
+  "table img{max-width:100px!important;border:1px solid #ccc!important;border-radius:4px!important}" +
+  /* Screenshots plein format dans la section dédiée */
+  "#shots-section img,.shot-full img{max-width:100%!important;border:1px solid #ccc!important;border-radius:4px!important}" +
   /* Page breaks */
   "tr{page-break-inside:avoid}" +
   ".report-footer{color:#999!important;font-size:9px!important;margin-top:20px!important;border-top:1px solid #eee!important;padding-top:8px!important}" +
@@ -887,7 +973,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
   var date=new Date().toLocaleString("fr-FR");
   var pctColor=pct>=80?"#00e87a":pct>=50?"#ff9500":"#ff3b5c";
 
-  var rows = allResults.map(function(r) {
+  var rows = allResults.map(function(r, idx) {
     var stepsDetail = (r.steps||[]).map(function(s) {
       var ico = s.status === "PASS" ? "✅" : "❌";
       var col = s.status === "PASS" ? "#00e87a" : "#ff3b5c";
@@ -895,7 +981,10 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
         (s.label || "—") + (s.detail && s.status !== "PASS" ? " <span style='color:#8892a4;font-size:10px'>— " + (s.detail||"").substring(0,60) + "</span>" : "") + "</div>";
     }).join("");
     if (!stepsDetail) stepsDetail = "<span style='color:#4a5568;font-size:10px'>—</span>";
-    var shotCell = reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"120px", zoomWidth:"600px" });
+    // Miniature cliquable → ancre vers le screenshot en plein format
+    var shotThumb = r.screenshot
+      ? "<a href='#shot-" + idx + "' style='display:block'>" + reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"120px", clickToZoom:false }) + "</a>"
+      : "<span style='color:#4a5568;font-size:10px'>—</span>";
     var urlLink = r.url ? "<a href='" + r.url + "' style='color:#00d4ff;text-decoration:none;font-size:10px' target='_blank'>" + (r.url||"").substring(0,60) + "</a>" : "";
     return "<tr style='border-bottom:1px solid #1e2536'>" +
       "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='margin-top:2px'>"+urlLink+"</div></td>" +
@@ -904,7 +993,7 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
       "<td style='padding:10px 14px;text-align:center;vertical-align:top'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
       "<td style='padding:10px 14px;vertical-align:top'>"+stepsDetail+"</td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.issues&&r.issues[0]?r.issues[0].substring(0,60):"—")+"</td>" +
-      "<td style='padding:6px 10px;text-align:center;vertical-align:top'>"+shotCell+"</td>" +
+      "<td style='padding:6px 10px;text-align:center;vertical-align:top'>"+shotThumb+"</td>" +
       "</tr>";
   }).join("");
 
@@ -1006,6 +1095,29 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
     "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
+    // Section screenshots plein format
+    (function() {
+      var shots = allResults.filter(function(r) { return r.screenshot; });
+      if (shots.length === 0) return "";
+      return "<div style='margin-top:28px;page-break-before:always'>" +
+        "<h2 style='font-size:14px;margin:0 0 16px;color:#8892a4'>📸 CAPTURES D'ÉCRAN</h2>" +
+        shots.map(function(r, idx) {
+          var realIdx = allResults.indexOf(r);
+          var statusBadge = r.status === "PASS"
+            ? "<span style='color:#00e87a;font-weight:700'>✅ PASS</span>"
+            : "<span style='color:#ff3b5c;font-weight:700'>❌ FAIL</span>";
+          var shotFull = reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"100%", clickToZoom:false });
+          return "<div id='shot-" + realIdx + "' style='margin-bottom:24px;padding:16px;background:#111520;border:1px solid #1e2536;border-radius:10px;page-break-inside:avoid'>" +
+            "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:10px'>" +
+            "<div><span style='font-family:monospace;font-size:13px;color:#00d4ff;font-weight:700'>" + (r.label || r.url || "").substring(0, 60) + "</span>" +
+            " <span style='font-size:11px;color:#4a5568;margin-left:8px'>" + (r.device || "") + " / " + (r.browser || "") + "</span></div>" +
+            statusBadge + "</div>" +
+            (r.url ? "<div style='margin-bottom:8px'><a href='" + r.url + "' style='color:#3b82f6;font-size:11px;font-family:monospace' target='_blank'>" + r.url + "</a></div>" : "") +
+            "<div style='text-align:center'>" + shotFull + "</div>" +
+            "</div>";
+        }).join("") +
+        "</div>";
+    })() +
     "<p class='report-footer' style='font-size:11px;color:#4a5568;margin-top:24px;font-family:monospace'>Généré par Aby QA V2 — agent-playwright-direct.js</p>" +
     "</div></body></html>";
 
