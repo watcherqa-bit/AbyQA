@@ -3380,6 +3380,19 @@
               </div>
             </div>
           </div>
+
+          <!-- Bibliothèque de Test -->
+          <div id="val-library-info" style="display:none;margin-top:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">BIBLIOTHÈQUE DE TEST</label>
+            <div style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px" id="val-library-card">
+              <div style="font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8">
+                <span style="color:var(--text3)">📚</span> La Bibliothèque de Test<br>
+                <span style="color:var(--text3);margin-left:16px">└──</span> <span id="val-library-folder" style="color:var(--cyan);font-weight:600"></span>
+                <span id="val-library-status" style="margin-left:8px;font-size:11px"></span>
+              </div>
+              <div id="val-library-detail" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px"></div>
+            </div>
+          </div>
         </div>
 
         <!-- TAB 2 : Cas de test Xray -->
@@ -14658,6 +14671,31 @@ function openValidationModal(sourceKey, opts) {
       execInput.value = "";
     }
 
+    // Remplir section Bibliothèque
+    var libDiv = document.getElementById("val-library-info");
+    libDiv.style.display = "";
+    var libCard = document.getElementById("val-library-card");
+    var libFolder = document.getElementById("val-library-folder");
+    var libStatus = document.getElementById("val-library-status");
+    var libDetail = document.getElementById("val-library-detail");
+    _valState.library = data.library || null;
+    if (data.library) {
+      libFolder.textContent = data.library.name;
+      if (data.library.exists) {
+        libStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+        libDetail.textContent = "Le ticket TEST sera ajoute a ce dossier";
+        libCard.style.borderColor = "var(--green)";
+      } else if (data.library.error) {
+        libStatus.innerHTML = '<span style="color:var(--red)">&#10008; Erreur</span>';
+        libDetail.textContent = data.library.error;
+        libCard.style.borderColor = "var(--red)";
+      } else {
+        libStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
+        libDetail.textContent = "Dossier inexistant — sera cree automatiquement";
+        libCard.style.borderColor = "var(--orange)";
+      }
+    }
+
     // Remplir onglet 2
     renderValXraySteps(_valState.xraySteps);
 
@@ -14795,6 +14833,7 @@ function confirmValidationPush() {
     { id: "xray-push",   label: "Import des cas de test dans Xray" },
     { id: "xray-plan",   label: "Rattachement au Test Plan (Release)" },
     { id: "xray-exec",   label: "Rattachement a la Test Execution (Release)" },
+    { id: "xray-library", label: "Ajout a la Bibliotheque de Test" },
     { id: "complete",    label: "Finalisation" }
   ];
   var progressDiv = document.getElementById("val-progress-steps");
