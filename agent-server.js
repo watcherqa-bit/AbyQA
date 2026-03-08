@@ -3050,7 +3050,7 @@ var server = http.createServer(function(req, res) {
   // GET /api/jira-dryrun — état du dryRun
   // GET /api/xray-search?type=plan|exec|library&release=v1.25.0 — recherche par release
   if (method === "GET" && url.startsWith("/api/xray-search")) {
-    var xsParams = new URLSearchParams(url.split("?")[1] || "");
+    var xsParams = new URLSearchParams((req.url.split("?")[1]) || "");
     var xsType = xsParams.get("type");
     var xsRelease = xsParams.get("release") || "";
     if (!xsRelease) {
