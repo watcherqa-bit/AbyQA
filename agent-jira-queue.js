@@ -150,13 +150,13 @@ function requestValidation(type, sourceKey, title, markdown, extra) {
         resolve({ approved: false, id: id, entry: entry });
         return;
       }
-      // Auto-approve après timeout
+      // Timeout — rejet automatique (sécurité : rien ne part sans validation humaine)
       if (waited >= VALIDATION_TIMEOUT_MS) {
         clearInterval(poll);
-        current[id].status = "approved";
+        current[id].status = "rejected";
         saveValidations(current);
-        log("[GATE] ⏱️ Auto-approuvé (timeout) : " + title);
-        resolve({ approved: true, id: id, auto: true });
+        log("[GATE] ⏱️ Auto-rejeté (timeout sans réponse) : " + title);
+        resolve({ approved: false, id: id, auto: true });
       }
     }, 3000);
   });
@@ -316,6 +316,7 @@ async function backupDescription(key) {
 }
 
 async function updateJiraDescription(key, markdownOrADF) {
+  if (_dryRun) { console.log("[DRY-RUN] updateJiraDescription(" + key + ") skipped"); return; }
   // Backup avant modification
   await backupDescription(key);
 
@@ -558,6 +559,14 @@ async function workflowUS(ticket) {
   pushSSE({ type: "queue-item", key: key, issueType: "US", status: "running", summary: summary });
 
   try {
+    // 0. Anti-doublon — vérifier si un TEST existe déjà pour cette US
+    if (await testAlreadyExists(key)) {
+      log("[US] " + key + " — TEST déjà existant, skip");
+      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "dedup-skipped", summary: summary });
+      return;
+    }
+    _inProgress.add("TEST-" + key);
+
     // 1. Analyse complète par IA
     log("[US] " + key + " — Analyse IA...");
     var analysis = await leadQA.analyzeUS(ticket);
@@ -704,6 +713,8 @@ async function workflowUS(ticket) {
     log("[!] Erreur workflowUS " + key + " : " + e.message);
     pushSSE({ type: "queue-item", key: key, issueType: "US", status: "error", summary: summary,
       detail: e.message });
+  } finally {
+    _inProgress.delete("TEST-" + key);
   }
 }
 

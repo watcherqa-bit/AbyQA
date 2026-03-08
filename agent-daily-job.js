@@ -76,6 +76,7 @@ function pushXraySteps(testKey, steps) {
 }
 
 function linkIssues(sourceKey, testKey) {
+  if (_dryRun) { console.log("[DRY-RUN] linkIssues(" + sourceKey + " → " + testKey + ") skipped"); return Promise.resolve(); }
   return jiraApi("POST", "/rest/api/3/issueLink", {
     type: { name: "Test" },
     inwardIssue: { key: testKey },

@@ -3360,23 +3360,33 @@
               <div id="val-plan-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
                 <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST PLAN</div>
                 <div id="val-plan-status" style="font-size:13px;font-weight:600;margin-bottom:6px"></div>
-                <div style="display:flex;align-items:center;gap:4px">
-                  <span style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
+                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                  <select id="val-plan-mode" onchange="valToggleSearchMode('plan')" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-family:var(--mono)">
+                    <option value="key">Par cle</option>
+                    <option value="release">Par release</option>
+                  </select>
+                  <span id="val-plan-prefix" style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
                   <input type="text" id="val-plan-input" placeholder="2682" style="width:80px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
-                  <button onclick="valLookupTicket('plan')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
+                  <button onclick="valSearch('plan')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
                 </div>
                 <div id="val-plan-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:6px"></div>
+                <div id="val-plan-results" style="display:none;margin-top:6px"></div>
               </div>
               <!-- Test Execution -->
               <div id="val-exec-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
                 <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST EXECUTION</div>
                 <div id="val-exec-status" style="font-size:13px;font-weight:600;margin-bottom:6px"></div>
-                <div style="display:flex;align-items:center;gap:4px">
-                  <span style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
+                <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+                  <select id="val-exec-mode" onchange="valToggleSearchMode('exec')" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-family:var(--mono)">
+                    <option value="key">Par cle</option>
+                    <option value="release">Par release</option>
+                  </select>
+                  <span id="val-exec-prefix" style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
                   <input type="text" id="val-exec-input" placeholder="2683" style="width:80px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
-                  <button onclick="valLookupTicket('exec')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
+                  <button onclick="valSearch('exec')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
                 </div>
                 <div id="val-exec-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:6px"></div>
+                <div id="val-exec-results" style="display:none;margin-top:6px"></div>
               </div>
             </div>
           </div>
@@ -3391,6 +3401,16 @@
                 <span id="val-library-status" style="margin-left:8px;font-size:11px"></span>
               </div>
               <div id="val-library-detail" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px"></div>
+              <div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap">
+                <select id="val-lib-mode" onchange="valToggleSearchMode('library')" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-family:var(--mono)">
+                  <option value="release" selected>Par release</option>
+                  <option value="key">Par cle</option>
+                </select>
+                <span id="val-lib-prefix" style="font-family:var(--mono);font-size:12px;color:var(--text3);display:none">SAFWBST-</span>
+                <input type="text" id="val-lib-input" placeholder="v1.25.0" style="width:90px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
+                <button onclick="valSearch('library')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
+              </div>
+              <div id="val-lib-results" style="display:none;margin-top:6px"></div>
             </div>
           </div>
         </div>
@@ -14766,6 +14786,25 @@ function removeValXrayStep(idx) {
   renderValXraySteps(_valState.xraySteps);
 }
 
+function valCollectKey(type) {
+  var prefix = type === "library" ? "lib" : type;
+  var mode = document.getElementById("val-" + prefix + "-mode").value;
+  var val = (document.getElementById("val-" + prefix + "-input").value || "").trim();
+  if (!val) return null;
+  if (mode === "key") {
+    return /^SAFWBST-/i.test(val) ? val.toUpperCase() : "SAFWBST-" + val;
+  }
+  // En mode release, la clé a été remplie via valSelectResult → mode repassé en "key"
+  return /^SAFWBST-/i.test(val) ? val.toUpperCase() : "SAFWBST-" + val;
+}
+
+function valCollectLibRelease() {
+  var mode = document.getElementById("val-lib-mode").value;
+  var val = (document.getElementById("val-lib-input").value || "").trim();
+  if (mode === "release" && val) return val;
+  return null;
+}
+
 function collectValData() {
   // Collecter les textareas et selects Xray edites
   var fields = document.querySelectorAll("#val-xray-rows textarea, #val-xray-rows select");
@@ -14806,8 +14845,9 @@ function collectValData() {
     xraySteps: _valState.xraySteps,
     config: collectValConfig(),
     release: _valState.release,
-    testPlanKey: (document.getElementById("val-plan-input").value || "").trim() || null,
-    testExecKey: (document.getElementById("val-exec-input").value || "").trim() || null
+    testPlanKey: valCollectKey("plan"),
+    testExecKey: valCollectKey("exec"),
+    libraryRelease: valCollectLibRelease()
   };
 }
 
@@ -14970,42 +15010,172 @@ function collectValConfig() {
   return { browsers: browsers, devices: devices, envs: envs };
 }
 
-function valLookupTicket(type) {
-  var inputId = type === "plan" ? "val-plan-input" : "val-exec-input";
-  var statusId = type === "plan" ? "val-plan-status" : "val-exec-status";
-  var keyId = type === "plan" ? "val-plan-key" : "val-exec-key";
-  var cardId = type === "plan" ? "val-plan-card" : "val-exec-card";
+function valToggleSearchMode(type) {
+  var modeEl = document.getElementById("val-" + (type === "library" ? "lib" : type) + "-mode");
+  var prefixEl = document.getElementById("val-" + (type === "library" ? "lib" : type) + "-prefix");
+  var inputEl = document.getElementById("val-" + (type === "library" ? "lib" : type) + "-input");
+  var mode = modeEl.value;
+  if (mode === "key") {
+    prefixEl.style.display = "";
+    inputEl.placeholder = "2682";
+    inputEl.style.width = "80px";
+  } else {
+    prefixEl.style.display = "none";
+    inputEl.placeholder = "v1.25.0";
+    inputEl.style.width = "90px";
+  }
+  inputEl.value = "";
+  // Masquer résultats précédents
+  var resEl = document.getElementById("val-" + (type === "library" ? "lib" : type) + "-results");
+  if (resEl) resEl.style.display = "none";
+}
+
+function valSearch(type) {
+  var prefix = type === "library" ? "lib" : type;
+  var modeEl = document.getElementById("val-" + prefix + "-mode");
+  var mode = modeEl.value;
+  if (mode === "key") {
+    valSearchByKey(type);
+  } else {
+    valSearchByRelease(type);
+  }
+}
+
+function valSearchByKey(type) {
+  var prefix = type === "library" ? "lib" : type;
+  var inputId = "val-" + prefix + "-input";
+  var statusId = type === "library" ? null : "val-" + type + "-status";
+  var keyId = type === "library" ? null : "val-" + type + "-key";
+  var cardId = type === "library" ? "val-library-card" : "val-" + type + "-card";
 
   var num = document.getElementById(inputId).value.trim();
   if (!num) return;
   var key = /^SAFWBST-/i.test(num) ? num.toUpperCase() : "SAFWBST-" + num;
 
-  document.getElementById(statusId).innerHTML = '<span style="color:var(--text3)">Recherche...</span>';
-  document.getElementById(keyId).textContent = "";
+  if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--text3)">Recherche...</span>';
+  if (keyId) document.getElementById(keyId).textContent = "";
 
   fetch(SERVER + "/api/jira-ticket/" + key)
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (data.error || !data.key) {
-        document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">&#10008; Introuvable</span>';
-        document.getElementById(keyId).textContent = key + " — non trouve";
+        if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">&#10008; Introuvable</span>';
+        if (keyId) document.getElementById(keyId).textContent = key + " — non trouve";
         document.getElementById(cardId).style.borderColor = "var(--red)";
         return;
       }
-      document.getElementById(statusId).innerHTML = '<span style="color:var(--green)">&#10004; ' + data.type + '</span>';
-      document.getElementById(keyId).textContent = data.key + " — " + data.summary;
+      if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--green)">&#10004; ' + data.type + '</span>';
+      if (keyId) document.getElementById(keyId).textContent = data.key + " — " + data.summary;
       document.getElementById(cardId).style.borderColor = "var(--green)";
       document.getElementById(inputId).value = data.key.replace("SAFWBST-", "");
 
       if (type === "plan") {
         _valState.testPlan = { key: data.key, summary: data.summary, exists: true };
-      } else {
+      } else if (type === "exec") {
         _valState.testExec = { key: data.key, summary: data.summary, exists: true };
+      } else if (type === "library") {
+        _valState.library = { exists: true, name: data.summary, manualKey: data.key };
+        document.getElementById("val-library-folder").textContent = data.key + " — " + data.summary;
+        document.getElementById("val-library-status").innerHTML = '<span style="color:var(--green)">&#10004; Selectionne</span>';
       }
     })
     .catch(function() {
-      document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">Erreur</span>';
+      if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">Erreur</span>';
     });
+}
+
+function valSearchByRelease(type) {
+  var prefix = type === "library" ? "lib" : type;
+  var inputId = "val-" + prefix + "-input";
+  var statusId = type === "library" ? null : "val-" + type + "-status";
+  var cardId = type === "library" ? "val-library-card" : "val-" + type + "-card";
+  var resultsId = "val-" + prefix + "-results";
+
+  var release = document.getElementById(inputId).value.trim();
+  if (!release) return;
+
+  if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--text3)">Recherche...</span>';
+
+  var apiType = type === "library" ? "library" : type;
+  fetch(SERVER + "/api/xray-search?type=" + apiType + "&release=" + encodeURIComponent(release))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">&#10008; Erreur</span>';
+        return;
+      }
+
+      if (type === "library") {
+        // Bibliothèque : affiche dossier trouvé ou non
+        if (data.folder && data.folder.exists) {
+          document.getElementById("val-library-folder").textContent = data.folder.name;
+          document.getElementById("val-library-status").innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+          document.getElementById("val-library-detail").textContent = "Dossier ID " + data.folder.id;
+          document.getElementById(cardId).style.borderColor = "var(--green)";
+          _valState.library = { exists: true, folderId: data.folder.id, name: data.folder.name };
+        } else {
+          document.getElementById("val-library-folder").textContent = data.folder.name;
+          document.getElementById("val-library-status").innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
+          document.getElementById("val-library-detail").textContent = "Dossier inexistant — sera cree automatiquement";
+          document.getElementById(cardId).style.borderColor = "var(--orange)";
+          _valState.library = { exists: false, name: data.folder.name };
+        }
+        // Mettre à jour la release globale
+        _valState.release = release;
+        document.getElementById("val-release-version").textContent = release;
+        return;
+      }
+
+      // Plan ou Exec : affiche liste de résultats sélectionnables
+      var results = data.results || [];
+      var resDiv = document.getElementById(resultsId);
+      if (results.length === 0) {
+        if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--orange)">&#9679; Aucun resultat</span>';
+        resDiv.style.display = "none";
+        document.getElementById(cardId).style.borderColor = "var(--orange)";
+        return;
+      }
+
+      if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--cyan)">' + results.length + ' trouve(s)</span>';
+      resDiv.style.display = "";
+      resDiv.innerHTML = results.map(function(r) {
+        return '<div onclick="valSelectResult(\'' + type + '\',\'' + r.key + '\',\'' + r.summary.replace(/'/g, "\\'") + '\')" ' +
+          'style="padding:6px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--text1);transition:border-color .2s" ' +
+          'onmouseover="this.style.borderColor=\'var(--cyan)\'" onmouseout="this.style.borderColor=\'var(--border)\'">' +
+          '<span style="color:var(--cyan);font-weight:600">' + r.key + '</span> ' + r.summary +
+          '<span style="color:var(--text3);margin-left:6px">(' + r.status + ')</span></div>';
+      }).join("");
+    })
+    .catch(function() {
+      if (statusId) document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">Erreur reseau</span>';
+    });
+}
+
+function valSelectResult(type, key, summary) {
+  var prefix = type === "library" ? "lib" : type;
+  var inputEl = document.getElementById("val-" + prefix + "-input");
+  var statusId = "val-" + type + "-status";
+  var keyId = "val-" + type + "-key";
+  var cardId = "val-" + type + "-card";
+  var resultsId = "val-" + prefix + "-results";
+
+  // Remplir le champ et masquer les résultats
+  inputEl.value = key.replace("SAFWBST-", "");
+  document.getElementById(resultsId).style.display = "none";
+  // Repasser en mode clé pour que collectValData lise la clé
+  document.getElementById("val-" + prefix + "-mode").value = "key";
+  valToggleSearchMode(type);
+  inputEl.value = key.replace("SAFWBST-", "");
+
+  document.getElementById(statusId).innerHTML = '<span style="color:var(--green)">&#10004; Selectionne</span>';
+  document.getElementById(keyId).textContent = key + " — " + summary;
+  document.getElementById(cardId).style.borderColor = "var(--green)";
+
+  if (type === "plan") {
+    _valState.testPlan = { key: key, summary: summary, exists: true };
+  } else {
+    _valState.testExec = { key: key, summary: summary, exists: true };
+  }
 }
 
 // Hook SSE pour progression en temps reel

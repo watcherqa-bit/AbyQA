@@ -1411,7 +1411,7 @@ var server = http.createServer(function(req, res) {
         var libraryOk = false;
         var libraryDetail = "";
         try {
-          var libRelease = body.release || release || "v1.25.0";
+          var libRelease = body.libraryRelease || body.release || release || "v1.25.0";
           var folderResult = await findOrCreateRepoFolder(libRelease);
           if (folderResult.ok) {
             var addResult = await addTestToRepoFolder(folderResult.folderId, newKey);
@@ -3050,6 +3050,44 @@ var server = http.createServer(function(req, res) {
   }
 
   // GET /api/jira-dryrun — état du dryRun
+  // GET /api/xray-search?type=plan|exec|library&release=v1.25.0 — recherche par release
+  if (method === "GET" && url.startsWith("/api/xray-search")) {
+    var xsParams = new URLSearchParams(url.split("?")[1] || "");
+    var xsType = xsParams.get("type");
+    var xsRelease = xsParams.get("release") || "";
+    if (!xsRelease) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "release requis" }));
+      return;
+    }
+    (async function() {
+      try {
+        if (xsType === "plan" || xsType === "exec") {
+          var issuetype = xsType === "plan" ? "Test Plan" : "Test Execution";
+          var xsProject = (require("./config").jira.project) || "SAFWBST";
+          var xsJql = 'project = ' + xsProject + ' AND issuetype = "' + issuetype + '" AND summary ~ "' + xsRelease + '" ORDER BY created DESC';
+          var xsRes = await jiraApiCall("GET", "/rest/api/3/search/jql?jql=" + encodeURIComponent(xsJql) + "&fields=summary,status,key&maxResults=5");
+          var xsIssues = (xsRes.data && xsRes.data.issues) || [];
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, type: xsType, release: xsRelease, results: xsIssues.map(function(i) { return { key: i.key, summary: i.fields.summary, status: (i.fields.status || {}).name || "" }; }) }));
+        } else if (xsType === "library") {
+          var folderName = "Release " + xsRelease.replace(/^v/, "");
+          var repoData = await findRepoFolders();
+          var found = repoData ? searchFolder(repoData, folderName) : null;
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, type: "library", release: xsRelease, folder: found ? { id: found.id, name: found.name, exists: true } : { name: folderName, exists: false } }));
+        } else {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "type invalide (plan|exec|library)" }));
+        }
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    })();
+    return;
+  }
+
   if (method === "GET" && url === "/api/jira-dryrun") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ dryRun: jiraQueue.isDryRun() }));
