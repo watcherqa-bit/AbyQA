@@ -14901,6 +14901,11 @@ function updateValProgressStep(stepId, status, detail) {
     icon.innerHTML = "&#10004;";
     icon.style.color = "var(--green)";
     el.style.borderLeftColor = "var(--green)";
+  } else if (status === "skipped") {
+    icon.innerHTML = "⏭";
+    icon.style.color = "var(--text2)";
+    el.style.borderLeftColor = "var(--text2)";
+    el.style.opacity = "0.6";
   } else if (status === "error") {
     icon.innerHTML = "&#10008;";
     icon.style.color = "var(--red)";

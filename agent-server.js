@@ -1060,7 +1060,7 @@ var server = http.createServer(function(req, res) {
             try {
               // TEST teste une Story/Bug → type "Tests"
               // BUG/US liés → type "Relates"
-              var linkTypeName = body.linkType || ((body.ticketType === "TEST") ? "Tests" : "Relates");
+              var linkTypeName = body.linkType || ((body.ticketType === "TEST") ? "Test" : "Relates");
               var linkPayload  = JSON.stringify({
                 type:         { name: linkTypeName },
                 inwardIssue:  { key: newKey },
@@ -1257,7 +1257,7 @@ var server = http.createServer(function(req, res) {
         if (body.ticket.parentKey) {
           try {
             var linkPayload = JSON.stringify({
-              type: { name: "Tests" },
+              type: { name: "Test" },
               inwardIssue: { key: newKey },
               outwardIssue: { key: body.ticket.parentKey }
             });
@@ -1302,7 +1302,8 @@ var server = http.createServer(function(req, res) {
                 xRes.on("end", function() {
                   xrayOk = xRes.statusCode < 300;
                   if (!xrayOk) {
-                    xrayError = "HTTP " + xRes.statusCode + " : " + d.substring(0, 300);
+                    var isXrayMissing = xRes.statusCode === 404 && d.indexOf("<!DOCTYPE") !== -1;
+                    xrayError = isXrayMissing ? "Plugin Xray non disponible" : "HTTP " + xRes.statusCode + " : " + d.substring(0, 300);
                     console.error("[validation/push] Xray steps " + newKey + " échoué — " + xrayError);
                   } else {
                     console.log("[validation/push] Xray steps OK : " + body.xraySteps.length + " steps sur " + newKey);
@@ -1315,17 +1316,18 @@ var server = http.createServer(function(req, res) {
             });
           } catch(e) { if (!xrayError) xrayError = "Exception: " + e.message; console.error("[validation/push] Xray exception:", e.message); }
         }
-        emitProgress("xray-push", xrayOk ? "done" : "error", xrayOk ? body.xraySteps.length + " steps" : "Push Xray échoué" + (xrayError ? " — " + xrayError : ""));
+        var xraySkipped = xrayError.indexOf("non disponible") !== -1;
+        emitProgress("xray-push", xrayOk ? "done" : (xraySkipped ? "skipped" : "error"), xrayOk ? body.xraySteps.length + " steps" : (xraySkipped ? "Plugin Xray absent — steps ignorés" : "Push Xray échoué" + (xrayError ? " — " + xrayError : "")));
 
         // STEP 4 — Test Plan (detect or create) + attach
         emitProgress("xray-plan", "running");
         var release = body.release || "v1.25.0";
         var manualPlanKey = body.testPlanKey || null;
         var manualExecKey = body.testExecKey || null;
-        var planExec;
-        if (manualPlanKey || manualExecKey) {
-          // Utiliser les clés manuelles fournies par l'utilisateur
-          planExec = { testPlan: null, testExec: null };
+        var planExec = { testPlan: null, testExec: null };
+        if (xraySkipped) {
+          emitProgress("xray-plan", "skipped", "Plugin Xray absent");
+        } else if (manualPlanKey || manualExecKey) {
           if (manualPlanKey) {
             try {
               await jiraApiCall("POST", "/rest/raven/1.0/api/testplan/" + manualPlanKey + "/test", [{ key: newKey }]);
@@ -1341,15 +1343,21 @@ var server = http.createServer(function(req, res) {
         } else {
           planExec = await ensureTestPlanExec(release, newKey);
         }
-        var planOk = !!(planExec.testPlan && planExec.testPlan.key);
-        emitProgress("xray-plan", planOk ? "done" : "error",
-          planOk ? (planExec.testPlan.created ? "Cree : " : "Existant : ") + planExec.testPlan.key : "Test Plan echoue");
+        if (!xraySkipped) {
+          var planOk = !!(planExec.testPlan && planExec.testPlan.key);
+          emitProgress("xray-plan", planOk ? "done" : "error",
+            planOk ? (planExec.testPlan.created ? "Cree : " : "Existant : ") + planExec.testPlan.key : "Test Plan echoue");
+        }
 
         // STEP 5 — Test Execution (already handled by ensureTestPlanExec)
-        emitProgress("xray-exec", "running");
-        var execOk = !!(planExec.testExec && planExec.testExec.key);
-        emitProgress("xray-exec", execOk ? "done" : "error",
-          execOk ? (planExec.testExec.created ? "Cree : " : "Existant : ") + planExec.testExec.key : "Test Execution echouee");
+        if (xraySkipped) {
+          emitProgress("xray-exec", "skipped", "Plugin Xray absent");
+        } else {
+          emitProgress("xray-exec", "running");
+          var execOk = !!(planExec.testExec && planExec.testExec.key);
+          emitProgress("xray-exec", execOk ? "done" : "error",
+            execOk ? (planExec.testExec.created ? "Cree : " : "Existant : ") + planExec.testExec.key : "Test Execution echouee");
+        }
 
         // STEP 6 — Bibliothèque de Test (informatif — ajout manuel dans Xray UI)
         var libFolderName = "Release " + (body.release || release || "v1.25.0").replace(/^v/, "");
