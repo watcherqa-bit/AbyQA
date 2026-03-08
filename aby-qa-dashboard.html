@@ -3300,6 +3300,7 @@
         <div style="display:flex;border-bottom:1px solid var(--border)">
           <button id="val-tab-ticket" onclick="switchValTab(0)" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid var(--cyan);color:var(--cyan);font-weight:700;font-size:13px;cursor:pointer">Ticket TEST</button>
           <button id="val-tab-xray" onclick="switchValTab(1)" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);font-weight:600;font-size:13px;cursor:pointer">Cas de test Xray</button>
+          <button id="val-tab-config" onclick="switchValTab(2)" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);font-weight:600;font-size:13px;cursor:pointer">Config Test</button>
         </div>
 
         <!-- TAB 1 : Ticket TEST -->
@@ -3362,6 +3363,61 @@
           </div>
           <div id="val-xray-rows" style="display:flex;flex-direction:column;gap:8px"></div>
           <button onclick="addValXrayStep()" style="margin-top:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:10px;width:100%;color:var(--text2);cursor:pointer;font-size:13px">+ Ajouter un cas de test</button>
+        </div>
+
+        <!-- TAB 3 : Config Test -->
+        <div id="val-pane-config" style="display:none;padding:20px 24px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+
+            <!-- Navigateurs -->
+            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
+              <div style="font-size:12px;font-weight:700;color:var(--cyan);text-transform:uppercase;margin-bottom:12px">Navigateurs</div>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-br-chromium" checked style="accent-color:var(--cyan)"> Chromium
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-br-firefox" style="accent-color:var(--orange)"> Firefox
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-br-webkit" style="accent-color:var(--purple,#8b5cf6)"> WebKit (Safari)
+              </label>
+            </div>
+
+            <!-- Devices -->
+            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
+              <div style="font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;margin-bottom:12px">Devices</div>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-dev-desktop" checked style="accent-color:var(--cyan)"> Desktop <span style="font-size:10px;color:var(--text3)">1920x1080</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-dev-tablet" style="accent-color:var(--orange)"> Tablet <span style="font-size:10px;color:var(--text3)">768x1024</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-dev-iphone" style="accent-color:var(--green)"> iPhone <span style="font-size:10px;color:var(--text3)">375x812</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-dev-samsung" style="accent-color:var(--green)"> Samsung <span style="font-size:10px;color:var(--text3)">360x740</span>
+              </label>
+            </div>
+
+            <!-- Environnements -->
+            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
+              <div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:12px">Environnements</div>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-env-sophie" checked style="accent-color:var(--cyan)"> Sophie <span style="font-size:10px;color:var(--text3)">INT</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-env-paulo" style="accent-color:var(--orange)"> Paulo <span style="font-size:10px;color:var(--text3)">INT2</span>
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
+                <input type="checkbox" id="val-env-prod" style="accent-color:var(--red)"> Prod
+              </label>
+            </div>
+
+          </div>
+
+          <!-- Resume config -->
+          <div id="val-config-summary" style="margin-top:16px;padding:12px 16px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)"></div>
         </div>
 
         <!-- PROGRESS OVERLAY -->
@@ -14596,9 +14652,11 @@ function openValidationModal(sourceKey, opts) {
   document.getElementById("val-status").textContent = "Chargement...";
   document.getElementById("val-pane-ticket").style.display = "";
   document.getElementById("val-pane-xray").style.display = "none";
+  document.getElementById("val-pane-config").style.display = "none";
   document.getElementById("val-progress").style.display = "none";
   document.getElementById("val-warnings").style.display = "none";
   switchValTab(0);
+  loadValConfig();
 
   // Fetch preview
   fetch(SERVER + "/api/validation/preview", {
@@ -14650,20 +14708,18 @@ function closeValidationModal() {
 }
 
 function switchValTab(idx) {
-  var tabTicket = document.getElementById("val-tab-ticket");
-  var tabXray   = document.getElementById("val-tab-xray");
-  var paneTicket = document.getElementById("val-pane-ticket");
-  var paneXray   = document.getElementById("val-pane-xray");
+  var tabs  = [document.getElementById("val-tab-ticket"), document.getElementById("val-tab-xray"), document.getElementById("val-tab-config")];
+  var panes = [document.getElementById("val-pane-ticket"), document.getElementById("val-pane-xray"), document.getElementById("val-pane-config")];
+  var colors = ["var(--cyan)", "var(--orange)", "var(--green)"];
 
-  if (idx === 0) {
-    tabTicket.style.borderBottomColor = "var(--cyan)";  tabTicket.style.color = "var(--cyan)";
-    tabXray.style.borderBottomColor   = "transparent";  tabXray.style.color   = "var(--text2)";
-    paneTicket.style.display = "";  paneXray.style.display = "none";
-  } else {
-    tabTicket.style.borderBottomColor = "transparent";  tabTicket.style.color = "var(--text2)";
-    tabXray.style.borderBottomColor   = "var(--orange)"; tabXray.style.color  = "var(--orange)";
-    paneTicket.style.display = "none";  paneXray.style.display = "";
-  }
+  tabs.forEach(function(tab, i) {
+    tab.style.borderBottomColor = i === idx ? colors[i] : "transparent";
+    tab.style.color = i === idx ? colors[i] : "var(--text2)";
+  });
+  panes.forEach(function(pane, i) {
+    pane.style.display = i === idx ? "" : "none";
+  });
+  if (idx === 2) updateValConfigSummary();
 }
 
 function renderValXraySteps(steps) {
@@ -14739,7 +14795,8 @@ function collectValData() {
       testType:       testType,
       parentKey:      _valState.sourceKey
     },
-    xraySteps: _valState.xraySteps
+    xraySteps: _valState.xraySteps,
+    config: collectValConfig()
   };
 }
 
@@ -14752,6 +14809,7 @@ function confirmValidationPush() {
   // Masquer les onglets, afficher la progression
   document.getElementById("val-pane-ticket").style.display = "none";
   document.getElementById("val-pane-xray").style.display = "none";
+  document.getElementById("val-pane-config").style.display = "none";
   document.getElementById("val-progress").style.display = "";
   document.getElementById("val-btn-push").disabled = true;
   document.getElementById("val-btn-push").textContent = "Envoi en cours...";
@@ -14822,6 +14880,75 @@ function updateValProgressStep(stepId, status, detail) {
     el.style.borderLeftColor = "var(--red)";
   }
   if (detail) det.textContent = detail;
+}
+
+function loadValConfig() {
+  fetch(SERVER + "/api/settings")
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      // Navigateurs
+      ["chromium","firefox","webkit"].forEach(function(b) {
+        var el = document.getElementById("val-br-" + b);
+        if (el) el.checked = !!(s.browsers && s.browsers.includes(b));
+      });
+      // Devices
+      var devMap = {"desktop-hd":"desktop","tablet-ipad":"tablet","mobile-iphone":"iphone","mobile-samsung":"samsung"};
+      var activeDevNames = (s.devices || []).map(function(d) { return d.name; });
+      Object.keys(devMap).forEach(function(dName) {
+        var el = document.getElementById("val-dev-" + devMap[dName]);
+        if (el) el.checked = activeDevNames.includes(dName);
+      });
+      // Envs
+      ["sophie","paulo","prod"].forEach(function(e) {
+        var el = document.getElementById("val-env-" + e);
+        if (el) el.checked = !!(s.envs && s.envs.includes(e));
+      });
+      updateValConfigSummary();
+    })
+    .catch(function() {});
+}
+
+function updateValConfigSummary() {
+  var browsers = [];
+  ["chromium","firefox","webkit"].forEach(function(b) {
+    var el = document.getElementById("val-br-" + b);
+    if (el && el.checked) browsers.push(b);
+  });
+  var devices = [];
+  [["desktop","Desktop 1920x1080"],["tablet","Tablet 768x1024"],["iphone","iPhone 375x812"],["samsung","Samsung 360x740"]].forEach(function(d) {
+    var el = document.getElementById("val-dev-" + d[0]);
+    if (el && el.checked) devices.push(d[1]);
+  });
+  var envs = [];
+  ["sophie","paulo","prod"].forEach(function(e) {
+    var el = document.getElementById("val-env-" + e);
+    if (el && el.checked) envs.push(e);
+  });
+  var el = document.getElementById("val-config-summary");
+  if (el) el.innerHTML =
+    "<strong>Navigateurs :</strong> " + (browsers.join(", ") || "aucun") +
+    " &nbsp;|&nbsp; <strong>Devices :</strong> " + (devices.join(", ") || "aucun") +
+    " &nbsp;|&nbsp; <strong>Envs :</strong> " + (envs.join(", ") || "aucun");
+}
+
+function collectValConfig() {
+  var browsers = [];
+  ["chromium","firefox","webkit"].forEach(function(b) {
+    var el = document.getElementById("val-br-" + b);
+    if (el && el.checked) browsers.push(b);
+  });
+  var devDefs = {desktop:{name:"desktop-hd",w:1920,h:1080},tablet:{name:"tablet-ipad",w:768,h:1024},iphone:{name:"mobile-iphone",w:375,h:812},samsung:{name:"mobile-samsung",w:360,h:740}};
+  var devices = [];
+  ["desktop","tablet","iphone","samsung"].forEach(function(d) {
+    var el = document.getElementById("val-dev-" + d);
+    if (el && el.checked) devices.push(devDefs[d]);
+  });
+  var envs = [];
+  ["sophie","paulo","prod"].forEach(function(e) {
+    var el = document.getElementById("val-env-" + e);
+    if (el && el.checked) envs.push(e);
+  });
+  return { browsers: browsers, devices: devices, envs: envs };
 }
 
 // Hook SSE pour progression en temps reel
