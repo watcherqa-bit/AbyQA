@@ -321,7 +321,7 @@ function buildAgentArgs(agentName, params) {
   var env = params.env || "sophie";
   switch(agentName) {
     case "playwright":
-      return ["agent-playwright.js", params.demand || "Tester la page d'accueil", env];
+      return ["agent-playwright-direct.js", "--mode=ui", "--source=text", "--text=" + (params.demand || "Tester la page d'accueil"), "--envs=" + env];
     case "css-audit":
       return ["agent-css-audit.js", env];
     case "jira-reader":
@@ -1301,7 +1301,7 @@ var server = http.createServer(function(req, res) {
             runAgent(agent, "node", cssArgs, clientId);
             break;
           case "playwright":
-            runAgent(agent, "node", ["agent-playwright.js", params.demand || "Tester la page d'accueil", params.env || "sophie"], clientId);
+            runAgent(agent, "node", ["agent-playwright-direct.js", "--mode=ui", "--source=text", "--text=" + (params.demand || "Tester la page d'accueil"), "--envs=" + (params.env || "sophie")], clientId);
             break;
           case "xray-pipeline":
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
@@ -1320,9 +1320,9 @@ var server = http.createServer(function(req, res) {
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
             var localXmlPW = path.join(BASE_DIR, "uploads", "ticket.xml");
             try { fs.copyFileSync(params.xmlPath, localXmlPW); } catch(e) {}
-            var pwArgs = ["agent-playwright-multi.js", "uploads/ticket.xml"];
+            var pwArgs = ["agent-playwright-direct.js", "--mode=ui", "--source=xml", "--xml=uploads/ticket.xml"];
             if (params.envs)         pwArgs.push("--envs=" + params.envs);
-            if (params.devices)      pwArgs.push("--devices=" + params.devices);
+            if (params.devices)      pwArgs.push("--devices-file=" + params.devices);
             if (params.browsers)     pwArgs.push("--browsers=" + params.browsers);
             if (params.instructions) pwArgs.push("--instructions=" + params.instructions);
             runAgent(agent, "node", pwArgs, clientId);
@@ -1348,14 +1348,9 @@ var server = http.createServer(function(req, res) {
             runAgent(agent, "node", ["agent-drupal-audit.js", params.env || "sophie"], clientId);
             break;
           case "generate-ticket":
-            var tt = params.ticketType || "us";
-            var te = params.epic || "API Drupal";
-            var td = params.desc || "";
-            var tp = tt === "us"   ? "GÃ©nÃ¨re une US pour " + td + " dans l'epic '" + te + "'" :
-                     tt === "test" ? "GÃ©nÃ¨re un ticket de test pour " + td + (params.us ? " de "+params.us : "") + " dans l'epic '" + te + "'" :
-                     tt === "bug"  ? "GÃ©nÃ¨re un ticket bug pour " + td + " dans l'epic '" + te + "'" :
-                                     "GÃ©nÃ¨re un CSV avec " + (params.nb||"5") + " cas de test pour " + td;
-            runAgent(agent, "node", ["agent.js", tp], clientId);
+            // Legacy — redirige vers le daily-job pipeline
+            sendSSE(clientId, { type: "log", agent: agent, line: "Utilisez le pipeline automatique (daily-job) ou le chat IA pour générer des tickets" });
+            sendSSE(clientId, { type: "done", agent: agent, code: 0 });
             break;
           case "update-ticket":
             var uKey     = params.key     || "";
