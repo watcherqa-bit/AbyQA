@@ -555,13 +555,13 @@ async function workflowUS(ticket) {
     pushSSE({ type: "log", agent: "lead-qa",
       line: "[" + key + "] Stratégie: " + strategy.decision + " (" + strategy.confidence + "%) — " + strategy.reasoning });
 
-    // 3. Générer le ticket TEST
+    // 3. Générer le ticket TEST (vue interne)
     log("[US] " + key + " — Génération ticket TEST...");
-    var testResult = await leadQA.generateTestTicket(
-      { key: key, epic: analysis.epic, summary: summary, description: desc },
-      strategy.decision,
-      summary
-    );
+    var sourceTicket = { key: key, epic: analysis.epic, summary: summary, description: desc };
+    var testResult = await leadQA.generateTestTicket(sourceTicket, strategy.decision, summary);
+
+    // 3b. Sauvegarder la vue interne (contenu complet, reste dans AbyQA)
+    leadQA.buildInternalView(testResult, sourceTicket);
     var testFilepath = leadQA.saveMarkdown(testResult.markdown, "TEST", key);
 
     // 4. Générer les cas de test CSV
@@ -587,20 +587,24 @@ async function workflowUS(ticket) {
       return;
     }
 
-    // 6. Créer le ticket TEST dans Jira
-    var jiraTestResult = await createJiraIssue({
-      project:   { key: CFG.jira.project },
-      summary:   testResult.title,
-      issuetype: { name: "Test" },
-      description: {
-        type: "doc", version: 1,
-        content: [{ type: "paragraph", content: [{ type: "text", text: testResult.markdown }] }]
-      },
-      labels: ["qa-auto", "auto-generated"],
-      priority: { name: analysis.priority === "Critique" ? "Highest" :
-                         analysis.priority === "Haute"    ? "High"    :
-                         analysis.priority === "Basse"    ? "Low"     : "Medium" }
+    // 6. Créer le ticket TEST dans Jira (vue externe — payload minimal)
+    var jiraPriority = analysis.priority === "Critique" ? "Highest" :
+                       analysis.priority === "Haute"    ? "High"    :
+                       analysis.priority === "Basse"    ? "Low"     : "Medium";
+    var extPayload = leadQA.buildExternalJiraPayload(testResult, sourceTicket, {
+      version: version, priority: jiraPriority
     });
+
+    // Validation anti-contenu interdit
+    var validation = leadQA.validateJiraPayload(extPayload.fields);
+    if (!validation.valid) {
+      log("[US] " + key + " — BLOQUÉ : contenu interdit dans le payload Jira : " + validation.violations.join(", "));
+      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "blocked", summary: summary,
+        detail: "Contenu interdit : " + validation.violations.join(", ") });
+      return;
+    }
+
+    var jiraTestResult = await createJiraIssue(extPayload.fields);
     var testKey = (jiraTestResult.data && jiraTestResult.data.key) ? jiraTestResult.data.key : "";
     if (testKey) log("[US] " + key + " — Ticket TEST créé : " + testKey);
 

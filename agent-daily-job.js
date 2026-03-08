@@ -309,20 +309,20 @@ async function pipelineUS(ticket, report) {
           generatedFiles.push("TEST-" + key + ".md");
           report.testsCascade++;
 
-          // 4a. Créer le ticket TEST dans Jira avec label test-type
-          var usTestType = deduceTestType(summary + " " + desc);
-          var testTitle = leadQA.safeTruncate("TEST - " + summary + " - Validation " + (strategy.decision || "e2e"), 250);
-          log("[US] " + key + " — Création ticket TEST dans Jira [" + usTestType + "]...");
-          var testIssue = await createJiraIssue({
-            project: { key: CFG.jira.project },
-            summary: testTitle,
-            issuetype: { name: "Test" },
-            description: {
-              type: "doc", version: 1,
-              content: [{ type: "paragraph", content: [{ type: "text", text: testAndCSV.markdown.substring(0, 3000) }] }]
-            },
-            labels: ["qa-auto", "auto-generated", "test-" + usTestType]
+          // 4a. Vue interne (reste dans AbyQA)
+          var sourceTicketUS = { key: key, epic: result.epic || "", summary: summary, description: desc };
+          leadQA.buildInternalView(testAndCSV, sourceTicketUS);
+
+          // 4b. Créer le ticket TEST dans Jira (vue externe — payload minimal)
+          log("[US] " + key + " — Création ticket TEST dans Jira...");
+          var extPayloadUS = leadQA.buildExternalJiraPayload(testAndCSV, sourceTicketUS, {
+            version: version || null
           });
+          var valUS = leadQA.validateJiraPayload(extPayloadUS.fields);
+          if (!valUS.valid) {
+            log("[US] " + key + " — BLOQUÉ : contenu interdit : " + valUS.violations.join(", "));
+          }
+          var testIssue = valUS.valid ? await createJiraIssue(extPayloadUS.fields) : { data: {} };
           testKey = (testIssue.data && testIssue.data.key) || "";
           if (testKey) {
             log("[US] " + key + " — Ticket TEST créé : " + testKey + " [" + usTestType + "]");
@@ -432,19 +432,19 @@ async function pipelineBug(ticket, report) {
           generatedFiles.push("TEST-" + key + "-nonreg.md");
           report.testsCascade++;
 
-          // Créer le ticket TEST dans Jira avec label test-type
-          var bugTestTitle = leadQA.safeTruncate("TEST - " + summary + " - Non-regression", 250);
-          var testLabels = ["qa-auto", "auto-generated", "test-" + testType];
-          var bugTestIssue = await createJiraIssue({
-            project: { key: CFG.jira.project },
-            summary: bugTestTitle,
-            issuetype: { name: "Test" },
-            description: {
-              type: "doc", version: 1,
-              content: [{ type: "paragraph", content: [{ type: "text", text: testResult.markdown.substring(0, 3000) }] }]
-            },
-            labels: testLabels
+          // Vue interne (reste dans AbyQA)
+          var sourceTicketBug = { key: key, summary: summary, description: desc };
+          leadQA.buildInternalView(testResult, sourceTicketBug);
+
+          // Créer le ticket TEST dans Jira (vue externe — payload minimal)
+          var extPayloadBug = leadQA.buildExternalJiraPayload(testResult, sourceTicketBug, {
+            version: version || null
           });
+          var valBug = leadQA.validateJiraPayload(extPayloadBug.fields);
+          if (!valBug.valid) {
+            log("[BUG] " + key + " — BLOQUÉ : contenu interdit : " + valBug.violations.join(", "));
+          }
+          var bugTestIssue = valBug.valid ? await createJiraIssue(extPayloadBug.fields) : { data: {} };
           testKey = (bugTestIssue.data && bugTestIssue.data.key) || "";
           if (testKey) {
             log("[BUG] " + key + " — Ticket TEST créé : " + testKey + " [" + testType + "]");

@@ -532,6 +532,126 @@ async function generateTestTicket(us, testType, fonction) {
   return { title: title, usKey: usKey, epic: epic, testType: testType, markdown: markdown };
 }
 
+// ── 5b. VUE INTERNE — contenu complet pour AbyQA (jamais envoyé à Jira) ──────
+function buildInternalView(testResult, sourceTicket) {
+  var source = sourceTicket || {};
+  var sourceKey  = source.key || "?";
+  var sourceSummary = source.summary || (source.fields && source.fields.summary) || "";
+  var sourceDesc = source.description || extractText((source.fields && source.fields.description) || "");
+
+  var view = {
+    title:      testResult.title,
+    sourceKey:  sourceKey,
+    sourceSummary: sourceSummary,
+    epic:       testResult.epic || extractEpic(source),
+    testType:   testResult.testType || "Mix",
+    methodology: testResult.markdown,     // Contenu complet généré par l'IA
+    sourceDescription: sourceDesc,
+    createdAt:  new Date().toISOString()
+  };
+
+  // Sauvegarder dans inbox/internal/
+  var internalDir = path.join(CFG.paths.base || __dirname, "inbox", "internal");
+  if (!fs.existsSync(internalDir)) fs.mkdirSync(internalDir, { recursive: true });
+  var filename = sourceKey + "-TEST-" + Date.now() + ".json";
+  fs.writeFileSync(path.join(internalDir, filename), JSON.stringify(view, null, 2), "utf8");
+  console.log("[LeadQA] Vue interne sauvegardée : " + filename);
+
+  return view;
+}
+
+// ── 5c. VUE EXTERNE — payload minimal pour Jira (ADF strict) ────────────────
+function buildExternalJiraPayload(testResult, sourceTicket, opts) {
+  opts = opts || {};
+  var source = sourceTicket || {};
+  var sourceKey  = source.key || "?";
+  var sourceSummary = source.summary || (source.fields && source.fields.summary) || "";
+  var epic       = testResult.epic || extractEpic(source);
+
+  // Titre strict : TEST - [Epic] - Fonction testée (200 chars max, coupure au mot)
+  var title = safeTruncate("TEST - [" + epic + "] - " + (testResult.testType === "manual" ? "Validation " : "") + sourceSummary, 200);
+
+  // Type de test normalisé (3 valeurs uniquement)
+  var rawType = (testResult.testType || "mix").toLowerCase();
+  var testTypeLabel;
+  if (rawType === "manual" || rawType === "manuel") testTypeLabel = "Manuel";
+  else if (rawType === "e2e" || rawType === "auto" || rawType === "api" || rawType === "css") testTypeLabel = "Auto";
+  else testTypeLabel = "Mix";
+
+  // Objectif fonctionnel (2-3 lignes max, basé sur le ticket source)
+  var objectif = "Vérifier que la fonction « " + sourceSummary + " » fonctionne correctement selon les critères d'acceptation de " + sourceKey + ".";
+
+  // Description ADF minimale et propre
+  var adfContent = [];
+
+  // Objectif
+  adfContent.push({
+    type: "paragraph",
+    content: [{ type: "text", text: objectif }]
+  });
+
+  // Séparateur
+  adfContent.push({ type: "rule" });
+
+  // Type de test
+  adfContent.push({
+    type: "paragraph",
+    content: [
+      { type: "text", text: "Type de test : ", marks: [{ type: "strong" }] },
+      { type: "text", text: testTypeLabel }
+    ]
+  });
+
+  var description = { type: "doc", version: 1, content: adfContent };
+
+  // Labels : version courante uniquement
+  var labels = [];
+  if (opts.version) labels.push(opts.version);
+
+  // Payload Jira complet
+  var fields = {
+    project:   { key: CFG.jira.project },
+    summary:   title,
+    issuetype: { name: "Test" },
+    description: description,
+    labels: labels
+  };
+
+  // Priority
+  if (opts.priority) {
+    fields.priority = { name: opts.priority };
+  }
+
+  return { fields: fields, title: title, testType: testTypeLabel };
+}
+
+// ── 5d. VALIDATION — scanner le payload avant envoi Jira ─────────────────────
+var FORBIDDEN_PATTERNS = [
+  "[À préciser]", "[URL à préciser]", "[à préciser]",
+  "[À compléter]", "[à compléter]",
+  "## ", "### ",
+  "RÉSUMÉ", "INFORMATIONS JIRA",
+  "CAS DE TEST", "PROCÉDURE", "EN CAS D'ÉCHEC",
+  "AbyQA", "Aby QA", "aby-qa",
+  "Claude", "QA Automation", "Lead QA",
+  "📋", "📎", "📝", "🧪", "🐛", "🤖"
+];
+
+function validateJiraPayload(payload) {
+  var payloadStr = JSON.stringify(payload);
+  var violations = [];
+  FORBIDDEN_PATTERNS.forEach(function(pattern) {
+    if (payloadStr.includes(pattern)) {
+      violations.push(pattern);
+    }
+  });
+  if (violations.length > 0) {
+    console.error("[BLOQUÉ] Contenu interdit détecté dans le payload Jira : " + violations.join(", "));
+    return { valid: false, violations: violations };
+  }
+  return { valid: true, violations: [] };
+}
+
 // ── 6. GÉNÉRER DES CAS DE TEST CSV ───────────────────────────────────────────
 async function generateTestCasesCSV(us, count) {
   var usKey   = us.key || "SAFWBST-?";
@@ -1156,6 +1276,10 @@ module.exports = {
   generateTestTicket,
   generateTestCasesCSV,
   generateBugTicket,
+  // Vue interne/externe + validation
+  buildInternalView,
+  buildExternalJiraPayload,
+  validateJiraPayload,
   generateReport,
   handleDirectRequest,
   // Vision & extraction
