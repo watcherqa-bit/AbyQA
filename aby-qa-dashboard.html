@@ -4243,6 +4243,7 @@ function handleSSE(data) {
   } else if (data.type === "agent-error-diagnosis") {
     showErrorDiagnosis(data);
   } else if (data.type === "playwright-report-ready") {
+    if (valHandlePlaywrightReport(data)) { loadPlaywrightReports(); return; }
     loadPlaywrightReports();
     var rRes = data.result || {};
     var rMsg = rRes.fail > 0 ? "❌ " + rRes.fail + " FAIL — " + (rRes.pass||0) + "/" + (rRes.total||0) + " pass" : "✅ 100% PASS — " + (rRes.total||0) + " test(s)";
@@ -4289,7 +4290,7 @@ function handleSSE(data) {
   } else if (data.type === "poll-qa-ready") {
     handleQAReady(data);
   } else if (data.type === "playwright-progress") {
-    handlePlaywrightProgress(data);
+    if (!valHandlePlaywrightProgress(data)) handlePlaywrightProgress(data);
   } else if (data.type === "cycle1-progress") {
     handlePlaywrightProgress({ step: data.step, message: data.message, pct: data.step === "analyze" ? 2 : 5, key: data.key });
   } else if (data.type === "cycle1-ticket-done") {
@@ -14588,13 +14589,20 @@ var _valState = {
   pushing: false,
   release: null,
   testPlan: null,
-  testExec: null
+  testExec: null,
+  testKey: null,
+  pwLaunched: false
 };
+var _valPwActive = false; // true quand Playwright tourne depuis la modal
 
 function openValidationModal(sourceKey, opts) {
   opts = opts || {};
   _valState.sourceKey = sourceKey;
   _valState.pushing = false;
+  _valState.testKey = null;
+  _valState.pwLaunched = false;
+  _valPwActive = false;
+  if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
 
   var modal = document.getElementById("validation-modal");
   modal.style.display = "";
@@ -14702,6 +14710,8 @@ function openValidationModal(sourceKey, opts) {
 function closeValidationModal() {
   document.getElementById("validation-modal").style.display = "none";
   _valState.pushing = false;
+  _valPwActive = false;
+  if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
 }
 
 function switchValTab(idx) {
@@ -14851,12 +14861,15 @@ function confirmValidationPush() {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.ok) {
+      _valState.testKey = data.key;
       var extra = "";
       if (data.testPlanKey) extra += " | Plan: " + data.testPlanKey;
       if (data.testExecKey) extra += " | Exec: " + data.testExecKey;
       document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket cree : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a>' + extra + '</span>';
       document.getElementById("val-btn-push").textContent = "Termine";
       showToast("Ticket " + data.key + " cree", "ok");
+      // Afficher le bloc auto-launch Playwright
+      valShowPlaywrightCountdown(data.key, data.url);
     } else {
       document.getElementById("val-status").innerHTML = '<span style="color:var(--red)">Erreur : ' + (data.error || "inconnue") + '</span>';
       document.getElementById("val-btn-push").disabled = false;
@@ -14894,6 +14907,204 @@ function updateValProgressStep(stepId, status, detail) {
     el.style.borderLeftColor = "var(--red)";
   }
   if (detail) det.textContent = detail;
+}
+
+// ── Playwright auto-launch depuis la modal de validation ─────────────────────
+var _valPwCountdown = null;
+
+function valShowPlaywrightCountdown(testKey, ticketUrl) {
+  var progressDiv = document.getElementById("val-progress-steps");
+  if (!progressDiv) return;
+  // Ajouter un bloc countdown sous les steps
+  var cdDiv = document.createElement("div");
+  cdDiv.id = "val-pw-zone";
+  cdDiv.style.cssText = "margin-top:16px;padding:16px;background:var(--bg1);border:1px solid var(--cyan);border-radius:10px";
+  cdDiv.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">' +
+      '<span style="font-size:20px">🧪</span>' +
+      '<span style="font-size:14px;font-weight:700;color:var(--text1)">Lancer les tests Playwright ?</span>' +
+    '</div>' +
+    '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Le ticket <b style="color:var(--cyan)">' + testKey + '</b> sera teste automatiquement (mode UI, source Jira).</div>' +
+    '<div style="display:flex;gap:10px;align-items:center">' +
+      '<button id="val-pw-launch" onclick="valLaunchPlaywright(\'' + testKey + '\')" style="padding:8px 20px;border-radius:8px;border:none;background:var(--cyan);color:#000;cursor:pointer;font-weight:700;font-size:13px">▶ Tester maintenant <span id="val-pw-cd" style="font-weight:400">(10s)</span></button>' +
+      '<button id="val-pw-skip" onclick="valSkipPlaywright()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);cursor:pointer;font-size:13px">Passer</button>' +
+    '</div>';
+  progressDiv.parentNode.insertBefore(cdDiv, progressDiv.nextSibling);
+
+  // Countdown 10s
+  var sec = 10;
+  var cdEl = document.getElementById("val-pw-cd");
+  _valPwCountdown = setInterval(function() {
+    sec--;
+    if (cdEl) cdEl.textContent = "(" + sec + "s)";
+    if (sec <= 0) {
+      clearInterval(_valPwCountdown);
+      _valPwCountdown = null;
+      valLaunchPlaywright(testKey);
+    }
+  }, 1000);
+}
+
+function valSkipPlaywright() {
+  if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
+  var zone = document.getElementById("val-pw-zone");
+  if (zone) zone.innerHTML = '<div style="text-align:center;color:var(--text2);font-size:13px;padding:8px">Tests Playwright ignores — vous pouvez fermer la modal</div>';
+}
+
+function valLaunchPlaywright(testKey) {
+  if (_valState.pwLaunched) return;
+  _valState.pwLaunched = true;
+  _valPwActive = true;
+  if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
+
+  var zone = document.getElementById("val-pw-zone");
+  if (!zone) return;
+
+  zone.innerHTML =
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">' +
+      '<span style="font-size:18px">⏳</span>' +
+      '<b id="val-pw-title" style="font-size:14px;color:var(--text1)">Test en cours sur ' + testKey + '...</b>' +
+      '<span id="val-pw-timer" style="margin-left:auto;font-size:11px;color:var(--text2)">0:00</span>' +
+    '</div>' +
+    '<div style="background:var(--bg3);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px">' +
+      '<div id="val-pw-bar" style="height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:6px;transition:width .3s;width:0%"></div>' +
+    '</div>' +
+    '<div id="val-pw-msg" style="font-size:12px;color:var(--text2);margin-bottom:6px">Demarrage...</div>' +
+    '<div id="val-pw-steps" style="max-height:120px;overflow-y:auto;font-size:11px;font-family:monospace"></div>';
+
+  // Timer
+  var startTime = Date.now();
+  zone._timer = setInterval(function() {
+    var el = document.getElementById("val-pw-timer");
+    if (el) {
+      var sec = Math.floor((Date.now() - startTime) / 1000);
+      el.textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+    }
+  }, 1000);
+
+  // Lancer Playwright
+  fetch(SERVER + "/api/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      agent: "playwright-direct",
+      mode: "ui",
+      source: "jira-key",
+      key: testKey
+    })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (!d.ok && d.error) {
+      var msg = document.getElementById("val-pw-msg");
+      if (msg) msg.innerHTML = '<span style="color:var(--red)">Erreur : ' + d.error + '</span>';
+      _valPwActive = false;
+    }
+  }).catch(function(e) {
+    var msg = document.getElementById("val-pw-msg");
+    if (msg) msg.innerHTML = '<span style="color:var(--red)">Erreur : ' + e.message + '</span>';
+    _valPwActive = false;
+  });
+}
+
+function valHandlePlaywrightProgress(data) {
+  if (!_valPwActive) return false; // pas intercepte, laisser le handler normal
+  var bar = document.getElementById("val-pw-bar");
+  var msg = document.getElementById("val-pw-msg");
+  var steps = document.getElementById("val-pw-steps");
+  if (bar && data.pct != null) bar.style.width = data.pct + "%";
+  if (msg && data.message) msg.textContent = data.message;
+  if (data.step === "test-done" && steps) {
+    var icon = data.status === "PASS" ? "✅" : "❌";
+    steps.innerHTML = '<div>' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+  }
+  if (data.step === "done") {
+    if (bar) bar.style.width = "100%";
+    if (bar) bar.style.background = (data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)";
+    var title = document.getElementById("val-pw-title");
+    if (title) title.textContent = (data.fail > 0 ? "❌ " : "✅ ") + (data.message || "Termine");
+  }
+  return true; // intercepte
+}
+
+function valHandlePlaywrightReport(data) {
+  if (!_valPwActive) return false;
+  _valPwActive = false;
+  var zone = document.getElementById("val-pw-zone");
+  if (!zone) return false;
+  if (zone._timer) clearInterval(zone._timer);
+
+  var r = data.result || {};
+  var ok = (r.fail || 0) === 0;
+  var pass = r.pass || 0, fail = r.fail || 0, total = r.total || 0;
+  var statusColor = ok ? "#10b981" : "#ef4444";
+  var statusText = ok ? "PASS" : "FAIL";
+  var testKey = _valState.testKey || r.ticketKey || "?";
+  var pdfFile = r.pdfFile || null;
+  var reportFile = r.reportFile || null;
+  var attachFile = pdfFile || reportFile;
+
+  var html = '<div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">';
+  // Header resultat
+  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
+  html += '<div><span style="font-size:22px;margin-right:6px">' + (ok ? "✅" : "❌") + '</span><b style="font-size:15px;color:var(--text1)">' + testKey + '</b></div>';
+  html += '<span style="background:' + statusColor + ';color:#fff;padding:3px 12px;border-radius:16px;font-weight:700;font-size:13px">' + statusText + '</span>';
+  html += '</div>';
+  // Stats
+  html += '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">';
+  html += '<span style="margin-right:14px">Pass : <b style="color:#10b981">' + pass + '</b></span>';
+  html += '<span style="margin-right:14px">Fail : <b style="color:#ef4444">' + fail + '</b></span>';
+  html += '<span>Total : <b>' + total + '</b></span>';
+  html += '</div>';
+  // Preview rapport
+  if (attachFile) {
+    html += '<div style="margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">';
+    html += '<iframe src="' + SERVER + '/reports/' + attachFile + '" style="width:100%;height:240px;border:none;background:#fff"></iframe>';
+    html += '</div>';
+  }
+  // Boutons
+  html += '<div style="display:flex;gap:10px;justify-content:flex-end">';
+  html += '<button onclick="valLaunchPlaywright(\'' + testKey + '\')" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);cursor:pointer;font-size:12px" ' + (_valState.pwLaunched ? 'id="val-pw-relaunch"' : '') + '>🔄 Relancer</button>';
+  if (attachFile) {
+    html += '<button id="val-pw-attach" onclick="valAttachReport(\'' + testKey + '\',\'' + attachFile + '\')" style="padding:7px 14px;border-radius:8px;border:none;background:#f59e0b;color:#000;cursor:pointer;font-weight:700;font-size:12px">📎 Attacher a Jira</button>';
+  }
+  html += '</div></div>';
+
+  zone.innerHTML = html;
+  // Permettre le relaunch
+  _valState.pwLaunched = false;
+  return true;
+}
+
+function valAttachReport(key, file) {
+  var btn = document.getElementById("val-pw-attach");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
+  // Attacher au ticket source aussi (parent)
+  var parentKey = _valState.sourceKey || null;
+  fetch(SERVER + "/api/attach-report/" + key, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: file })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      showToast("Rapport attache a " + key, "ok");
+      if (btn) { btn.textContent = "✅ Attache"; btn.style.background = "#10b981"; btn.style.color = "#fff"; }
+      // Attacher aussi au ticket source si different
+      if (parentKey && parentKey !== key) {
+        fetch(SERVER + "/api/attach-report/" + parentKey, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: file })
+        }).then(function(r2) { return r2.json(); }).then(function(d2) {
+          if (d2.ok) showToast("Rapport aussi attache a " + parentKey, "ok");
+        }).catch(function(){});
+      }
+    } else {
+      showToast("Erreur : " + (d.error || "?"), "err");
+      if (btn) { btn.disabled = false; btn.textContent = "📎 Attacher a Jira"; }
+    }
+  }).catch(function(e) {
+    showToast("Erreur : " + e.message, "err");
+    if (btn) { btn.disabled = false; btn.textContent = "📎 Attacher a Jira"; }
+  });
 }
 
 function loadValConfig() {

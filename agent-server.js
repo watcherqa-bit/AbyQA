@@ -1253,6 +1253,7 @@ var server = http.createServer(function(req, res) {
         // STEP 2 — Lien avec ticket source
         emitProgress("jira-link", "running");
         var linked = false;
+        var linkError = "";
         if (body.ticket.parentKey) {
           try {
             var linkPayload = JSON.stringify({
@@ -1264,34 +1265,57 @@ var server = http.createServer(function(req, res) {
               var lr = httpsP.request({
                 hostname: CFGp.jira.host, path: "/rest/api/3/issueLink", method: "POST",
                 headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(linkPayload) }
-              }, function(lRes) { lRes.resume(); linked = lRes.statusCode < 300; resolve(); });
-              lr.on("error", function() { resolve(); });
+              }, function(lRes) {
+                var ld = ""; lRes.on("data", function(c) { ld += c; });
+                lRes.on("end", function() {
+                  linked = lRes.statusCode < 300;
+                  if (!linked) {
+                    linkError = "HTTP " + lRes.statusCode + " : " + ld.substring(0, 300);
+                    console.error("[validation/push] Lien " + newKey + " → " + body.ticket.parentKey + " échoué — " + linkError);
+                  } else {
+                    console.log("[validation/push] Lien Tests créé : " + newKey + " → " + body.ticket.parentKey);
+                  }
+                  resolve();
+                });
+              });
+              lr.on("error", function(e) { linkError = "Network: " + e.message; console.error("[validation/push] Lien erreur réseau:", e.message); resolve(); });
               lr.write(linkPayload); lr.end();
             });
-          } catch(e) { /* ignore link error */ }
+          } catch(e) { linkError = "Exception: " + e.message; console.error("[validation/push] Lien exception:", e.message); }
         }
-        emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé");
+        emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé" + (linkError ? " — " + linkError : ""));
 
         // STEP 3 — Push steps Xray
         emitProgress("xray-push", "running");
         var xrayOk = false;
+        var xrayError = "";
         if (body.xraySteps && body.xraySteps.length) {
           try {
             var xrayPayload = JSON.stringify({ steps: body.xraySteps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) });
+            var xrayPath = "/rest/raven/1.0/api/test/" + newKey + "/steps";
             var xrayResult = await new Promise(function(resolve, reject) {
               var xr = httpsP.request({
-                hostname: CFGp.jira.host, path: "/rest/raven/1.0/api/test/" + newKey + "/steps", method: "PUT",
+                hostname: CFGp.jira.host, path: xrayPath, method: "PUT",
                 headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(xrayPayload) }
               }, function(xRes) {
                 var d = ""; xRes.on("data", function(c) { d += c; });
-                xRes.on("end", function() { xrayOk = xRes.statusCode < 300; resolve(d); });
+                xRes.on("end", function() {
+                  xrayOk = xRes.statusCode < 300;
+                  if (!xrayOk) {
+                    xrayError = "HTTP " + xRes.statusCode + " : " + d.substring(0, 300);
+                    console.error("[validation/push] Xray steps " + newKey + " échoué — " + xrayError);
+                  } else {
+                    console.log("[validation/push] Xray steps OK : " + body.xraySteps.length + " steps sur " + newKey);
+                  }
+                  resolve(d);
+                });
               });
-              xr.on("error", reject);
+              xr.on("error", function(e) { xrayError = "Network: " + e.message; console.error("[validation/push] Xray erreur réseau:", e.message); reject(e); });
               xr.write(xrayPayload); xr.end();
             });
-          } catch(e) { /* xray error */ }
+          } catch(e) { if (!xrayError) xrayError = "Exception: " + e.message; console.error("[validation/push] Xray exception:", e.message); }
         }
-        emitProgress("xray-push", xrayOk ? "done" : "error", xrayOk ? body.xraySteps.length + " steps" : "Push Xray échoué");
+        emitProgress("xray-push", xrayOk ? "done" : "error", xrayOk ? body.xraySteps.length + " steps" : "Push Xray échoué" + (xrayError ? " — " + xrayError : ""));
 
         // STEP 4 — Test Plan (detect or create) + attach
         emitProgress("xray-plan", "running");
@@ -1341,7 +1365,9 @@ var server = http.createServer(function(req, res) {
           key: newKey,
           url: issueUrl,
           linked: linked,
+          linkError: linkError || null,
           xrayOk: xrayOk,
+          xrayError: xrayError || null,
           stepsCount: (body.xraySteps || []).length,
           testPlanKey: planExec.testPlan ? planExec.testPlan.key : null,
           testExecKey: planExec.testExec ? planExec.testExec.key : null,
