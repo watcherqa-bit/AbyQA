@@ -3433,77 +3433,34 @@
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-
-        <!-- Navigateurs -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">NAVIGATEURS</div>
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-br-chromium" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">Chromium</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">v2+</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-br-firefox" style="accent-color:var(--orange);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">Firefox</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">v125+</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-br-webkit" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">WebKit / Safari</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">17+</span>
-            </label>
-          </div>
-        </div>
-
-        <!-- Devices -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
-          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">DEVICES / RÉSOLUTIONS</div>
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-dev-desktop" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">Desktop HD</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">1920×1080</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-dev-tablet" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">Tablet (iPad)</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">768×1024</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-dev-iphone" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">iPhone</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">375×812</span>
-            </label>
-            <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-              <input type="checkbox" id="cfg-dev-samsung" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-              <span style="font-size:13px;color:var(--text)">Samsung</span>
-              <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">360×800</span>
-            </label>
-          </div>
+      <!-- Environnements -->
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">ENVIRONNEMENTS <span style="font-size:9px">(MULTI-SELECTION)</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label class="check-pill"><input type="checkbox" id="cfg-env-sophie"><span>Sophie</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-env-paulo"><span>Paulo</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-env-prod"><span>Prod</span></label>
         </div>
       </div>
 
-      <!-- Environnements -->
-      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
-        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">ENVIRONNEMENTS</div>
-        <div style="display:flex;gap:20px;flex-wrap:wrap">
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <input type="checkbox" id="cfg-env-sophie" style="accent-color:var(--cyan);width:15px;height:15px">
-            <span style="font-size:13px;color:var(--text)">Sophie</span>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">(staging)</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <input type="checkbox" id="cfg-env-paulo" style="accent-color:var(--cyan);width:15px;height:15px">
-            <span style="font-size:13px;color:var(--text)">Paulo</span>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">(staging 2)</span>
-          </label>
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-            <input type="checkbox" id="cfg-env-prod" style="accent-color:var(--red);width:15px;height:15px">
-            <span style="font-size:13px;color:var(--text)">Prod</span>
-            <span style="font-family:var(--mono);font-size:10px;color:var(--red)">production</span>
-          </label>
+      <!-- Devices -->
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">DEVICES <span style="font-size:9px">(MULTI-SELECTION)</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label class="check-pill"><input type="checkbox" id="cfg-dev-desktop"><span>Desktop 1920x1080</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-dev-tablet"><span>iPad 768x1024</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-dev-iphone"><span>iPhone 375x812</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-dev-samsung"><span>Samsung 360x740</span></label>
+        </div>
+      </div>
+
+      <!-- Navigateurs -->
+      <div style="margin-bottom:16px">
+        <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">NAVIGATEURS <span style="font-size:9px">(PLAYWRIGHT)</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <label class="check-pill"><input type="checkbox" id="cfg-br-chromium"><span>Chromium</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-br-firefox"><span>Firefox</span></label>
+          <label class="check-pill"><input type="checkbox" id="cfg-br-webkit"><span>WebKit</span></label>
         </div>
       </div>
 
@@ -3889,77 +3846,35 @@
 
         <!-- ─── ONGLET CONFIGURATION ─── -->
         <div id="ops-pane-config" style="display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
 
-            <!-- Navigateurs -->
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">🌐 NAVIGATEURS</div>
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-br-chromium" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Chromium</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">v2+</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-br-firefox" style="accent-color:var(--orange);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Firefox</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">v125+</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-br-webkit" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">WebKit / Safari</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">17+</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Devices -->
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">📱 DEVICES / RÉSOLUTIONS</div>
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-dev-desktop" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Desktop HD</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">1920×1080</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-dev-tablet" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Tablet (iPad)</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">768×1024</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-dev-iphone" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">iPhone</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">375×812</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="ops-dev-samsung" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Samsung</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">360×800</span>
-                </label>
-              </div>
+          <!-- Environnements -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">ENVIRONNEMENTS <span style="font-size:9px">(MULTI-SELECTION)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="ops-env-sophie" checked><span>Sophie</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-env-paulo"><span>Paulo</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-env-prod"><span>Prod</span></label>
             </div>
           </div>
 
-          <!-- Environnements -->
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">🌍 ENVIRONNEMENTS</div>
-            <div style="display:flex;gap:24px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="ops-env-sophie" checked style="accent-color:var(--cyan);width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Sophie</span>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">(staging 1)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="ops-env-paulo" style="accent-color:var(--cyan);width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Paulo</span>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--text3)">(staging 2)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="ops-env-prod" style="accent-color:var(--red);width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Prod</span>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--red)">⚠ production</span>
-              </label>
+          <!-- Devices -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">DEVICES <span style="font-size:9px">(MULTI-SELECTION)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="ops-dev-desktop" checked><span>Desktop 1920x1080</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-dev-tablet"><span>iPad 768x1024</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-dev-iphone"><span>iPhone 375x812</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-dev-samsung"><span>Samsung 360x740</span></label>
+            </div>
+          </div>
+
+          <!-- Navigateurs -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">NAVIGATEURS <span style="font-size:9px">(PLAYWRIGHT)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="ops-br-chromium" checked><span>Chromium</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-br-firefox"><span>Firefox</span></label>
+              <label class="check-pill"><input type="checkbox" id="ops-br-webkit"><span>WebKit</span></label>
             </div>
           </div>
 
