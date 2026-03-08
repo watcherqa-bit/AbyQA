@@ -1285,15 +1285,18 @@ var server = http.createServer(function(req, res) {
         }
         emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé" + (linkError ? " — " + linkError : ""));
 
-        // STEP 3 — Push steps Xray
+        // STEP 3 — Push steps Xray (API directe, sinon fallback CSV attaché)
         emitProgress("xray-push", "running");
         var xrayOk = false;
         var xrayError = "";
+        var xraySkipped = false;
+        var csvAttached = false;
         if (body.xraySteps && body.xraySteps.length) {
+          // 3a — Tenter l'API Xray directe
           try {
             var xrayPayload = JSON.stringify({ steps: body.xraySteps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) });
             var xrayPath = "/rest/raven/1.0/api/test/" + newKey + "/steps";
-            var xrayResult = await new Promise(function(resolve, reject) {
+            await new Promise(function(resolve, reject) {
               var xr = httpsP.request({
                 hostname: CFGp.jira.host, path: xrayPath, method: "PUT",
                 headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(xrayPayload) }
@@ -1304,20 +1307,74 @@ var server = http.createServer(function(req, res) {
                   if (!xrayOk) {
                     var isXrayMissing = xRes.statusCode === 404 && d.indexOf("<!DOCTYPE") !== -1;
                     xrayError = isXrayMissing ? "Plugin Xray non disponible" : "HTTP " + xRes.statusCode + " : " + d.substring(0, 300);
-                    console.error("[validation/push] Xray steps " + newKey + " échoué — " + xrayError);
+                    xraySkipped = isXrayMissing;
                   } else {
                     console.log("[validation/push] Xray steps OK : " + body.xraySteps.length + " steps sur " + newKey);
                   }
                   resolve(d);
                 });
               });
-              xr.on("error", function(e) { xrayError = "Network: " + e.message; console.error("[validation/push] Xray erreur réseau:", e.message); reject(e); });
+              xr.on("error", function(e) { xrayError = "Network: " + e.message; reject(e); });
               xr.write(xrayPayload); xr.end();
             });
-          } catch(e) { if (!xrayError) xrayError = "Exception: " + e.message; console.error("[validation/push] Xray exception:", e.message); }
+          } catch(e) { if (!xrayError) xrayError = "Exception: " + e.message; }
+
+          // 3b — Fallback : générer CSV + attacher au ticket Jira + commentaire
+          if (!xrayOk) {
+            console.log("[validation/push] Xray API indisponible — fallback CSV pour " + newKey);
+            try {
+              // Générer le CSV Xray
+              var csvHeader = "\uFEFF\"Step #\",\"Action\",\"Data\",\"Expected Result\"";
+              var csvRows = body.xraySteps.map(function(s, i) {
+                var esc = function(v) { return '"' + (v || "").replace(/"/g, '""') + '"'; };
+                return (i + 1) + "," + esc(s.action) + "," + esc(s.data) + "," + esc(s.result);
+              });
+              var csvContent = csvHeader + "\n" + csvRows.join("\n");
+
+              // Sauver localement
+              var csvDir = path.join(BASE_DIR, "inbox", "xray-pending");
+              if (!fs.existsSync(csvDir)) fs.mkdirSync(csvDir, { recursive: true });
+              var csvPath = path.join(csvDir, newKey + "-steps.csv");
+              fs.writeFileSync(csvPath, csvContent, "utf8");
+
+              // Attacher le CSV au ticket Jira
+              attachFileToJira(newKey, csvPath);
+              csvAttached = true;
+
+              // Ajouter un commentaire avec les steps formatés en tableau
+              var commentTable = "|| # || Action || Données || Résultat attendu ||\n" +
+                body.xraySteps.map(function(s, i) {
+                  return "| " + (i + 1) + " | " + (s.action || "-") + " | " + (s.data || "-") + " | " + (s.result || "-") + " |";
+                }).join("\n");
+              var commentBody = JSON.stringify({
+                body: { type: "doc", version: 1, content: [
+                  { type: "paragraph", content: [{ type: "text", text: "📋 " + body.xraySteps.length + " cas de test (import Xray non disponible — CSV en pièce jointe)", marks: [{ type: "strong" }] }] },
+                  { type: "codeBlock", attrs: { language: "csv" }, content: [{ type: "text", text: csvContent }] }
+                ] }
+              });
+              await new Promise(function(resolve) {
+                var cr = httpsP.request({
+                  hostname: CFGp.jira.host, path: "/rest/api/3/issue/" + newKey + "/comment", method: "POST",
+                  headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(commentBody) }
+                }, function(cRes) { cRes.resume(); resolve(); });
+                cr.on("error", function() { resolve(); });
+                cr.write(commentBody); cr.end();
+              });
+              console.log("[validation/push] CSV attaché + commentaire ajouté sur " + newKey);
+            } catch(csvErr) {
+              console.error("[validation/push] Fallback CSV erreur:", csvErr.message);
+            }
+          }
         }
-        var xraySkipped = xrayError.indexOf("non disponible") !== -1;
-        emitProgress("xray-push", xrayOk ? "done" : (xraySkipped ? "skipped" : "error"), xrayOk ? body.xraySteps.length + " steps" : (xraySkipped ? "Plugin Xray absent — steps ignorés" : "Push Xray échoué" + (xrayError ? " — " + xrayError : "")));
+        if (xrayOk) {
+          emitProgress("xray-push", "done", body.xraySteps.length + " steps importés dans Xray");
+        } else if (csvAttached) {
+          emitProgress("xray-push", "done", body.xraySteps.length + " steps → CSV attaché au ticket");
+        } else if (xraySkipped && !body.xraySteps.length) {
+          emitProgress("xray-push", "skipped", "Aucun step à importer");
+        } else {
+          emitProgress("xray-push", "error", "Push échoué" + (xrayError ? " — " + xrayError : ""));
+        }
 
         // STEP 4 — Test Plan (detect or create) + attach
         emitProgress("xray-plan", "running");
@@ -1361,7 +1418,11 @@ var server = http.createServer(function(req, res) {
 
         // STEP 6 — Bibliothèque de Test (informatif — ajout manuel dans Xray UI)
         var libFolderName = "Release " + (body.release || release || "v1.25.0").replace(/^v/, "");
-        emitProgress("xray-library", "done", "A ajouter manuellement dans : " + libFolderName);
+        if (xraySkipped) {
+          emitProgress("xray-library", "skipped", "Plugin Xray absent");
+        } else {
+          emitProgress("xray-library", "done", "A ajouter manuellement dans : " + libFolderName);
+        }
 
         // STEP 7 — Résultat final
         emitProgress("complete", "done", newKey);
@@ -1375,6 +1436,7 @@ var server = http.createServer(function(req, res) {
           linked: linked,
           linkError: linkError || null,
           xrayOk: xrayOk,
+          xrayFallbackCSV: csvAttached,
           xrayError: xrayError || null,
           stepsCount: (body.xraySteps || []).length,
           testPlanKey: planExec.testPlan ? planExec.testPlan.key : null,
