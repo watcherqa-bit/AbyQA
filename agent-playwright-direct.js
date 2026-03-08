@@ -444,7 +444,16 @@ async function getUrlsFromJiraKey(key) {
     .filter(function(u) {
       return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);
     }).map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket " + key }; });
-  // Si pas d'URL trouvée dans le ticket mais des cas CSV disponibles, extraire les URLs des cas
+  // Si pas d'URL trouvée dans le ticket TEST, chercher dans le ticket source (parent)
+  if (urls.length === 0 && TICKET_INFO.parentKey) {
+    console.log("  [URL] Aucune URL dans le ticket TEST — recherche dans le ticket source " + TICKET_INFO.parentKey + "...");
+    var parentUrls = await extractUrlsFromTicket(TICKET_INFO.parentKey);
+    if (parentUrls.length > 0) {
+      urls = parentUrls;
+      console.log("  [URL] " + urls.length + " URL(s) extraites depuis le ticket source " + TICKET_INFO.parentKey);
+    }
+  }
+  // Fallback CSV — extraire les URLs des cas de test si toujours rien
   if (urls.length === 0 && CSV_TEST_CASES.length > 0) {
     var csvUrls = [];
     var csvSeen = {};
@@ -497,6 +506,130 @@ async function getUrlsFromJiraKey(key) {
 
   console.log("  [OK] " + urls.length + " URL(s) extraite(s) de " + key);
   return urls;
+}
+
+/**
+ * Extraire les URLs depuis un ticket Jira (description + commentaires).
+ * Utilisé comme fallback quand le ticket TEST n'a pas d'URL directe.
+ */
+async function extractUrlsFromTicket(ticketKey) {
+  try {
+    var issue = await jiraRequest("GET", "/rest/api/3/issue/" + ticketKey + "?fields=summary,description,comment");
+    if (!issue.key) return [];
+    var descText = normalizeDescription(issue.fields.description);
+    var commentsText = (issue.fields.comment && issue.fields.comment.comments)
+      ? issue.fields.comment.comments.map(function(c) { return normalizeDescription(c.body); }).join(" ")
+      : "";
+    var allText = descText + " " + commentsText;
+    // Extraire URLs Jira [texte|url] + URLs brutes
+    var jiraLinkUrls = [];
+    var jiraLinkRe = /\[([^\|\]]+)\|([^\]]+)\]/g;
+    var jlm;
+    while ((jlm = jiraLinkRe.exec(allText)) !== null) {
+      var jlUrl = jlm[2].trim();
+      if (/^https?:\/\//i.test(jlUrl)) jiraLinkUrls.push(jlUrl);
+    }
+    var urlMatches = allText.match(/https?:\/\/[^\s<"'\]\)]+/g) || [];
+    var allRaw = jiraLinkUrls.concat(urlMatches);
+    var seen = {};
+    return allRaw
+      .map(function(u) { return u.replace(/[\)\(\]\[\|\_\{\}]+$/g, "").trim(); })
+      .filter(function(u) {
+        if (!u || !/^https?:\/\//i.test(u)) return false;
+        try { new URL(u); return true; } catch(e) { return false; }
+      })
+      .filter(function(u) {
+        return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u] = true);
+      })
+      .map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket source " + ticketKey }; });
+  } catch(e) {
+    console.log("  [URL] Erreur lecture ticket source " + ticketKey + " : " + e.message.substring(0, 60));
+    return [];
+  }
+}
+
+/**
+ * Valider les URLs avec HTTP HEAD — si 404, chercher dans le ticket source.
+ * Retourne les URLs validées (ou corrigées depuis le ticket source).
+ */
+async function validateUrls(targets) {
+  if (!targets || targets.length === 0) return targets;
+  // Pas de validation si pas de ticket Jira (mode url/text/xml)
+  if (!TICKET_INFO || !TICKET_INFO.parentKey) return targets;
+
+  var validated = [];
+  var has404 = false;
+  for (var i = 0; i < targets.length; i++) {
+    var t = targets[i];
+    try {
+      var status = await httpHead(t.url);
+      if (status >= 400) {
+        console.log("  [URL] ⚠️ HTTP " + status + " sur " + t.url);
+        has404 = true;
+      } else {
+        console.log("  [URL] ✅ HTTP " + status + " — " + t.url);
+        validated.push(t);
+      }
+    } catch(e) {
+      console.log("  [URL] ⚠️ Erreur réseau sur " + t.url.substring(0, 60) + " : " + e.message.substring(0, 40));
+      has404 = true;
+    }
+  }
+
+  if (has404 && validated.length === 0) {
+    // Toutes les URLs sont 404 — chercher dans le ticket source
+    console.log("  [URL] Toutes les URLs retournent 404 — recherche dans le ticket source " + TICKET_INFO.parentKey + "...");
+    var sourceUrls = await extractUrlsFromTicket(TICKET_INFO.parentKey);
+    if (sourceUrls.length > 0) {
+      // Valider les URLs du ticket source aussi
+      for (var j = 0; j < sourceUrls.length; j++) {
+        try {
+          var s2 = await httpHead(sourceUrls[j].url);
+          if (s2 < 400) {
+            console.log("  [URL] ✅ URL corrigée depuis ticket source : " + sourceUrls[j].url + " (HTTP " + s2 + ")");
+            validated.push(sourceUrls[j]);
+          } else {
+            console.log("  [URL] ⚠️ HTTP " + s2 + " sur URL source : " + sourceUrls[j].url);
+          }
+        } catch(e) {}
+      }
+    }
+    if (validated.length === 0) {
+      console.log("  [URL] ❌ URL introuvable — vérifier le ticket source " + TICKET_INFO.parentKey);
+      console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "error", message: "❌ URL introuvable — vérifier le ticket source", pct: 10 }));
+    }
+  }
+
+  return validated.length > 0 ? validated : targets; // fallback sur les originales si tout échoue
+}
+
+/**
+ * HTTP HEAD request — retourne le code HTTP.
+ * Suit les redirections (301/302/303).
+ */
+function httpHead(url, maxRedirects) {
+  if (maxRedirects === undefined) maxRedirects = 5;
+  return new Promise(function(resolve, reject) {
+    var parsed = new URL(url);
+    var mod = parsed.protocol === "https:" ? https : require("http");
+    var req = mod.request({
+      hostname: parsed.hostname, port: parsed.port, path: parsed.pathname + parsed.search,
+      method: "HEAD",
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+      timeout: 10000
+    }, function(res) {
+      if ([301, 302, 303, 307, 308].indexOf(res.statusCode) !== -1 && res.headers.location && maxRedirects > 0) {
+        var loc = res.headers.location;
+        if (!/^https?:\/\//i.test(loc)) loc = parsed.protocol + "//" + parsed.hostname + loc;
+        httpHead(loc, maxRedirects - 1).then(resolve).catch(reject);
+      } else {
+        resolve(res.statusCode);
+      }
+    });
+    req.on("error", reject);
+    req.on("timeout", function() { req.destroy(); reject(new Error("timeout")); });
+    req.end();
+  });
 }
 
 function getUrlsFromXML(xmlContent) {
@@ -1962,7 +2095,14 @@ async function main() {
   // ── MODE SINGLE ENV (comportement existant) ───────────────────────────────
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "resolve", message: "Résolution des cibles...", pct: 5 }));
   var targets = MODE === "tnr" ? getTNRPages() : await resolveTargets();
+
+  // Valider les URLs (HEAD check) — si 404, chercher dans le ticket source
+  if (KEY && SOURCE === "jira-key" && MODE !== "tnr") {
+    targets = await validateUrls(targets);
+  }
+
   console.log("[CIBLES] " + targets.length + " URL(s)");
+  targets.forEach(function(t) { console.log("  → " + t.url + " (" + t.context + ")"); });
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "targets", message: targets.length + " URL(s) à tester", pct: 10, targets: targets.map(function(t) { return t.label || t.url; }) }));
 
   // ── EXÉCUTION DES SCÉNARIOS (si ticket Jira) ──────────────────────────────
