@@ -262,10 +262,23 @@ async function ensureTestPlanExec(release, testKey) {
 async function findRepoFolders() {
   var CFGr = require("./config");
   var project = CFGr.jira.project || "SAFWBST";
-  try {
-    var r = await jiraApiCall("GET", "/rest/raven/1.0/api/testrepository/" + project + "/folders");
-    return r.data;
-  } catch(e) { console.warn("[findRepoFolders] error:", e.message); return null; }
+  // Essayer les 3 endpoints Xray possibles (Server v1, Server v2, Cloud)
+  var paths = [
+    "/rest/raven/2.0/api/testrepository/" + project + "/folders",
+    "/rest/raven/1.0/api/testrepository/" + project + "/folders",
+    "/rest/raven/2.0/api/testrepository/" + project
+  ];
+  for (var i = 0; i < paths.length; i++) {
+    try {
+      var r = await jiraApiCall("GET", paths[i]);
+      if (r.status < 400 && r.data && typeof r.data === "object") {
+        console.log("[library] API OK: " + paths[i]);
+        return r.data;
+      }
+    } catch(e) { /* try next */ }
+  }
+  console.warn("[findRepoFolders] Aucun endpoint Xray accessible");
+  return null;
 }
 
 function searchFolder(folders, name) {
@@ -3051,9 +3064,24 @@ var server = http.createServer(function(req, res) {
   if (method === "GET" && url === "/api/xray-folders") {
     (async function() {
       try {
-        var data = await findRepoFolders();
+        var CFGdbg = require("./config");
+        var proj = CFGdbg.jira.project || "SAFWBST";
+        // Tester tous les endpoints et retourner les résultats
+        var endpoints = [
+          "/rest/raven/2.0/api/testrepository/" + proj + "/folders",
+          "/rest/raven/1.0/api/testrepository/" + proj + "/folders",
+          "/rest/raven/2.0/api/testrepository/" + proj,
+          "/rest/raven/1.0/api/testrepository/" + proj
+        ];
+        var results = [];
+        for (var i = 0; i < endpoints.length; i++) {
+          try {
+            var r = await jiraApiCall("GET", endpoints[i]);
+            results.push({ path: endpoints[i], status: r.status, hasData: !!(r.data && typeof r.data === "object" && !r.data.errorMessages), dataType: typeof r.data, preview: JSON.stringify(r.data).substring(0, 300) });
+          } catch(e) { results.push({ path: endpoints[i], error: e.message }); }
+        }
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(data, null, 2));
+        res.end(JSON.stringify({ project: proj, endpoints: results }, null, 2));
       } catch(e) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: e.message }));
