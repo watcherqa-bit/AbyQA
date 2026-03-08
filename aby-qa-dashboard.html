@@ -3367,57 +3367,82 @@
 
         <!-- TAB 3 : Config Test -->
         <div id="val-pane-config" style="display:none;padding:20px 24px">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
 
             <!-- Navigateurs -->
-            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
-              <div style="font-size:12px;font-weight:700;color:var(--cyan);text-transform:uppercase;margin-bottom:12px">Navigateurs</div>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-br-chromium" checked style="accent-color:var(--cyan)"> Chromium
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-br-firefox" style="accent-color:var(--orange)"> Firefox
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-br-webkit" style="accent-color:var(--purple,#8b5cf6)"> WebKit (Safari)
-              </label>
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">NAVIGATEURS</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-br-chromium" checked style="accent-color:var(--green);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">Chromium</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--green)">v2+</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-br-firefox" style="accent-color:var(--orange);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">Firefox</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--orange)">v125+</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-br-webkit" style="accent-color:var(--red);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">WebKit / Safari</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--red)">17+</span>
+                </label>
+              </div>
             </div>
 
             <!-- Devices -->
-            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
-              <div style="font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;margin-bottom:12px">Devices</div>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-dev-desktop" checked style="accent-color:var(--cyan)"> Desktop <span style="font-size:10px;color:var(--text3)">1920x1080</span>
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">DEVICES / RESOLUTIONS</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-dev-desktop" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">Desktop HD</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">1920x1080</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-dev-tablet" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">Tablet (iPad)</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">768x1024</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-dev-iphone" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">iPhone</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">375x812</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                  <input type="checkbox" id="val-dev-samsung" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
+                  <span style="font-size:13px;color:var(--text)">Samsung</span>
+                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">360x740</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Environnements -->
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">ENVIRONNEMENTS (MULTI-SELECTION)</div>
+            <div style="display:flex;gap:24px;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="val-env-sophie" checked style="accent-color:#eab308;width:15px;height:15px">
+                <span style="font-size:13px;color:var(--text)">Sophie</span>
+                <span style="font-family:var(--mono);font-size:10px;color:#eab308">(staging 1)</span>
               </label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-dev-tablet" style="accent-color:var(--orange)"> Tablet <span style="font-size:10px;color:var(--text3)">768x1024</span>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="val-env-paulo" style="accent-color:var(--orange);width:15px;height:15px">
+                <span style="font-size:13px;color:var(--text)">Paulo</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--orange)">(staging 2)</span>
               </label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-dev-iphone" style="accent-color:var(--green)"> iPhone <span style="font-size:10px;color:var(--text3)">375x812</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-dev-samsung" style="accent-color:var(--green)"> Samsung <span style="font-size:10px;color:var(--text3)">360x740</span>
+              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+                <input type="checkbox" id="val-env-prod" style="accent-color:var(--blue);width:15px;height:15px">
+                <span style="font-size:13px;color:var(--text)">Prod</span>
+                <span style="font-family:var(--mono);font-size:10px;color:var(--blue)">production</span>
               </label>
             </div>
-
-            <!-- Environnements -->
-            <div style="background:var(--bg1);border:1px solid var(--border);border-radius:10px;padding:16px">
-              <div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;margin-bottom:12px">Environnements</div>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-env-sophie" checked style="accent-color:var(--cyan)"> Sophie <span style="font-size:10px;color:var(--text3)">INT</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-env-paulo" style="accent-color:var(--orange)"> Paulo <span style="font-size:10px;color:var(--text3)">INT2</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text1);cursor:pointer">
-                <input type="checkbox" id="val-env-prod" style="accent-color:var(--red)"> Prod
-              </label>
-            </div>
-
           </div>
 
           <!-- Resume config -->
-          <div id="val-config-summary" style="margin-top:16px;padding:12px 16px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2)"></div>
+          <div id="val-config-summary" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;font-family:var(--mono);font-size:11px;color:var(--text2)"></div>
         </div>
 
         <!-- PROGRESS OVERLAY -->
@@ -14909,26 +14934,28 @@ function loadValConfig() {
 }
 
 function updateValConfigSummary() {
+  var brColors = {chromium:"var(--green)",firefox:"var(--orange)",webkit:"var(--red)"};
   var browsers = [];
   ["chromium","firefox","webkit"].forEach(function(b) {
     var el = document.getElementById("val-br-" + b);
-    if (el && el.checked) browsers.push(b);
+    if (el && el.checked) browsers.push('<span style="color:' + brColors[b] + '">' + b + '</span>');
   });
   var devices = [];
-  [["desktop","Desktop 1920x1080"],["tablet","Tablet 768x1024"],["iphone","iPhone 375x812"],["samsung","Samsung 360x740"]].forEach(function(d) {
+  [["desktop","Desktop"],["tablet","iPad"],["iphone","iPhone"],["samsung","Samsung"]].forEach(function(d) {
     var el = document.getElementById("val-dev-" + d[0]);
-    if (el && el.checked) devices.push(d[1]);
+    if (el && el.checked) devices.push('<span style="color:' + (d[0]==="desktop"?"var(--cyan)":"var(--text3)") + '">' + d[1] + '</span>');
   });
+  var envColors = {sophie:"#eab308",paulo:"var(--orange)",prod:"var(--blue)"};
   var envs = [];
   ["sophie","paulo","prod"].forEach(function(e) {
     var el = document.getElementById("val-env-" + e);
-    if (el && el.checked) envs.push(e);
+    if (el && el.checked) envs.push('<span style="color:' + envColors[e] + '">' + e + '</span>');
   });
   var el = document.getElementById("val-config-summary");
   if (el) el.innerHTML =
-    "<strong>Navigateurs :</strong> " + (browsers.join(", ") || "aucun") +
-    " &nbsp;|&nbsp; <strong>Devices :</strong> " + (devices.join(", ") || "aucun") +
-    " &nbsp;|&nbsp; <strong>Envs :</strong> " + (envs.join(", ") || "aucun");
+    "<strong style='color:var(--text3)'>NAVIGATEURS :</strong> " + (browsers.join(", ") || "aucun") +
+    " &nbsp;&middot;&nbsp; <strong style='color:var(--text3)'>DEVICES :</strong> " + (devices.join(", ") || "aucun") +
+    " &nbsp;&middot;&nbsp; <strong style='color:var(--text3)'>ENVS :</strong> " + (envs.join(", ") || "aucun");
 }
 
 function collectValConfig() {
