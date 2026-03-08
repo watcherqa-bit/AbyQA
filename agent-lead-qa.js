@@ -681,8 +681,12 @@ async function buildXraySteps(sourceTicket) {
     "   \"• [Vérification mesurable 1]\\n• [Vérification mesurable 2]\\n• Aucune erreur HTTP 5xx\"\n" +
     "   - Chaque puce = 1 vérification observable\n" +
     "   - Formulé de façon mesurable et vérifiable\n\n" +
+    "4. mode (obligatoire) :\n" +
+    "   \"auto\" = Playwright peut l'exécuter (navigation, clic, vérif DOM, responsive, texte visible, HTTP status)\n" +
+    "   \"manuel\" = vérification humaine nécessaire (rendu visuel subjectif, UX, contenu rédactionnel, comparaison maquette, accessibilité perçue)\n" +
+    "   Règle : si TOUTES les vérifications du result sont automatisables par Playwright → \"auto\", sinon → \"manuel\"\n\n" +
     "Génère 3 à 8 cas de test couvrant les scénarios principaux.\n" +
-    "Retourne UNIQUEMENT un JSON array : [{\"action\":\"...\",\"data\":\"...\",\"result\":\"...\"}]";
+    "Retourne UNIQUEMENT un JSON array : [{\"action\":\"...\",\"data\":\"...\",\"result\":\"...\",\"mode\":\"auto|manuel\"}]";
 
   var steps = await askJSON(prompt, MODEL_QUALITY);
   if (!Array.isArray(steps)) {
@@ -707,7 +711,9 @@ async function buildXraySteps(sourceTicket) {
       }
     });
 
-    validated.push({ action: action, data: data, result: result });
+    var mode = (s.mode || "").trim().toLowerCase();
+    if (mode !== "auto" && mode !== "manuel") mode = "manuel";
+    validated.push({ action: action, data: data, result: result, mode: mode });
   });
 
   if (warnings.length > 0) {

@@ -3354,7 +3354,8 @@
 
         <!-- TAB 2 : Cas de test Xray -->
         <div id="val-pane-xray" style="display:none;padding:20px 24px">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
+          <div style="display:grid;grid-template-columns:60px 1fr 1fr 1fr;gap:2px;background:var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
+            <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;text-align:center">Mode</div>
             <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--cyan);text-transform:uppercase;text-align:center">Action</div>
             <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;text-align:center">Donnees</div>
             <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;text-align:center">Resultat attendu</div>
@@ -14632,7 +14633,10 @@ function openValidationModal(sourceKey, opts) {
     // Remplir onglet 2
     renderValXraySteps(_valState.xraySteps);
 
-    document.getElementById("val-status").textContent = "Pret a envoyer";
+    // Compteur auto/manuel
+    var autoCount = _valState.xraySteps.filter(function(s) { return s.mode === "auto"; }).length;
+    var manuelCount = _valState.xraySteps.length - autoCount;
+    document.getElementById("val-status").textContent = "Pret a envoyer — " + _valState.xraySteps.length + " steps (" + autoCount + " auto, " + manuelCount + " manuel)";
   })
   .catch(function(err) {
     showToast("Erreur : " + err.message, "x");
@@ -14666,9 +14670,18 @@ function renderValXraySteps(steps) {
   var container = document.getElementById("val-xray-rows");
   container.innerHTML = "";
   steps.forEach(function(step, i) {
+    var mode = step.mode || "manuel";
+    var modeColor = mode === "auto" ? "var(--green)" : "var(--orange)";
     var row = document.createElement("div");
-    row.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:2px;background:var(--border);border-radius:8px;overflow:hidden";
+    row.style.cssText = "display:grid;grid-template-columns:60px 1fr 1fr 1fr 36px;gap:2px;background:var(--border);border-radius:8px;overflow:hidden";
     row.innerHTML =
+      '<div style="background:var(--bg1);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:6px">' +
+        '<span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:' + (mode === "auto" ? "rgba(16,185,129,.15)" : "rgba(249,115,22,.15)") + ';color:' + modeColor + '">' + (mode === "auto" ? "AUTO" : "MANUEL") + '</span>' +
+        '<select data-field="mode" data-idx="' + i + '" style="width:52px;font-size:9px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;color:var(--text1);padding:1px">' +
+          '<option value="auto"' + (mode === "auto" ? " selected" : "") + '>Auto</option>' +
+          '<option value="manuel"' + (mode === "manuel" ? " selected" : "") + '>Manuel</option>' +
+        '</select>' +
+      '</div>' +
       '<textarea data-field="action" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.action || "") + '</textarea>' +
       '<textarea data-field="data" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.data || "") + '</textarea>' +
       '<textarea data-field="result" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.result || "") + '</textarea>' +
@@ -14690,12 +14703,12 @@ function removeValXrayStep(idx) {
 }
 
 function collectValData() {
-  // Collecter les textareas Xray editees
-  var rows = document.querySelectorAll("#val-xray-rows textarea");
-  rows.forEach(function(ta) {
-    var idx = parseInt(ta.dataset.idx);
-    var field = ta.dataset.field;
-    if (_valState.xraySteps[idx]) _valState.xraySteps[idx][field] = ta.value;
+  // Collecter les textareas et selects Xray edites
+  var fields = document.querySelectorAll("#val-xray-rows textarea, #val-xray-rows select");
+  fields.forEach(function(el) {
+    var idx = parseInt(el.dataset.idx);
+    var field = el.dataset.field;
+    if (_valState.xraySteps[idx]) _valState.xraySteps[idx][field] = el.value;
   });
 
   // Reconstruire l'ADF description avec le texte edite
