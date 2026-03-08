@@ -69,5 +69,5 @@
     "enabled": true,
     "intervalMin": 60
   },
-  "latestRelease": "v1.25.0"
+  "currentRelease": "v1.25.0"
 }

@@ -1223,12 +1223,10 @@ var server = http.createServer(function(req, res) {
         var validation = leadQA.validateJiraPayload(extPayload);
         var xraySteps  = await leadQA.buildXraySteps(sourceTicket);
 
-        // Déterminer la release
+        // Déterminer la release — source unique : settings.currentRelease
         var settingsV = {};
         try { settingsV = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
-        var release = (sourceTicket.labels && sourceTicket.labels.find(function(l) { return /^v\d/.test(l); }))
-                   || settingsV.latestRelease
-                   || "v1.25.0";
+        var release = settingsV.currentRelease || "v1.25.0";
 
         // Détecter Test Plan / Test Execution existants
         var planExecInfo = await findTestPlanExec(release);

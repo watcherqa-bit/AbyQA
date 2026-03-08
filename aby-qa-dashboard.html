@@ -8566,14 +8566,14 @@ function syncSidebarFromSettings(s) {
   if (s.jiraProject) CFG_JIRA_PROJECT = s.jiraProject;
 
   // Badge release
-  if (s.latestRelease) {
+  if (s.currentRelease) {
     var rb = document.getElementById("header-release-badge");
-    if (rb) rb.textContent = "🚀 " + s.latestRelease;
+    if (rb) rb.textContent = "🚀 " + s.currentRelease;
     var rb2 = document.getElementById("c2-release-input");
-    if (rb2 && !rb2.dataset.userEdited) rb2.value = s.latestRelease;
+    if (rb2 && !rb2.dataset.userEdited) rb2.value = s.currentRelease;
     // Mettre à jour les occurrences panel dashboard
     var panelDesc = document.querySelector("#panel-dashboard .panel-desc");
-    if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + s.latestRelease;
+    if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + s.currentRelease;
     updateReleaseHealthCard();
   }
 
@@ -8613,7 +8613,7 @@ function loadSettingsPanel() {
       if (polInterval) polInterval.value  = (s.polling && s.polling.intervalMin) || 5;
       // Version courante
       var cfgRel = document.getElementById("cfg-latest-release");
-      if (cfgRel) cfgRel.value = s.latestRelease || "v1.25.0";
+      if (cfgRel) cfgRel.value = s.currentRelease || "v1.25.0";
     })
     .catch(function() {});
 }
@@ -8701,7 +8701,7 @@ function saveSettingsPanel() {
       enabled:     !!(polEnabled && polEnabled.checked),
       intervalMin: parseInt((polInterval && polInterval.value) || "5", 10)
     },
-    latestRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0"
+    currentRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0"
   };
 
   fetch("/api/settings", { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(s) })
