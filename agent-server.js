@@ -257,87 +257,6 @@ async function ensureTestPlanExec(release, testKey) {
   return planExec;
 }
 
-// ── Bibliothèque de Test Xray ────────────────────────────────────────────────
-
-async function findRepoFolders() {
-  var CFGr = require("./config");
-  var project = CFGr.jira.project || "SAFWBST";
-  // Essayer les 3 endpoints Xray possibles (Server v1, Server v2, Cloud)
-  var paths = [
-    "/rest/raven/2.0/api/testrepository/" + project + "/folders",
-    "/rest/raven/1.0/api/testrepository/" + project + "/folders",
-    "/rest/raven/2.0/api/testrepository/" + project
-  ];
-  for (var i = 0; i < paths.length; i++) {
-    try {
-      var r = await jiraApiCall("GET", paths[i]);
-      if (r.status < 400 && r.data && typeof r.data === "object") {
-        console.log("[library] API OK: " + paths[i]);
-        return r.data;
-      }
-    } catch(e) { /* try next */ }
-  }
-  console.warn("[findRepoFolders] Aucun endpoint Xray accessible");
-  return null;
-}
-
-function searchFolder(folders, name) {
-  if (!folders) return null;
-  // folders peut être un objet avec .folders[] ou directement un array
-  var list = Array.isArray(folders) ? folders : (folders.folders || []);
-  for (var i = 0; i < list.length; i++) {
-    if (list[i].name === name) return list[i];
-    // Chercher récursivement
-    if (list[i].folders && list[i].folders.length) {
-      var found = searchFolder(list[i].folders, name);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-async function findOrCreateRepoFolder(release) {
-  var CFGr = require("./config");
-  var project = CFGr.jira.project || "SAFWBST";
-  // Nom du dossier : "Release X.XX.X" (sans le v)
-  var folderName = "Release " + release.replace(/^v/, "");
-  var repoData = await findRepoFolders();
-  if (!repoData) return { ok: false, error: "Impossible de lire la Bibliothèque" };
-
-  // Trouver le dossier racine (id = -1 ou premier niveau)
-  var rootId = repoData.id || -1;
-  var existing = searchFolder(repoData, folderName);
-  if (existing) return { ok: true, folderId: existing.id, name: folderName, created: false };
-
-  // Créer le dossier
-  try {
-    var cr = await jiraApiCall("POST", "/rest/raven/1.0/api/testrepository/" + project + "/folders", { name: folderName, parentId: rootId });
-    if (cr.data && cr.data.id) return { ok: true, folderId: cr.data.id, name: folderName, created: true };
-    return { ok: false, error: "Création dossier échouée: " + JSON.stringify(cr.data).substring(0, 200) };
-  } catch(e) { return { ok: false, error: e.message }; }
-}
-
-async function getTestsInFolder(folderId) {
-  var CFGr = require("./config");
-  var project = CFGr.jira.project || "SAFWBST";
-  try {
-    var r = await jiraApiCall("GET", "/rest/raven/1.0/api/testrepository/" + project + "/folders/" + folderId + "/tests?limit=1000");
-    return (r.data && r.data.tests) || [];
-  } catch(e) { return []; }
-}
-
-async function addTestToRepoFolder(folderId, testKey) {
-  var CFGr = require("./config");
-  var project = CFGr.jira.project || "SAFWBST";
-  // Anti-doublon : vérifier si déjà présent
-  var existing = await getTestsInFolder(folderId);
-  var already = existing.some(function(t) { return t.key === testKey; });
-  if (already) { console.log("[library] " + testKey + " déjà dans le dossier " + folderId); return { ok: true, alreadyPresent: true }; }
-  try {
-    var r = await jiraApiCall("POST", "/rest/raven/1.0/api/testrepository/" + project + "/folders/" + folderId + "/tests", { add: [testKey] });
-    return { ok: r.status < 300, alreadyPresent: false };
-  } catch(e) { return { ok: false, error: e.message }; }
-}
 
 
 function sendSSE(clientId, data) {
@@ -1244,18 +1163,9 @@ var server = http.createServer(function(req, res) {
         // Détecter Test Plan / Test Execution existants
         var planExecInfo = await findTestPlanExec(release);
 
-        // Détecter dossier Bibliothèque de Test
+        // Bibliothèque de Test — informatif uniquement (API non disponible sur Jira Cloud)
         var folderName = "Release " + release.replace(/^v/, "");
-        var repoData = await findRepoFolders();
-        var libraryFolder = null;
-        if (repoData) {
-          var found = searchFolder(repoData, folderName);
-          libraryFolder = found
-            ? { exists: true, folderId: found.id, name: folderName }
-            : { exists: false, willCreate: true, name: folderName };
-        } else {
-          libraryFolder = { exists: false, error: "Bibliothèque inaccessible", name: folderName };
-        }
+        var libraryFolder = { name: folderName, info: true };
 
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
@@ -1417,26 +1327,9 @@ var server = http.createServer(function(req, res) {
         emitProgress("xray-exec", execOk ? "done" : "error",
           execOk ? (planExec.testExec.created ? "Cree : " : "Existant : ") + planExec.testExec.key : "Test Execution echouee");
 
-        // STEP 6 — Bibliothèque de Test
-        emitProgress("xray-library", "running");
-        var libraryOk = false;
-        var libraryDetail = "";
-        try {
-          var libRelease = body.libraryRelease || body.release || release || "v1.25.0";
-          var folderResult = await findOrCreateRepoFolder(libRelease);
-          if (folderResult.ok) {
-            var addResult = await addTestToRepoFolder(folderResult.folderId, newKey);
-            if (addResult.ok) {
-              libraryOk = true;
-              libraryDetail = (folderResult.created ? "Dossier cree + " : "") + (addResult.alreadyPresent ? "Deja present" : "Ajoute") + " dans " + folderResult.name;
-            } else {
-              libraryDetail = "Ajout echoue: " + (addResult.error || "?");
-            }
-          } else {
-            libraryDetail = folderResult.error || "Dossier introuvable";
-          }
-        } catch(e) { libraryDetail = "Erreur: " + e.message; }
-        emitProgress("xray-library", libraryOk ? "done" : "error", libraryDetail);
+        // STEP 6 — Bibliothèque de Test (informatif — ajout manuel dans Xray UI)
+        var libFolderName = "Release " + (body.release || release || "v1.25.0").replace(/^v/, "");
+        emitProgress("xray-library", "done", "A ajouter manuellement dans : " + libFolderName);
 
         // STEP 7 — Résultat final
         emitProgress("complete", "done", newKey);
@@ -3060,38 +2953,8 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /api/xray-folders — dump arborescence Bibliothèque Xray (debug)
-  if (method === "GET" && url === "/api/xray-folders") {
-    (async function() {
-      try {
-        var CFGdbg = require("./config");
-        var proj = CFGdbg.jira.project || "SAFWBST";
-        // Tester tous les endpoints et retourner les résultats
-        var endpoints = [
-          "/rest/raven/2.0/api/testrepository/" + proj + "/folders",
-          "/rest/raven/1.0/api/testrepository/" + proj + "/folders",
-          "/rest/raven/2.0/api/testrepository/" + proj,
-          "/rest/raven/1.0/api/testrepository/" + proj
-        ];
-        var results = [];
-        for (var i = 0; i < endpoints.length; i++) {
-          try {
-            var r = await jiraApiCall("GET", endpoints[i]);
-            results.push({ path: endpoints[i], status: r.status, hasData: !!(r.data && typeof r.data === "object" && !r.data.errorMessages), dataType: typeof r.data, preview: JSON.stringify(r.data).substring(0, 300) });
-          } catch(e) { results.push({ path: endpoints[i], error: e.message }); }
-        }
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ project: proj, endpoints: results }, null, 2));
-      } catch(e) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    })();
-    return;
-  }
-
   // GET /api/jira-dryrun — état du dryRun
-  // GET /api/xray-search?type=plan|exec|library&release=v1.25.0 — recherche par release
+  // GET /api/xray-search?type=plan|exec&release=v1.25.0 — recherche par release
   if (method === "GET" && url.startsWith("/api/xray-search")) {
     var xsParams = new URLSearchParams((req.url.split("?")[1]) || "");
     var xsType = xsParams.get("type");
@@ -3111,15 +2974,9 @@ var server = http.createServer(function(req, res) {
           var xsIssues = (xsRes.data && xsRes.data.issues) || [];
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, type: xsType, release: xsRelease, results: xsIssues.map(function(i) { return { key: i.key, summary: i.fields.summary, status: (i.fields.status || {}).name || "" }; }) }));
-        } else if (xsType === "library") {
-          var folderName = "Release " + xsRelease.replace(/^v/, "");
-          var repoData = await findRepoFolders();
-          var found = repoData ? searchFolder(repoData, folderName) : null;
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, type: "library", release: xsRelease, folder: found ? { id: found.id, name: found.name, exists: true } : { name: folderName, exists: false } }));
         } else {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "type invalide (plan|exec|library)" }));
+          res.end(JSON.stringify({ error: "type invalide (plan|exec)" }));
         }
       } catch(e) {
         res.writeHead(500, { "Content-Type": "application/json" });

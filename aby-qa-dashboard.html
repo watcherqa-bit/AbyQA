@@ -3391,26 +3391,15 @@
             </div>
           </div>
 
-          <!-- Bibliothèque de Test -->
+          <!-- Bibliothèque de Test (informatif — ajout manuel dans Xray UI) -->
           <div id="val-library-info" style="display:none;margin-top:16px">
             <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">BIBLIOTHÈQUE DE TEST</label>
-            <div style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px" id="val-library-card">
+            <div style="padding:12px 14px;background:var(--bg3);border:1px solid var(--cyan);border-radius:10px" id="val-library-card">
               <div style="font-family:var(--mono);font-size:12px;color:var(--text2);line-height:1.8">
-                <span style="color:var(--text3)">📚</span> La Bibliothèque de Test<br>
+                📚 La Bibliothèque de Test<br>
                 <span style="color:var(--text3);margin-left:16px">└──</span> <span id="val-library-folder" style="color:var(--cyan);font-weight:600"></span>
-                <span id="val-library-status" style="margin-left:8px;font-size:11px"></span>
               </div>
-              <div id="val-library-detail" style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px"></div>
-              <div style="display:flex;align-items:center;gap:4px;margin-top:8px;flex-wrap:wrap">
-                <select id="val-lib-mode" onchange="valToggleSearchMode('library')" style="padding:4px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-family:var(--mono)">
-                  <option value="release" selected>Par release</option>
-                  <option value="key">Par cle</option>
-                </select>
-                <span id="val-lib-prefix" style="font-family:var(--mono);font-size:12px;color:var(--text3);display:none">SAFWBST-</span>
-                <input type="text" id="val-lib-input" placeholder="v1.25.0" style="width:90px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
-                <button onclick="valSearch('library')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
-              </div>
-              <div id="val-lib-results" style="display:none;margin-top:6px"></div>
+              <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:6px">Apres creation, ajouter le ticket TEST dans ce dossier via l'UI Xray</div>
             </div>
           </div>
         </div>
@@ -14691,30 +14680,10 @@ function openValidationModal(sourceKey, opts) {
       execInput.value = "";
     }
 
-    // Remplir section Bibliothèque
+    // Remplir section Bibliothèque (informatif)
     var libDiv = document.getElementById("val-library-info");
     libDiv.style.display = "";
-    var libCard = document.getElementById("val-library-card");
-    var libFolder = document.getElementById("val-library-folder");
-    var libStatus = document.getElementById("val-library-status");
-    var libDetail = document.getElementById("val-library-detail");
-    _valState.library = data.library || null;
-    if (data.library) {
-      libFolder.textContent = data.library.name;
-      if (data.library.exists) {
-        libStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
-        libDetail.textContent = "Le ticket TEST sera ajoute a ce dossier";
-        libCard.style.borderColor = "var(--green)";
-      } else if (data.library.error) {
-        libStatus.innerHTML = '<span style="color:var(--red)">&#10008; Erreur</span>';
-        libDetail.textContent = data.library.error;
-        libCard.style.borderColor = "var(--red)";
-      } else {
-        libStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
-        libDetail.textContent = "Dossier inexistant — sera cree automatiquement";
-        libCard.style.borderColor = "var(--orange)";
-      }
-    }
+    document.getElementById("val-library-folder").textContent = (data.library && data.library.name) || "Release " + (data.release || "").replace(/^v/, "");
 
     // Remplir onglet 2
     renderValXraySteps(_valState.xraySteps);
@@ -14787,22 +14756,11 @@ function removeValXrayStep(idx) {
 }
 
 function valCollectKey(type) {
-  var prefix = type === "library" ? "lib" : type;
-  var mode = document.getElementById("val-" + prefix + "-mode").value;
-  var val = (document.getElementById("val-" + prefix + "-input").value || "").trim();
+  var mode = document.getElementById("val-" + type + "-mode").value;
+  var val = (document.getElementById("val-" + type + "-input").value || "").trim();
   if (!val) return null;
-  if (mode === "key") {
-    return /^SAFWBST-/i.test(val) ? val.toUpperCase() : "SAFWBST-" + val;
-  }
   // En mode release, la clé a été remplie via valSelectResult → mode repassé en "key"
   return /^SAFWBST-/i.test(val) ? val.toUpperCase() : "SAFWBST-" + val;
-}
-
-function valCollectLibRelease() {
-  var mode = document.getElementById("val-lib-mode").value;
-  var val = (document.getElementById("val-lib-input").value || "").trim();
-  if (mode === "release" && val) return val;
-  return null;
 }
 
 function collectValData() {
@@ -14846,8 +14804,7 @@ function collectValData() {
     config: collectValConfig(),
     release: _valState.release,
     testPlanKey: valCollectKey("plan"),
-    testExecKey: valCollectKey("exec"),
-    libraryRelease: valCollectLibRelease()
+    testExecKey: valCollectKey("exec")
   };
 }
 
