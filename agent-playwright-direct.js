@@ -2258,18 +2258,27 @@ async function main() {
   // ── Vérification âge storageState (cookies Cloudflare expirent en ~24h) ───
   var envsToCheck = IS_MULTI_ENV ? ENV_NAMES : [ENV_NAME];
   var sessionWarnings = [];
+  var sessionBlocked = false;
   envsToCheck.forEach(function(envN) {
-    // Ne vérifier que les envs staging (pas prod)
-    if (envN === "prod") return;
     var ssCheck = checkStorageStateAge(envN);
     if (!ssCheck.ok) {
       sessionWarnings.push(ssCheck);
+      sessionBlocked = true;
       console.log("  [AUTH] ⚠️ " + ssCheck.message);
       console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "session-warning", message: "⚠️ " + ssCheck.message, pct: 2, sessionExpired: true, env: envN }));
     } else {
       console.log("  [AUTH] ✅ Session " + envN + " valide (" + ssCheck.age + "h)");
     }
   });
+
+  // Bloquer le test si session expirée ou absente
+  if (sessionBlocked) {
+    var blockMsg = "⚠️ Session " + sessionWarnings.map(function(w) { return w.absent ? "absente" : "expiree"; }).join("/") + " pour " + sessionWarnings.map(function(w) { return w.message.split(" pour ")[1] || "?"; }).join(", ") + " — Uploader une nouvelle session depuis Parametres > Session Playwright";
+    console.log("\n  [AUTH] ❌ TEST BLOQUE — " + blockMsg);
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "session-blocked", message: blockMsg, pct: 100, sessionBlocked: true, done: true }));
+    console.log("PLAYWRIGHT_DONE:" + JSON.stringify({ blocked: true, reason: blockMsg, sessionExpired: true }));
+    return;
+  }
 
   // ── MODE MULTI-ENV : comparaison côte-à-côte ─────────────────────────────
   if (IS_MULTI_ENV) {

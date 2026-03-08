@@ -3554,6 +3554,28 @@
         </div>
       </div>
 
+      <!-- Session Playwright (bypass Cloudflare) -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">SESSION PLAYWRIGHT <span style="font-size:9px">(BYPASS CLOUDFLARE)</span></div>
+        <div id="session-cards" style="display:flex;flex-direction:column;gap:10px">
+          <div style="font-size:12px;color:var(--text3);font-family:var(--mono)">Chargement...</div>
+        </div>
+        <div style="margin-top:14px;padding:12px;background:var(--bg3);border-radius:8px;border:1px solid var(--border2)">
+          <details>
+            <summary style="cursor:pointer;font-size:11px;color:var(--text2);font-family:var(--mono)">Comment generer une session ?</summary>
+            <div style="font-size:11px;color:var(--text3);line-height:1.7;margin-top:8px">
+              1. Sur votre PC, ouvrir un terminal<br>
+              2. Aller dans le dossier AbyQA<br>
+              3. Lancer : <code style="background:var(--bg);padding:1px 5px;border-radius:4px">node login-save-state.js prod</code><br>
+              4. Se connecter manuellement dans le navigateur (90s)<br>
+              5. Recuperer le fichier <code style="background:var(--bg);padding:1px 5px;border-radius:4px">auth/prod.json</code> genere<br>
+              6. Cliquer "Uploader nouvelle session" ci-dessus
+            </div>
+          </details>
+        </div>
+        <input type="file" id="session-file-picker" accept=".json" style="display:none" onchange="handleSessionFilePick(this)">
+      </div>
+
       <!-- Version courante -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">VERSION COURANTE</div>
@@ -8047,16 +8069,16 @@ function inspectEnvChanged(val) {
 }
 
 function checkSessionStatus(envName) {
-  fetch('/api/session/' + envName).then(function(r) { return r.json(); }).then(function(d) {
+  fetch(SERVER + '/api/session/' + envName).then(function(r) { return r.json(); }).then(function(d) {
     var btn = document.getElementById('inspect-session-btn');
     if (!btn) return;
     if (d.ok) {
       var age = Math.round((Date.now() - new Date(d.savedAt).getTime()) / 3600000);
-      btn.title = '✅ Session active — ' + d.cookies + ' cookies — il y a ' + age + 'h';
+      btn.title = 'Session active — ' + d.cookies + ' cookies — il y a ' + age + 'h';
       btn.style.borderColor = 'rgba(16,185,129,.4)';
       btn.style.color = '#10b981';
     } else {
-      btn.title = '⚠️ Pas de session — Cloudflare peut bloquer';
+      btn.title = 'Pas de session — Cloudflare peut bloquer';
       btn.style.borderColor = 'rgba(249,115,22,.4)';
       btn.style.color = '#f97316';
     }
@@ -8073,22 +8095,102 @@ function uploadSession() {
   var envBase = env.replace('drupal-', '');
   var json = (document.getElementById('inspect-session-json') || {}).value || '';
   var st   = document.getElementById('inspect-session-status');
-  if (!json.trim()) { if (st) st.textContent = '⚠️ Colle le JSON de session'; return; }
-  try { JSON.parse(json); } catch(e) { if (st) st.textContent = '⚠️ JSON invalide'; return; }
-  if (st) st.textContent = '⏳ Upload...';
-  fetch('/api/session/' + envBase, {
+  if (!json.trim()) { if (st) st.textContent = 'Colle le JSON de session'; return; }
+  try { JSON.parse(json); } catch(e) { if (st) st.textContent = 'JSON invalide'; return; }
+  if (st) st.textContent = 'Upload...';
+  fetch(SERVER + '/api/session/' + envBase, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: json
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (d.ok) {
-      if (st) st.textContent = '✅ ' + d.cookies + ' cookies sauvegardés';
+      if (st) st.textContent = d.cookies + ' cookies sauvegardes';
       document.getElementById('inspect-session-block').style.display = 'none';
       checkSessionStatus(envBase);
+      loadSessionCards();
     } else {
-      if (st) st.textContent = '❌ ' + (d.error || 'Erreur');
+      if (st) st.textContent = (d.error || 'Erreur');
     }
-  }).catch(function(e) { if (st) st.textContent = '❌ ' + e.message; });
+  }).catch(function(e) { if (st) st.textContent = e.message; });
+}
+
+// ── Session Playwright — cartes de statut par env ──────────────────────────
+var _sessionUploadEnv = '';
+
+function loadSessionCards() {
+  fetch(SERVER + '/api/session/status').then(function(r) { return r.json(); }).then(function(statuses) {
+    var container = document.getElementById('session-cards');
+    if (!container) return;
+    var html = '';
+    ['prod', 'sophie', 'paulo'].forEach(function(env) {
+      var s = statuses[env] || {};
+      var icon, statusText, statusColor, borderColor;
+      if (!s.exists) {
+        icon = '&#10060;'; statusText = 'Aucune session'; statusColor = '#ef4444'; borderColor = 'rgba(239,68,68,.3)';
+      } else if (!s.valid) {
+        var ageH = s.age_hours !== null ? Math.round(s.age_hours) : '?';
+        icon = '&#9888;&#65039;'; statusText = 'Session expiree — il y a ' + ageH + 'h'; statusColor = '#f97316'; borderColor = 'rgba(249,115,22,.3)';
+      } else {
+        var ageH2 = s.age_hours !== null ? Math.round(s.age_hours * 10) / 10 : '?';
+        var remainH = Math.round((24 - s.age_hours) * 10) / 10;
+        icon = '&#9989;'; statusText = 'Session valide — il y a ' + ageH2 + 'h'; statusColor = '#10b981'; borderColor = 'rgba(16,185,129,.3)';
+        statusText += '<br><span style="font-size:10px;color:var(--text3)">Expire dans ' + remainH + 'h — ' + (s.cookies || 0) + ' cookies</span>';
+      }
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg3);border-radius:8px;border-left:3px solid ' + borderColor + '">';
+      html += '<div><div style="font-family:var(--mono);font-size:12px;color:var(--text);font-weight:600;margin-bottom:4px">' + env.toUpperCase() + '</div>';
+      html += '<div style="font-size:11px;color:' + statusColor + ';line-height:1.5">' + icon + ' ' + statusText + '</div></div>';
+      html += '<button onclick="triggerSessionUpload(\'' + env + '\')" style="background:none;border:1px solid ' + borderColor + ';color:' + statusColor + ';border-radius:6px;padding:6px 12px;cursor:pointer;font-size:11px;font-family:var(--mono);white-space:nowrap">Uploader session</button>';
+      html += '</div>';
+    });
+    container.innerHTML = html;
+  }).catch(function() {
+    var c = document.getElementById('session-cards');
+    if (c) c.innerHTML = '<div style="font-size:11px;color:var(--text3)">Impossible de charger le statut des sessions</div>';
+  });
+}
+
+function triggerSessionUpload(env) {
+  _sessionUploadEnv = env;
+  var picker = document.getElementById('session-file-picker');
+  if (picker) { picker.value = ''; picker.click(); }
+}
+
+function handleSessionFilePick(input) {
+  if (!input.files || !input.files.length) return;
+  var file = input.files[0];
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var text = e.target.result;
+    var parsed;
+    try { parsed = JSON.parse(text); } catch(err) {
+      showToast('JSON invalide : ' + err.message, 'error');
+      return;
+    }
+    // Valider format Playwright
+    if (!parsed.cookies || !Array.isArray(parsed.cookies)) {
+      showToast('Format invalide — le fichier doit contenir un champ "cookies" (array)', 'error');
+      return;
+    }
+    // Envoyer au serveur
+    var env = _sessionUploadEnv || 'sophie';
+    showToast('Upload session ' + env + '...', 'info');
+    fetch(SERVER + '/api/session/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env: env, storageState: parsed })
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      if (d.ok) {
+        showToast('Session ' + env + ' uploadee — ' + d.cookies + ' cookies — valide 24h', 'success');
+        loadSessionCards();
+        checkSessionStatus(env);
+      } else {
+        showToast('Erreur upload : ' + (d.error || 'Erreur inconnue'), 'error');
+      }
+    }).catch(function(err) {
+      showToast('Erreur upload : ' + err.message, 'error');
+    });
+  };
+  reader.readAsText(file);
 }
 
 function runInspect(force) {
@@ -8604,6 +8706,8 @@ function loadSettingsPanel() {
       // Version courante
       var cfgRel = document.getElementById("cfg-latest-release");
       if (cfgRel) cfgRel.value = s.currentRelease || "v1.25.0";
+      // Session cards
+      loadSessionCards();
     })
     .catch(function() {});
 }
@@ -13688,7 +13792,14 @@ function handlePlaywrightProgress(data) {
     steps.innerHTML = '<div style="' + stepColor + '">' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
   }
   if (data.step === "session-warning" && data.sessionExpired && steps) {
-    steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expirée") + '</div>' + steps.innerHTML;
+    steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expiree") + '</div>' + steps.innerHTML;
+  }
+  if (data.step === "session-blocked" && data.sessionBlocked) {
+    if (steps) steps.innerHTML = '<div style="color:#ef4444;font-weight:700;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:6px">❌ TEST BLOQUE — session expiree ou absente<br><a href="#" onclick="showPanel(\'panel-settings\');return false" style="color:#3b82f6;text-decoration:underline;font-size:11px">Ouvrir Parametres > Session Playwright</a></div>' + steps.innerHTML;
+    if (bar) { bar.style.width = "100%"; bar.style.background = "linear-gradient(90deg,#ef4444,#f87171)"; }
+    var titleEl = document.getElementById("pw-progress-title");
+    if (titleEl) titleEl.textContent = "❌ Session expiree — test non lance";
+    return;
   }
   if (data.step === "done") {
     if (bar) bar.style.width = "100%";
@@ -15069,7 +15180,12 @@ function valHandlePlaywrightProgress(data) {
   }
   // Alerte session expirée
   if (data.step === "session-warning" && data.sessionExpired) {
-    if (steps) steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expirée") + '</div>' + steps.innerHTML;
+    if (steps) steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expiree") + '</div>' + steps.innerHTML;
+  }
+  if (data.step === "session-blocked" && data.sessionBlocked) {
+    if (steps) steps.innerHTML = '<div style="color:#ef4444;font-weight:700;padding:8px;background:rgba(239,68,68,.1);border-radius:6px;margin-bottom:6px">❌ TEST BLOQUE — session expiree ou absente<br><a href="#" onclick="showPanel(\'panel-settings\');return false" style="color:#3b82f6;text-decoration:underline;font-size:11px">Ouvrir Parametres > Session Playwright</a></div>' + steps.innerHTML;
+    if (bar) { bar.style.width = "100%"; bar.style.background = "linear-gradient(90deg,#ef4444,#f87171)"; }
+    return;
   }
   // Stocker les cas MANUEL pour affichage dans le rapport final
   if (data.step === "scenarios-done" && data.manuelCases && data.manuelCases.length > 0) {

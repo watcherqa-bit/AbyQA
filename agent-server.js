@@ -3505,6 +3505,148 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/session/status — Statut de toutes les sessions ──────────────
+  if (method === "GET" && urlPath === "/api/session/status") {
+    var authDir = path.join(__dirname, "auth");
+    var sessionEnvs = ["prod", "sophie", "paulo"];
+    var statuses = {};
+    sessionEnvs.forEach(function(envName) {
+      var filePath = path.join(authDir, envName + ".json");
+      if (!fs.existsSync(filePath)) {
+        statuses[envName] = { exists: false, age_hours: null, valid: false, expires_at: null, savedAt: null };
+        return;
+      }
+      try {
+        var stat = fs.statSync(filePath);
+        var ageMs = Date.now() - stat.mtimeMs;
+        var ageH = ageMs / 3600000;
+        var maxAge = 24 * 60 * 60 * 1000;
+        var valid = ageMs < maxAge;
+        var expiresAt = new Date(stat.mtimeMs + maxAge).toISOString();
+        var data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+        var cookieCount = (data.cookies || []).length;
+        statuses[envName] = {
+          exists: true,
+          age_hours: Math.round(ageH * 10) / 10,
+          valid: valid,
+          expires_at: expiresAt,
+          savedAt: new Date(stat.mtimeMs).toISOString(),
+          cookies: cookieCount
+        };
+      } catch(e) {
+        console.error("[SESSION] Erreur lecture " + envName + " :", e.message);
+        statuses[envName] = { exists: true, age_hours: null, valid: false, expires_at: null, error: e.message };
+      }
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(statuses));
+    return;
+  }
+
+  // ── POST /api/session/upload — Upload storageState JSON ────────────────────
+  if (method === "POST" && urlPath === "/api/session/upload") {
+    var bodyChunks = [];
+    req.on("data", function(c) { bodyChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var payload = JSON.parse(Buffer.concat(bodyChunks).toString());
+        var envName = (payload.env || "").toLowerCase().trim();
+        var storageState = payload.storageState;
+
+        // Valider l'env
+        if (["prod", "sophie", "paulo"].indexOf(envName) === -1) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Env invalide. Valeurs acceptées : prod, sophie, paulo" }));
+          return;
+        }
+
+        // Valider le format storageState Playwright
+        if (!storageState || typeof storageState !== "object") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "storageState manquant ou invalide" }));
+          return;
+        }
+        if (!Array.isArray(storageState.cookies)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Format invalide — champ 'cookies' (array) requis" }));
+          return;
+        }
+        if (!Array.isArray(storageState.origins)) {
+          // origins peut être vide mais doit être un array
+          storageState.origins = [];
+        }
+
+        // Sauvegarder dans auth/[env].json
+        var authDir = path.join(__dirname, "auth");
+        if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+        var authFile = path.join(authDir, envName + ".json");
+        fs.writeFileSync(authFile, JSON.stringify(storageState, null, 2));
+
+        console.log("[SESSION] ✅ " + envName + " uploadé — " + storageState.cookies.length + " cookies");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, env: envName, cookies: storageState.cookies.length, savedAt: new Date().toISOString() }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "JSON invalide : " + e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/session/:env — Statut d'une session spécifique ────────────────
+  if (method === "GET" && urlPath.match(/^\/api\/session\/[a-z]+$/)) {
+    var sEnvName = urlPath.split("/").pop();
+    var sAuthFile = path.join(__dirname, "auth", sEnvName + ".json");
+    if (!fs.existsSync(sAuthFile)) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Aucune session pour " + sEnvName }));
+      return;
+    }
+    try {
+      var sStat = fs.statSync(sAuthFile);
+      var sData = JSON.parse(fs.readFileSync(sAuthFile, "utf8"));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, cookies: (sData.cookies || []).length, savedAt: new Date(sStat.mtimeMs).toISOString() }));
+    } catch(e) {
+      console.error("[SESSION] Erreur lecture " + sEnvName + " :", e.message);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // ── POST /api/session/:env — Upload session (ancien format, compat) ────────
+  if (method === "POST" && urlPath.match(/^\/api\/session\/[a-z]+$/)) {
+    var pEnvName = urlPath.split("/").pop();
+    if (["prod", "sophie", "paulo"].indexOf(pEnvName) === -1) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Env invalide" }));
+      return;
+    }
+    var pChunks = [];
+    req.on("data", function(c) { pChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var pData = JSON.parse(Buffer.concat(pChunks).toString());
+        if (!Array.isArray(pData.cookies)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Format invalide — champ 'cookies' requis" }));
+          return;
+        }
+        var pAuthDir = path.join(__dirname, "auth");
+        if (!fs.existsSync(pAuthDir)) fs.mkdirSync(pAuthDir, { recursive: true });
+        fs.writeFileSync(path.join(pAuthDir, pEnvName + ".json"), JSON.stringify(pData, null, 2));
+        console.log("[SESSION] ✅ " + pEnvName + " uploadé (compat) — " + pData.cookies.length + " cookies");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, cookies: pData.cookies.length, savedAt: new Date().toISOString() }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "JSON invalide : " + e.message }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404); res.end("Not found");
 });
 
