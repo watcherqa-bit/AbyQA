@@ -13388,17 +13388,18 @@ function renderSophieColumn() {
 
     // Bouton Tester ou message
     var actionBtn = "";
+    var jiraBtn = ' <button onclick="openValidationModal(\'' + t.key + '\')" style="background:var(--cyan);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">Jira</button>';
     if (t.canTest) {
       if (t.testType === "manuel") {
-        actionBtn = '<button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">📋 Checklist</button>';
+        actionBtn = '<button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">Checklist</button>' + jiraBtn;
       } else if (t.testType === "mixte") {
-        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Auto</button>' +
-          ' <button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">📋 Manuel</button>';
+        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">Auto</button>' +
+          ' <button onclick="sophieOpenChecklist(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:4px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">Manuel</button>' + jiraBtn;
       } else {
-        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶ Tester</button>';
+        actionBtn = '<button onclick="sophieLaunchOne(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">Tester</button>' + jiraBtn;
       }
     } else {
-      actionBtn = '<button onclick="sophieTriggerEnrich(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">⚡ Préparer</button>';
+      actionBtn = '<button onclick="sophieTriggerEnrich(\'' + t.key + '\')" style="background:var(--orange);border:none;color:#000;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono)">Preparer</button>';
     }
 
     // Ligne des manquants
