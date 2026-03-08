@@ -1172,6 +1172,38 @@ var server = http.createServer(function(req, res) {
         try { settingsV = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
         var release = settingsV.currentRelease || "v1.25.0";
 
+        // Détecter si un ticket TEST existe déjà pour ce sourceKey
+        var existingTest = null;
+        try {
+          var CFGvp = require("./config");
+          var authVP = Buffer.from(CFGvp.jira.email + ":" + CFGvp.jira.token).toString("base64");
+          var sourceIssue = await new Promise(function(resolve, reject) {
+            var sr = require("https").request({
+              hostname: CFGvp.jira.host,
+              path: "/rest/api/3/issue/" + sourceKey + "?fields=issuelinks",
+              method: "GET",
+              headers: { "Authorization": "Basic " + authVP, "Accept": "application/json" }
+            }, function(sRes) {
+              var d = ""; sRes.on("data", function(c) { d += c; });
+              sRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { resolve({}); } });
+            });
+            sr.on("error", function() { resolve({}); }); sr.end();
+          });
+          var links = (sourceIssue.fields && sourceIssue.fields.issuelinks) || [];
+          for (var li = 0; li < links.length; li++) {
+            var lk = links[li];
+            // Chercher un lien "Test" entrant (inwardIssue = ticket TEST)
+            var linkedIssue = lk.inwardIssue || lk.outwardIssue;
+            if (linkedIssue && linkedIssue.fields && linkedIssue.fields.issuetype) {
+              var ltName = (linkedIssue.fields.issuetype.name || "").toLowerCase();
+              if (ltName === "test" || ltName === "test case") {
+                existingTest = { key: linkedIssue.key, summary: linkedIssue.fields.summary || "" };
+                break;
+              }
+            }
+          }
+        } catch(e) { /* ignore — on proposera création */ }
+
         // Détecter Test Plan / Test Execution existants
         var planExecInfo = await findTestPlanExec(release);
 
@@ -1184,6 +1216,7 @@ var server = http.createServer(function(req, res) {
           ok: true,
           sourceKey: sourceKey,
           release: release,
+          existingTest: existingTest,
           ticket: {
             summary:        extPayload.title || extPayload.fields.summary,
             descriptionADF: extPayload.fields.description,
@@ -1229,44 +1262,111 @@ var server = http.createServer(function(req, res) {
           results.steps.push(evt);
         }
 
-        // STEP 1 — Créer ticket TEST dans Jira
-        emitProgress("jira-create", "running");
-        var fields = {
-          project:     { key: CFGp.jira.project || "SAFWBST" },
-          summary:     body.ticket.summary,
-          description: body.ticket.descriptionADF,
-          issuetype:   { name: body.ticket.issuetype || "Test" },
-          priority:    { name: body.ticket.priority || "Medium" }
-        };
-        if (body.ticket.labels && body.ticket.labels.length) fields.labels = body.ticket.labels;
+        // STEP 1 — Créer ou Mettre à jour ticket TEST dans Jira
+        var updateMode = !!(body.existingTestKey);
+        var newKey;
 
-        var createPayload = JSON.stringify({ fields: fields });
-        var createResult = await new Promise(function(resolve, reject) {
-          var cr = httpsP.request({
-            hostname: CFGp.jira.host, path: "/rest/api/3/issue", method: "POST",
-            headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(createPayload) }
-          }, function(cRes) {
-            var d = ""; cRes.on("data", function(c) { d += c; });
-            cRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { resolve({ error: d }); } });
+        if (updateMode) {
+          // MODE UPDATE — mettre à jour le ticket existant
+          newKey = body.existingTestKey;
+          emitProgress("jira-create", "running", "Mise à jour " + newKey + "...");
+          var updateFields = {
+            summary:     body.ticket.summary,
+            description: body.ticket.descriptionADF,
+            priority:    { name: body.ticket.priority || "Medium" }
+          };
+          if (body.ticket.labels && body.ticket.labels.length) updateFields.labels = body.ticket.labels;
+
+          var updatePayload = JSON.stringify({ fields: updateFields });
+          var updateResult = await new Promise(function(resolve, reject) {
+            var ur = httpsP.request({
+              hostname: CFGp.jira.host, path: "/rest/api/3/issue/" + newKey, method: "PUT",
+              headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(updatePayload) }
+            }, function(uRes) {
+              var d = ""; uRes.on("data", function(c) { d += c; });
+              uRes.on("end", function() { resolve({ statusCode: uRes.statusCode, body: d }); });
+            });
+            ur.on("error", reject);
+            ur.write(updatePayload); ur.end();
           });
-          cr.on("error", reject);
-          cr.write(createPayload); cr.end();
-        });
 
-        if (!createResult.key) {
-          emitProgress("jira-create", "error", (createResult.errors ? JSON.stringify(createResult.errors) : "Erreur création ticket").substring(0, 200));
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: "Création ticket échouée", results: results }));
-          return;
+          if (updateResult.statusCode >= 300) {
+            emitProgress("jira-create", "error", "Mise à jour échouée — HTTP " + updateResult.statusCode);
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Mise à jour ticket échouée", results: results }));
+            return;
+          }
+
+          // Supprimer les anciens CSV attachés (CAS-TEST-*.csv)
+          try {
+            var existingIssue = await new Promise(function(resolve, reject) {
+              var er = httpsP.request({
+                hostname: CFGp.jira.host, path: "/rest/api/3/issue/" + newKey + "?fields=attachment", method: "GET",
+                headers: { "Authorization": "Basic " + authP, "Accept": "application/json" }
+              }, function(eRes) {
+                var d = ""; eRes.on("data", function(c) { d += c; });
+                eRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { resolve({}); } });
+              });
+              er.on("error", function() { resolve({}); }); er.end();
+            });
+            var oldAttachments = (existingIssue.fields && existingIssue.fields.attachment || [])
+              .filter(function(a) { return /^CAS-TEST-.*\.csv$/i.test(a.filename); });
+            for (var ai = 0; ai < oldAttachments.length; ai++) {
+              await new Promise(function(resolve) {
+                var dr = httpsP.request({
+                  hostname: CFGp.jira.host, path: "/rest/api/3/attachment/" + oldAttachments[ai].id, method: "DELETE",
+                  headers: { "Authorization": "Basic " + authP }
+                }, function(dRes) { dRes.resume(); resolve(); });
+                dr.on("error", function() { resolve(); }); dr.end();
+              });
+              console.log("[validation/push] Ancien CSV supprimé : " + oldAttachments[ai].filename);
+            }
+          } catch(e) { /* ignore cleanup errors */ }
+
+          emitProgress("jira-create", "done", newKey + " mis à jour");
+        } else {
+          // MODE CREATE — créer un nouveau ticket
+          emitProgress("jira-create", "running");
+          var fields = {
+            project:     { key: CFGp.jira.project || "SAFWBST" },
+            summary:     body.ticket.summary,
+            description: body.ticket.descriptionADF,
+            issuetype:   { name: body.ticket.issuetype || "Test" },
+            priority:    { name: body.ticket.priority || "Medium" }
+          };
+          if (body.ticket.labels && body.ticket.labels.length) fields.labels = body.ticket.labels;
+
+          var createPayload = JSON.stringify({ fields: fields });
+          var createResult = await new Promise(function(resolve, reject) {
+            var cr = httpsP.request({
+              hostname: CFGp.jira.host, path: "/rest/api/3/issue", method: "POST",
+              headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(createPayload) }
+            }, function(cRes) {
+              var d = ""; cRes.on("data", function(c) { d += c; });
+              cRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { resolve({ error: d }); } });
+            });
+            cr.on("error", reject);
+            cr.write(createPayload); cr.end();
+          });
+
+          if (!createResult.key) {
+            emitProgress("jira-create", "error", (createResult.errors ? JSON.stringify(createResult.errors) : "Erreur création ticket").substring(0, 200));
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Création ticket échouée", results: results }));
+            return;
+          }
+          newKey = createResult.key;
+          emitProgress("jira-create", "done", newKey);
         }
-        var newKey = createResult.key;
-        emitProgress("jira-create", "done", newKey);
 
-        // STEP 2 — Lien avec ticket source
-        emitProgress("jira-link", "running");
+        // STEP 2 — Lien avec ticket source (skip en mode update, le lien existe déjà)
         var linked = false;
         var linkError = "";
-        if (body.ticket.parentKey) {
+        if (updateMode) {
+          linked = true;
+          emitProgress("jira-link", "done", body.ticket.parentKey + " (lien existant)");
+        } else if (body.ticket.parentKey) {
+          emitProgress("jira-link", "running");
           try {
             var linkPayload = JSON.stringify({
               type: { name: "Test" },
@@ -1294,8 +1394,8 @@ var server = http.createServer(function(req, res) {
               lr.write(linkPayload); lr.end();
             });
           } catch(e) { linkError = "Exception: " + e.message; console.error("[validation/push] Lien exception:", e.message); }
+          emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé" + (linkError ? " — " + linkError : ""));
         }
-        emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé" + (linkError ? " — " + linkError : ""));
 
         // STEP 3 — Générer CSV cas de test + attacher au ticket Jira
         emitProgress("csv-export", "running");

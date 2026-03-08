@@ -14634,6 +14634,37 @@ function openValidationModal(sourceKey, opts) {
     _valState.release = data.release || "";
     _valState.testPlan = data.testPlan || null;
     _valState.testExec = data.testExec || null;
+    _valState.existingTest = data.existingTest || null;
+
+    // Afficher le choix Créer / Mettre à jour si un ticket TEST existe déjà
+    var existDiv = document.getElementById("val-existing-test");
+    if (!existDiv) {
+      existDiv = document.createElement("div");
+      existDiv.id = "val-existing-test";
+      var summaryField = document.getElementById("val-summary");
+      summaryField.parentNode.insertBefore(existDiv, summaryField);
+    }
+    if (data.existingTest) {
+      existDiv.style.cssText = "margin-bottom:12px;padding:12px;border-radius:8px;border:1px solid var(--orange);background:rgba(249,115,22,.08)";
+      existDiv.innerHTML =
+        '<div style="font-size:13px;font-weight:700;color:var(--orange);margin-bottom:8px">Un ticket TEST existe déjà pour ' + sourceKey + '</div>' +
+        '<div style="font-size:12px;color:var(--text2);margin-bottom:10px">' +
+          '<a href="https://' + (CFG_JIRA_HOST || "eurelis.atlassian.net") + '/browse/' + data.existingTest.key + '" target="_blank" style="color:var(--cyan);font-weight:700">' + data.existingTest.key + '</a> — ' + escHtml(data.existingTest.summary) +
+        '</div>' +
+        '<div style="display:flex;gap:10px">' +
+          '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border-radius:6px;border:2px solid var(--orange);background:rgba(249,115,22,.1)">' +
+            '<input type="radio" name="val-mode" value="update" checked style="accent-color:var(--orange)"> ' +
+            '<span style="font-size:12px;font-weight:700;color:var(--orange)">Mettre à jour ' + data.existingTest.key + '</span>' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border-radius:6px;border:2px solid var(--cyan);background:rgba(59,130,246,.05)">' +
+            '<input type="radio" name="val-mode" value="create" style="accent-color:var(--cyan)"> ' +
+            '<span style="font-size:12px;color:var(--text1)">Créer un nouveau ticket</span>' +
+          '</label>' +
+        '</div>';
+    } else {
+      existDiv.style.cssText = "display:none";
+      existDiv.innerHTML = "";
+    }
 
     // Remplir onglet 1
     document.getElementById("val-summary").value = data.ticket.summary || "";
@@ -14800,7 +14831,11 @@ function collectValData() {
   var labelsStr = document.getElementById("val-labels").value.trim();
   var labels = labelsStr ? labelsStr.split(",").map(function(l) { return l.trim(); }).filter(Boolean) : [];
 
-  return {
+  // Déterminer le mode (update vs create)
+  var modeRadio = document.querySelector('input[name="val-mode"]:checked');
+  var isUpdate = modeRadio && modeRadio.value === "update" && _valState.existingTest;
+
+  var payload = {
     ticket: {
       summary:        document.getElementById("val-summary").value,
       descriptionADF: descriptionADF,
@@ -14816,6 +14851,12 @@ function collectValData() {
     testPlanKey: valCollectKey("plan"),
     testExecKey: valCollectKey("exec")
   };
+
+  if (isUpdate) {
+    payload.existingTestKey = _valState.existingTest.key;
+  }
+
+  return payload;
 }
 
 function confirmValidationPush() {
@@ -14834,8 +14875,9 @@ function confirmValidationPush() {
   document.getElementById("val-status").textContent = "Envoi en cours...";
 
   // Init progress steps
+  var isUpdateMode = !!(payload.existingTestKey);
   var STEPS = [
-    { id: "jira-create",  label: "Création du ticket TEST dans Jira" },
+    { id: "jira-create",  label: isUpdateMode ? "Mise à jour de " + payload.existingTestKey : "Création du ticket TEST dans Jira" },
     { id: "jira-link",    label: "Lien avec le ticket source" },
     { id: "csv-export",   label: "Cas de test exportés en CSV" },
     { id: "xray-library", label: "Ajout à la Bibliothèque de Test" },
