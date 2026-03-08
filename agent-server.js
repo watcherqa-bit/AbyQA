@@ -199,18 +199,20 @@ async function findTestPlanExec(release) {
   var project = CFGf.jira.project || "SAFWBST";
   var result = { testPlan: null, testExec: null };
   try {
-    var jqlPlan = 'project = ' + project + ' AND issuetype = "Test Plan" AND (labels = "' + release + '" OR summary ~ "' + release + '") ORDER BY created DESC';
-    var planRes = await jiraApiCall("GET", "/rest/api/2/search?jql=" + encodeURIComponent(jqlPlan) + "&fields=summary,status,key&maxResults=1");
-    if (planRes.data && planRes.data.issues && planRes.data.issues.length > 0) {
-      var p = planRes.data.issues[0];
+    var jqlPlan = 'project = ' + project + ' AND issuetype = "Test Plan" AND summary ~ "' + release + '" ORDER BY created DESC';
+    var planRes = await jiraApiCall("GET", "/rest/api/3/search/jql?jql=" + encodeURIComponent(jqlPlan) + "&fields=summary,status,key&maxResults=1");
+    var planIssues = (planRes.data && planRes.data.issues) || [];
+    if (planIssues.length > 0) {
+      var p = planIssues[0];
       result.testPlan = { key: p.key, summary: p.fields.summary, status: (p.fields.status || {}).name || "", exists: true };
     }
   } catch(e) { console.warn("[findTestPlanExec] Plan search error:", e.message); }
   try {
-    var jqlExec = 'project = ' + project + ' AND issuetype = "Test Execution" AND (labels = "' + release + '" OR summary ~ "' + release + '") ORDER BY created DESC';
-    var execRes = await jiraApiCall("GET", "/rest/api/2/search?jql=" + encodeURIComponent(jqlExec) + "&fields=summary,status,key&maxResults=1");
-    if (execRes.data && execRes.data.issues && execRes.data.issues.length > 0) {
-      var e2 = execRes.data.issues[0];
+    var jqlExec = 'project = ' + project + ' AND issuetype = "Test Execution" AND summary ~ "' + release + '" ORDER BY created DESC';
+    var execRes = await jiraApiCall("GET", "/rest/api/3/search/jql?jql=" + encodeURIComponent(jqlExec) + "&fields=summary,status,key&maxResults=1");
+    var execIssues = (execRes.data && execRes.data.issues) || [];
+    if (execIssues.length > 0) {
+      var e2 = execIssues[0];
       result.testExec = { key: e2.key, summary: e2.fields.summary, status: (e2.fields.status || {}).name || "", exists: true };
     }
   } catch(e) { console.warn("[findTestPlanExec] Exec search error:", e.message); }
@@ -224,21 +226,23 @@ async function ensureTestPlanExec(release, testKey) {
 
   if (!planExec.testPlan) {
     try {
-      var pr = await jiraApiCall("POST", "/rest/api/2/issue", { fields: {
+      var pr = await jiraApiCall("POST", "/rest/api/3/issue", { fields: {
         project: { key: project }, summary: "Plan de Test - Release " + release,
         issuetype: { name: "Test Plan" }, labels: [release]
       }});
       if (pr.data && pr.data.key) planExec.testPlan = { key: pr.data.key, summary: "Plan de Test - Release " + release, exists: false, created: true };
+      else console.warn("[ensureTestPlanExec] Plan create failed:", JSON.stringify(pr.data).substring(0, 200));
     } catch(e) { console.warn("[ensureTestPlanExec] Plan create error:", e.message); }
   }
 
   if (!planExec.testExec) {
     try {
-      var er = await jiraApiCall("POST", "/rest/api/2/issue", { fields: {
+      var er = await jiraApiCall("POST", "/rest/api/3/issue", { fields: {
         project: { key: project }, summary: "Test Execution - Release " + release,
         issuetype: { name: "Test Execution" }, labels: [release]
       }});
       if (er.data && er.data.key) planExec.testExec = { key: er.data.key, summary: "Test Execution - Release " + release, exists: false, created: true };
+      else console.warn("[ensureTestPlanExec] Exec create failed:", JSON.stringify(er.data).substring(0, 200));
     } catch(e) { console.warn("[ensureTestPlanExec] Exec create error:", e.message); }
   }
 
