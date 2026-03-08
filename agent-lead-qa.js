@@ -1277,13 +1277,26 @@ async function generateExecutableScenarios(ticket) {
   var type    = ticket.type || (ticket.fields && ticket.fields.issuetype && ticket.fields.issuetype.name) || "";
   var urls    = ticket.urls || [];
 
+  // Contexte parent (ticket source US/Bug lié au ticket TEST)
+  var parentContext = "";
+  if (ticket.parentKey) {
+    parentContext = "\n\nTICKET SOURCE LIÉ : " + ticket.parentKey + "\n" +
+      "Titre source : " + (ticket.parentSummary || "") + "\n" +
+      "Description source : " + (ticket.parentDescription || "").substring(0, 1500) + "\n";
+  }
+
+  // Détecter si le desc contient des cas CSV injectés
+  var hasCSVCases = desc.indexOf("CAS DE TEST À EXÉCUTER") !== -1;
+  var maxScenarios = hasCSVCases ? 20 : 6;
+
   var prompt =
     ANTI_HALLU +
     "Tu dois générer des scénarios de test Playwright EXÉCUTABLES pour ce ticket Jira.\n\n" +
     "Ticket  : " + key + "\n" +
     "Type    : " + type + "\n" +
     "Résumé  : " + summary + "\n" +
-    "Description : " + desc.substring(0, 2000) + "\n" +
+    "Description : " + desc.substring(0, 4000) + "\n" +
+    parentContext +
     "URLs disponibles : " + (urls.length > 0 ? urls.map(function(u) { return u.url || u; }).join(", ") : "[aucune URL dans le ticket]") + "\n\n" +
     "STRUCTURE OBLIGATOIRE pour chaque scénario :\n" +
     "{\n" +
@@ -1319,8 +1332,9 @@ async function generateExecutableScenarios(ticket) {
     "5. Pour un Bug : teste la correction (le scénario doit vérifier que le bug est corrigé).\n" +
     "6. Pour une US : teste les critères d'acceptation (AC).\n" +
     "7. Pour un Test : exécute les étapes décrites dans le cas de test.\n" +
-    "8. Génère entre 1 et 6 scénarios maximum.\n\n" +
-    "Retourne un JSON : { \"scenarios\": [ ... ] }";
+    "8. Génère entre 1 et " + maxScenarios + " scénarios maximum.\n" +
+    (hasCSVCases ? "9. IMPORTANT : Génère 1 scénario par cas de test du CSV. Ne saute AUCUN cas.\n" : "") +
+    "\nRetourne un JSON : { \"scenarios\": [ ... ] }";
 
   try {
     var result = await askJSON(prompt, MODEL_QUALITY);

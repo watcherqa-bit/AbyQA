@@ -47,6 +47,7 @@ var URLS_RAW = arg("urls")    || null;
 var TICKET_INFO = null; // Enrichi par getUrlsFromJiraKey si --key fourni
 var PROPOSED_TESTS = []; // Scénarios AUTO/MANUEL depuis le ticket enrichi
 var SCENARIO_RESULTS = []; // Résultats d'exécution des scénarios
+var CSV_TEST_CASES = []; // Cas de test parsés depuis le CSV attaché au ticket TEST
 
 // Support --urls-file= (fichier temporaire, évite les problèmes shell Windows avec &quot;)
 var URLS_FILE_ARG = args.find(function(a) { return a.startsWith("--urls-file="); });
@@ -214,9 +215,80 @@ function uploadAttachment(issueKey, filePath) {
   });
 }
 
+// Télécharger une pièce jointe Jira (retourne le contenu texte)
+function downloadJiraAttachment(contentUrl) {
+  return new Promise(function(resolve, reject) {
+    var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var parsed = new URL(contentUrl);
+    var req = https.request({
+      hostname: parsed.hostname, path: parsed.pathname + (parsed.search || ""), method: "GET",
+      headers: { "Authorization": "Basic " + auth, "Accept": "*/*" }
+    }, function(res) {
+      // Suivre les redirections (Jira peut rediriger vers S3)
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        var rParsed = new URL(res.headers.location);
+        var req2 = https.request({
+          hostname: rParsed.hostname, path: rParsed.pathname + (rParsed.search || ""), method: "GET"
+        }, function(res2) {
+          var d = ""; res2.on("data", function(c) { d += c; }); res2.on("end", function() { resolve(d); });
+        });
+        req2.on("error", reject); req2.end();
+        return;
+      }
+      var d = ""; res.on("data", function(c) { d += c; }); res.on("end", function() { resolve(d); });
+    });
+    req.on("error", reject); req.end();
+  });
+}
+
+// Parser un CSV cas de test (Action, Données, Résultat Attendu)
+function parseCSVTestCases(csvContent) {
+  // Retirer BOM UTF-8
+  var content = csvContent.replace(/^\uFEFF/, "").trim();
+  var lines = content.split("\n").map(function(l) { return l.trim(); }).filter(function(l) { return l; });
+  if (lines.length < 2) return [];
+
+  // Sauter la ligne d'en-tête
+  var cases = [];
+  for (var i = 1; i < lines.length; i++) {
+    // Parser CSV avec gestion des guillemets
+    var fields = parseCSVLine(lines[i]);
+    if (fields.length >= 3) {
+      cases.push({
+        action: fields[0] || "",
+        data: fields[1] || "",
+        expected: fields[2] || ""
+      });
+    }
+  }
+  return cases;
+}
+
+// Parser une ligne CSV (gère les guillemets et virgules dans les champs)
+function parseCSVLine(line) {
+  var fields = [];
+  var current = "";
+  var inQuotes = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (c === ',' && !inQuotes) {
+      fields.push(current.trim());
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
 async function getUrlsFromJiraKey(key) {
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "read-ticket", message: "📖 Lecture ticket " + key + "...", pct: 5 }));
   console.log("[->] Lecture du ticket " + key + " dans Jira...");
-  var issue = await jiraRequest("GET", "/rest/api/3/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks");
+  var issue = await jiraRequest("GET", "/rest/api/3/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks,attachment");
   if (!issue.key) { return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
   // Stocker les infos du ticket pour le rapport (ADF → markdown)
   TICKET_INFO = {
@@ -244,6 +316,27 @@ async function getUrlsFromJiraKey(key) {
         TICKET_INFO.parentDescription = normalizeDescription(parent.fields.description);
         TICKET_INFO.parentType = (parent.fields.issuetype && parent.fields.issuetype.name) || "";
       }
+    }
+
+    // Télécharger le CSV de cas de test attaché au ticket TEST
+    var attachments = issue.fields.attachment || [];
+    var csvAttachment = attachments.find(function(a) {
+      return a.filename && /^CAS-TEST-.*\.csv$/i.test(a.filename);
+    });
+    if (csvAttachment && csvAttachment.content) {
+      console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "download-csv", message: "📎 Téléchargement " + csvAttachment.filename + "...", pct: 10 }));
+      try {
+        var csvContent = await downloadJiraAttachment(csvAttachment.content);
+        CSV_TEST_CASES = parseCSVTestCases(csvContent);
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "csv-loaded", message: "📎 CSV chargé — " + CSV_TEST_CASES.length + " cas de test", pct: 12 }));
+        console.log("[CSV] " + CSV_TEST_CASES.length + " cas de test parsés depuis " + csvAttachment.filename);
+        TICKET_INFO.csvTestCases = CSV_TEST_CASES;
+        TICKET_INFO.csvFileName = csvAttachment.filename;
+      } catch(csvErr) {
+        console.log("[CSV] Erreur téléchargement/parsing : " + csvErr.message);
+      }
+    } else {
+      console.log("  [CSV] Aucun fichier CAS-TEST-*.csv attaché au ticket");
     }
   }
   var descText = normalizeDescription(issue.fields.description);
@@ -768,15 +861,46 @@ async function runScenarios(targets, envName) {
   }
 
   // 1. Générer les scénarios exécutables via IA
-  console.log("\n[SCENARIOS] Génération des scénarios exécutables via IA...");
+  // Si des cas de test CSV sont disponibles, les inclure dans le contexte
+  var csvContext = "";
+  if (CSV_TEST_CASES.length > 0) {
+    console.log("\n╔══════════════════════════════════════════════════════════════╗");
+    console.log("║  SCÉNARIOS DEPUIS CSV — " + CSV_TEST_CASES.length + " cas de test");
+    console.log("╠══════════════════════════════════════════════════════════════╣");
+    CSV_TEST_CASES.forEach(function(tc, i) {
+      console.log("║ Cas " + (i + 1) + "/" + CSV_TEST_CASES.length);
+      console.log("║   Action   : " + tc.action.substring(0, 70));
+      console.log("║   Données  : " + tc.data.substring(0, 70));
+      console.log("║   Attendu  : " + tc.expected.substring(0, 70));
+    });
+    console.log("╚══════════════════════════════════════════════════════════════╝\n");
+
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 Conversion de " + CSV_TEST_CASES.length + " cas CSV en scénarios Playwright...", pct: 15 }));
+
+    csvContext = "\n\nCAS DE TEST À EXÉCUTER (extraits du CSV attaché au ticket TEST) :\n" +
+      CSV_TEST_CASES.map(function(tc, i) {
+        return "Cas " + (i + 1) + " :\n" +
+          "  Action : " + tc.action + "\n" +
+          "  Données : " + tc.data + "\n" +
+          "  Résultat attendu : " + tc.expected;
+      }).join("\n\n") +
+      "\n\nIMPORTANT : Tu DOIS générer un scénario Playwright pour CHAQUE cas de test du CSV ci-dessus. " +
+      "Chaque cas = 1 scénario. Utilise les données du cas pour construire les actions et assertions.";
+  } else {
+    console.log("\n[SCENARIOS] Génération des scénarios exécutables via IA...");
+  }
+
   var scenarios = [];
   try {
     scenarios = await leadQA.generateExecutableScenarios({
       key: TICKET_INFO.key,
       summary: TICKET_INFO.summary,
-      description: TICKET_INFO.description,
+      description: TICKET_INFO.description + csvContext,
       type: TICKET_INFO.type,
-      urls: targets
+      urls: targets,
+      parentKey: TICKET_INFO.parentKey || null,
+      parentSummary: TICKET_INFO.parentSummary || "",
+      parentDescription: TICKET_INFO.parentDescription || ""
     });
   } catch(e) {
     console.log("[SCENARIOS] Erreur génération : " + e.message.substring(0, 80));
@@ -813,6 +937,8 @@ async function runScenarios(targets, envName) {
 
   for (var i = 0; i < validScenarios.length; i++) {
     var scenario = validScenarios[i];
+    var pctBase = 20 + Math.floor(70 * i / validScenarios.length);
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "test-run", message: "🎭 Exécution cas " + (i + 1) + "/" + validScenarios.length + " — " + (scenario.titre || "").substring(0, 50) + "...", pct: pctBase }));
     var sr = {
       id: scenario.id,
       titre: scenario.titre,
@@ -878,6 +1004,14 @@ async function runScenarios(targets, envName) {
       sr.error = "Erreur exécution : " + e.message.substring(0, 100);
       console.log("    -> FAIL — " + sr.error);
     }
+    // Émettre progress PASS/FAIL pour le dashboard
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({
+      step: "test-done",
+      status: sr.pass ? "PASS" : "FAIL",
+      label: "Cas " + (i + 1) + "/" + validScenarios.length + " — " + (scenario.titre || ""),
+      message: (sr.pass ? "✅" : "❌") + " Cas " + (i + 1) + " " + (sr.pass ? "PASS" : "FAIL") + (sr.error ? " — " + sr.error.substring(0, 60) : ""),
+      pct: 20 + Math.floor(70 * (i + 1) / validScenarios.length)
+    }));
     if (browser) await browser.close().catch(function(){});
     results.push(sr);
   }
