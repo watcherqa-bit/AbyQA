@@ -3354,21 +3354,30 @@
 
           <!-- Rattachement Release -->
           <div id="val-plan-exec-info" style="display:none;margin-top:16px">
-            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">RATTACHEMENT RELEASE</label>
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">RATTACHEMENT RELEASE <span id="val-release-version" style="color:var(--orange);font-weight:600"></span></label>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <!-- Test Plan -->
               <div id="val-plan-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
                 <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST PLAN</div>
-                <div id="val-plan-status" style="font-size:13px;font-weight:600"></div>
-                <div id="val-plan-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:4px"></div>
+                <div id="val-plan-status" style="font-size:13px;font-weight:600;margin-bottom:6px"></div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <span style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
+                  <input type="text" id="val-plan-input" placeholder="2682" style="width:80px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
+                  <button onclick="valLookupTicket('plan')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
+                </div>
+                <div id="val-plan-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:6px"></div>
               </div>
+              <!-- Test Execution -->
               <div id="val-exec-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
                 <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST EXECUTION</div>
-                <div id="val-exec-status" style="font-size:13px;font-weight:600"></div>
-                <div id="val-exec-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:4px"></div>
+                <div id="val-exec-status" style="font-size:13px;font-weight:600;margin-bottom:6px"></div>
+                <div style="display:flex;align-items:center;gap:4px">
+                  <span style="font-family:var(--mono);font-size:12px;color:var(--text3)">SAFWBST-</span>
+                  <input type="text" id="val-exec-input" placeholder="2683" style="width:80px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;color:var(--text1);font-size:12px;font-family:var(--mono)">
+                  <button onclick="valLookupTicket('exec')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--cyan);cursor:pointer;font-size:11px;font-family:var(--mono)">Chercher</button>
+                </div>
+                <div id="val-exec-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:6px"></div>
               </div>
-            </div>
-            <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text3)">
-              Release : <span id="val-release-version" style="color:var(--orange);font-weight:600"></span>
             </div>
           </div>
         </div>
@@ -14620,27 +14629,33 @@ function openValidationModal(sourceKey, opts) {
     var planCard = document.getElementById("val-plan-card");
     var planStatus = document.getElementById("val-plan-status");
     var planKey = document.getElementById("val-plan-key");
+    var planInput = document.getElementById("val-plan-input");
     if (data.testPlan && data.testPlan.exists) {
-      planStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+      planStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte auto</span>';
       planKey.textContent = data.testPlan.key + " — " + data.testPlan.summary;
       planCard.style.borderColor = "var(--green)";
+      planInput.value = data.testPlan.key.replace("SAFWBST-", "");
     } else {
       planStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
       planKey.textContent = (data.testPlan && data.testPlan.summary) || "Plan de Test - Release " + data.release;
       planCard.style.borderColor = "var(--orange)";
+      planInput.value = "";
     }
 
     var execCard = document.getElementById("val-exec-card");
     var execStatus = document.getElementById("val-exec-status");
     var execKey = document.getElementById("val-exec-key");
+    var execInput = document.getElementById("val-exec-input");
     if (data.testExec && data.testExec.exists) {
-      execStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+      execStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte auto</span>';
       execKey.textContent = data.testExec.key + " — " + data.testExec.summary;
       execCard.style.borderColor = "var(--green)";
+      execInput.value = data.testExec.key.replace("SAFWBST-", "");
     } else {
       execStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
       execKey.textContent = (data.testExec && data.testExec.summary) || "Test Execution - Release " + data.release;
       execCard.style.borderColor = "var(--orange)";
+      execInput.value = "";
     }
 
     // Remplir onglet 2
@@ -14752,7 +14767,9 @@ function collectValData() {
     },
     xraySteps: _valState.xraySteps,
     config: collectValConfig(),
-    release: _valState.release
+    release: _valState.release,
+    testPlanKey: (document.getElementById("val-plan-input").value || "").trim() || null,
+    testExecKey: (document.getElementById("val-exec-input").value || "").trim() || null
   };
 }
 
@@ -14912,6 +14929,44 @@ function collectValConfig() {
     if (el && el.checked) envs.push(e);
   });
   return { browsers: browsers, devices: devices, envs: envs };
+}
+
+function valLookupTicket(type) {
+  var inputId = type === "plan" ? "val-plan-input" : "val-exec-input";
+  var statusId = type === "plan" ? "val-plan-status" : "val-exec-status";
+  var keyId = type === "plan" ? "val-plan-key" : "val-exec-key";
+  var cardId = type === "plan" ? "val-plan-card" : "val-exec-card";
+
+  var num = document.getElementById(inputId).value.trim();
+  if (!num) return;
+  var key = /^SAFWBST-/i.test(num) ? num.toUpperCase() : "SAFWBST-" + num;
+
+  document.getElementById(statusId).innerHTML = '<span style="color:var(--text3)">Recherche...</span>';
+  document.getElementById(keyId).textContent = "";
+
+  fetch(SERVER + "/api/jira-ticket/" + key)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error || !data.key) {
+        document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">&#10008; Introuvable</span>';
+        document.getElementById(keyId).textContent = key + " — non trouve";
+        document.getElementById(cardId).style.borderColor = "var(--red)";
+        return;
+      }
+      document.getElementById(statusId).innerHTML = '<span style="color:var(--green)">&#10004; ' + data.type + '</span>';
+      document.getElementById(keyId).textContent = data.key + " — " + data.summary;
+      document.getElementById(cardId).style.borderColor = "var(--green)";
+      document.getElementById(inputId).value = data.key.replace("SAFWBST-", "");
+
+      if (type === "plan") {
+        _valState.testPlan = { key: data.key, summary: data.summary, exists: true };
+      } else {
+        _valState.testExec = { key: data.key, summary: data.summary, exists: true };
+      }
+    })
+    .catch(function() {
+      document.getElementById(statusId).innerHTML = '<span style="color:var(--red)">Erreur</span>';
+    });
 }
 
 // Hook SSE pour progression en temps reel

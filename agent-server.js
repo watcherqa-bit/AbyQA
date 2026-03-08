@@ -1291,7 +1291,27 @@ var server = http.createServer(function(req, res) {
         // STEP 4 — Test Plan (detect or create) + attach
         emitProgress("xray-plan", "running");
         var release = body.release || "v1.25.0";
-        var planExec = await ensureTestPlanExec(release, newKey);
+        var manualPlanKey = body.testPlanKey || null;
+        var manualExecKey = body.testExecKey || null;
+        var planExec;
+        if (manualPlanKey || manualExecKey) {
+          // Utiliser les clés manuelles fournies par l'utilisateur
+          planExec = { testPlan: null, testExec: null };
+          if (manualPlanKey) {
+            try {
+              await jiraApiCall("POST", "/rest/raven/1.0/api/testplan/" + manualPlanKey + "/test", [{ key: newKey }]);
+              planExec.testPlan = { key: manualPlanKey, created: false };
+            } catch(e) { planExec.testPlan = null; }
+          }
+          if (manualExecKey) {
+            try {
+              await jiraApiCall("POST", "/rest/raven/1.0/api/testexec/" + manualExecKey + "/test", [{ key: newKey }]);
+              planExec.testExec = { key: manualExecKey, created: false };
+            } catch(e) { planExec.testExec = null; }
+          }
+        } else {
+          planExec = await ensureTestPlanExec(release, newKey);
+        }
         var planOk = !!(planExec.testPlan && planExec.testPlan.key);
         emitProgress("xray-plan", planOk ? "done" : "error",
           planOk ? (planExec.testPlan.created ? "Cree : " : "Existant : ") + planExec.testPlan.key : "Test Plan echoue");
