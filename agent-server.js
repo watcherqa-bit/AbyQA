@@ -3047,6 +3047,21 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // GET /api/xray-folders — dump arborescence Bibliothèque Xray (debug)
+  if (method === "GET" && url === "/api/xray-folders") {
+    (async function() {
+      try {
+        var data = await findRepoFolders();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(data, null, 2));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    })();
+    return;
+  }
+
   // GET /api/jira-dryrun — état du dryRun
   // GET /api/xray-search?type=plan|exec|library&release=v1.25.0 — recherche par release
   if (method === "GET" && url.startsWith("/api/xray-search")) {
