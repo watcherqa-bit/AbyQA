@@ -241,6 +241,23 @@ function downloadJiraAttachment(contentUrl) {
   });
 }
 
+// Mots-clés indiquant un cas MANUEL (vérification visuelle/subjective)
+var MANUEL_KEYWORDS = [
+  "visuellement", "inspecte visuellement", "vérification visuelle",
+  "rendu visuel", "screenshot et compare", "screenshot", "compare visuellement",
+  "aspect visuel", "alignement visuel", "cohérence visuelle",
+  "vérifier à l'œil", "contrôle visuel", "apparence"
+];
+
+// Classifier un cas CSV en AUTO ou MANUEL
+function classifyCSVCase(action) {
+  var lower = (action || "").toLowerCase();
+  for (var i = 0; i < MANUEL_KEYWORDS.length; i++) {
+    if (lower.indexOf(MANUEL_KEYWORDS[i]) !== -1) return "MANUEL";
+  }
+  return "AUTO";
+}
+
 // Parser un CSV cas de test (Action, Données, Résultat Attendu)
 // Gère les champs multilignes entre guillemets (RFC 4180)
 function parseCSVTestCases(csvContent) {
@@ -256,14 +273,19 @@ function parseCSVTestCases(csvContent) {
   for (var i = 1; i < records.length; i++) {
     var fields = records[i];
     if (fields.length >= 3) {
+      var action = fields[0] || "";
       cases.push({
-        action: fields[0] || "",
+        action: action,
         data: fields[1] || "",
-        expected: fields[2] || ""
+        expected: fields[2] || "",
+        csvType: classifyCSVCase(action),
+        csvIndex: i  // index 1-based dans le CSV
       });
     }
   }
-  console.log("[CSV PARSER] " + records.length + " records (dont 1 en-tête) → " + cases.length + " cas de test");
+  var autoCount = cases.filter(function(c) { return c.csvType === "AUTO"; }).length;
+  var manuelCount = cases.filter(function(c) { return c.csvType === "MANUEL"; }).length;
+  console.log("[CSV] " + cases.length + " cas de test — " + autoCount + " AUTO + " + manuelCount + " MANUEL");
   return cases;
 }
 
@@ -930,34 +952,61 @@ async function runScenarios(targets, envName) {
   var scenarios = [];
 
   if (CSV_TEST_CASES.length > 0) {
-    // MODE CSV — convertir chaque cas du CSV en scénario Playwright via IA
-    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 Conversion de " + CSV_TEST_CASES.length + " cas CSV en scénarios Playwright...", pct: 15 }));
+    // MODE CSV — séparer AUTO et MANUEL
+    var csvAuto = CSV_TEST_CASES.filter(function(tc) { return tc.csvType === "AUTO"; });
+    var csvManuel = CSV_TEST_CASES.filter(function(tc) { return tc.csvType === "MANUEL"; });
 
-    var csvPrompt = "CAS DE TEST À CONVERTIR EN SCÉNARIOS PLAYWRIGHT :\n\n" +
-      CSV_TEST_CASES.map(function(tc, i) {
-        return "Cas " + (i + 1) + " :\n" +
-          "  Action : " + tc.action + "\n" +
-          "  Données : " + tc.data + "\n" +
-          "  Résultat attendu : " + tc.expected;
-      }).join("\n\n") +
-      "\n\nIMPORTANT : Génère EXACTEMENT " + CSV_TEST_CASES.length + " scénarios (1 par cas). " +
-      "Utilise les URLs et données de chaque cas pour construire les actions et assertions Playwright.";
+    console.log("[CSV] Répartition : " + csvAuto.length + " AUTO + " + csvManuel.length + " MANUEL");
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 " + csvAuto.length + " cas AUTO à convertir + " + csvManuel.length + " MANUEL", pct: 15 }));
 
-    try {
-      scenarios = await leadQA.generateExecutableScenarios({
-        key: TICKET_INFO.key,
-        summary: TICKET_INFO.summary,
-        description: csvPrompt,
-        type: TICKET_INFO.type,
-        urls: targets,
-        parentKey: TICKET_INFO.parentKey || null,
-        parentSummary: TICKET_INFO.parentSummary || "",
-        parentDescription: TICKET_INFO.parentDescription || ""
+    // Lister les cas MANUEL dans les logs
+    if (csvManuel.length > 0) {
+      console.log("\n📋 Cas MANUEL (vérification humaine requise) :");
+      csvManuel.forEach(function(tc) {
+        console.log("   - Cas " + tc.csvIndex + " : " + tc.action.replace(/\n/g, " ").substring(0, 100));
       });
-    } catch(e) {
-      console.log("[SCENARIOS] Erreur conversion CSV → Playwright : " + e.message.substring(0, 80));
-      return [];
+      console.log("");
     }
+
+    // Convertir uniquement les cas AUTO en scénarios Playwright via IA
+    if (csvAuto.length > 0) {
+      var csvPrompt = "CAS DE TEST À CONVERTIR EN SCÉNARIOS PLAYWRIGHT :\n\n" +
+        csvAuto.map(function(tc, i) {
+          return "Cas " + (i + 1) + " :\n" +
+            "  Action : " + tc.action + "\n" +
+            "  Données : " + tc.data + "\n" +
+            "  Résultat attendu : " + tc.expected;
+        }).join("\n\n") +
+        "\n\nIMPORTANT : Génère EXACTEMENT " + csvAuto.length + " scénarios (1 par cas AUTO). " +
+        "Utilise les URLs et données de chaque cas pour construire les actions et assertions Playwright.";
+
+      try {
+        scenarios = await leadQA.generateExecutableScenarios({
+          key: TICKET_INFO.key,
+          summary: TICKET_INFO.summary,
+          description: csvPrompt,
+          type: TICKET_INFO.type,
+          urls: targets,
+          parentKey: TICKET_INFO.parentKey || null,
+          parentSummary: TICKET_INFO.parentSummary || "",
+          parentDescription: TICKET_INFO.parentDescription || ""
+        });
+      } catch(e) {
+        console.log("[SCENARIOS] Erreur conversion CSV → Playwright : " + e.message.substring(0, 80));
+      }
+    }
+
+    // Ajouter les cas MANUEL comme scénarios de type MANUEL (pas d'exécution Playwright)
+    csvManuel.forEach(function(tc, i) {
+      scenarios.push({
+        id: "manuel-" + (i + 1),
+        titre: "Cas " + tc.csvIndex + " — " + tc.action.replace(/\n/g, " ").substring(0, 80),
+        type: "MANUEL",
+        csvCase: tc,
+        actions: [],
+        assertions: []
+      });
+    });
   } else {
     // PAS DE CSV — arrêter pour un ticket TEST, générer via IA pour les autres types
     if (TICKET_INFO && (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case")) {
@@ -985,7 +1034,18 @@ async function runScenarios(targets, envName) {
     return [];
   }
 
-  console.log("[SCENARIOS] " + scenarios.length + " scénario(s) généré(s)");
+  // Vérification : si CSV AUTO, on attend exactement N scénarios AUTO de l'IA
+  if (CSV_TEST_CASES.length > 0) {
+    var expectedAuto = CSV_TEST_CASES.filter(function(c) { return c.csvType === "AUTO"; }).length;
+    var gotAuto = scenarios.filter(function(s) { return s.type !== "MANUEL" || !s.csvCase; }).length;
+    if (gotAuto !== expectedAuto) {
+      console.log("[SCENARIOS] ⚠️ Attendu " + expectedAuto + " scénarios AUTO (1/cas CSV AUTO), reçu " + gotAuto);
+    }
+  }
+
+  console.log("[SCENARIOS] " + scenarios.length + " scénario(s) total — " +
+    scenarios.filter(function(s) { return s.type === "AUTO"; }).length + " AUTO + " +
+    scenarios.filter(function(s) { return s.type === "MANUEL"; }).length + " MANUEL");
 
   // 2. Valider et basculer les scénarios invalides en MANUEL
   var validScenarios = scenarios.map(function(s, i) {
@@ -1914,8 +1974,19 @@ async function main() {
         var autoR = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
         var autoP = autoR.filter(function(s) { return s.pass === true; }).length;
         var manR = SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; });
-        console.log("[SCENARIOS] " + autoP + "/" + autoR.length + " AUTO PASS" + (manR.length > 0 ? " + " + manR.length + " MANUEL" : ""));
-        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios-done", message: autoP + "/" + autoR.length + " scénarios PASS", pct: 25 }));
+        console.log("\n✅ Cas AUTO exécutés : " + autoP + "/" + autoR.length);
+        if (manR.length > 0) {
+          console.log("📋 Cas MANUEL à vérifier manuellement :");
+          manR.forEach(function(m) {
+            console.log("   - " + m.titre);
+          });
+        }
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({
+          step: "scenarios-done",
+          message: "✅ " + autoP + "/" + autoR.length + " AUTO PASS" + (manR.length > 0 ? " + " + manR.length + " MANUEL" : ""),
+          pct: 25,
+          manuelCases: manR.map(function(m) { return { id: m.id, titre: m.titre, csvCase: m.csvCase || null }; })
+        }));
       }
     } catch(e) {
       console.log("[SCENARIOS] Erreur : " + e.message.substring(0, 80));
@@ -1997,7 +2068,15 @@ async function main() {
     var sAuto = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
     var sAutoPass = sAuto.filter(function(s) { return s.pass === true; }).length;
     var sManuel = SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; });
-    scenarioSummary = { autoPass: sAutoPass, autoTotal: sAuto.length, manuelTotal: sManuel.length, total: SCENARIO_RESULTS.length };
+    scenarioSummary = {
+      autoPass: sAutoPass,
+      autoTotal: sAuto.length,
+      manuelTotal: sManuel.length,
+      total: SCENARIO_RESULTS.length,
+      manuelCases: sManuel.map(function(m) {
+        return { id: m.id, titre: m.titre, action: m.csvCase ? m.csvCase.action.replace(/\n/g, " ").substring(0, 200) : "", expected: m.csvCase ? m.csvCase.expected.replace(/\n/g, " ").substring(0, 200) : "" };
+      })
+    };
   }
   console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
   var fullForDashboard = allResults.map(function(r) {

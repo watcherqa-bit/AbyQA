@@ -1877,7 +1877,8 @@ var server = http.createServer(function(req, res) {
             if (params.devices)  pdArgs.push("--devices="  + params.devices);
             if (params.browsers) pdArgs.push("--browsers=" + params.browsers);
             if (params.steps)    pdArgs.push("--steps="    + params.steps);
-            if (params.dryRun)   pdArgs.push("--dry-run");
+            if (params.dryRun)      pdArgs.push("--dry-run");
+            if (params.noJiraPush) pdArgs.push("--no-jira-push");
             // XML uploadÃ©
             if (params.xmlPath) {
               var pdXml = path.join(BASE_DIR, "uploads", "ticket.xml");

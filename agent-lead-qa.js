@@ -1286,8 +1286,24 @@ async function generateExecutableScenarios(ticket) {
   }
 
   // Détecter si le desc contient des cas CSV injectés
-  var hasCSVCases = desc.indexOf("CAS DE TEST À EXÉCUTER") !== -1;
-  var maxScenarios = hasCSVCases ? 20 : 6;
+  var hasCSVCases = desc.indexOf("CAS DE TEST À CONVERTIR") !== -1 || desc.indexOf("CAS DE TEST À EXÉCUTER") !== -1;
+
+  // Compter les cas CSV pour forcer le nombre exact de scénarios
+  var csvCaseCount = 0;
+  if (hasCSVCases) {
+    var casMatches = desc.match(/Cas \d+ :/g);
+    csvCaseCount = casMatches ? casMatches.length : 0;
+  }
+
+  var csvRule = "";
+  if (hasCSVCases && csvCaseCount > 0) {
+    csvRule =
+      "\n⚠️ RÈGLE ABSOLUE — NOMBRE DE SCÉNARIOS :\n" +
+      "Il y a EXACTEMENT " + csvCaseCount + " cas de test dans le CSV.\n" +
+      "Tu DOIS générer EXACTEMENT " + csvCaseCount + " scénarios — 1 par cas, dans l'ordre.\n" +
+      "NE PAS fusionner, regrouper ou ignorer de cas. Chaque \"Cas N\" = 1 scénario.\n" +
+      "Si un cas n'est pas automatisable, génère-le quand même avec type: \"MANUEL\".\n\n";
+  }
 
   var prompt =
     ANTI_HALLU +
@@ -1298,6 +1314,7 @@ async function generateExecutableScenarios(ticket) {
     "Description : " + desc.substring(0, 4000) + "\n" +
     parentContext +
     "URLs disponibles : " + (urls.length > 0 ? urls.map(function(u) { return u.url || u; }).join(", ") : "[aucune URL dans le ticket]") + "\n\n" +
+    csvRule +
     "STRUCTURE OBLIGATOIRE pour chaque scénario :\n" +
     "{\n" +
     '  "id": "scenario-1",\n' +
@@ -1332,8 +1349,9 @@ async function generateExecutableScenarios(ticket) {
     "5. Pour un Bug : teste la correction (le scénario doit vérifier que le bug est corrigé).\n" +
     "6. Pour une US : teste les critères d'acceptation (AC).\n" +
     "7. Pour un Test : exécute les étapes décrites dans le cas de test.\n" +
-    "8. Génère entre 1 et " + maxScenarios + " scénarios maximum.\n" +
-    (hasCSVCases ? "9. IMPORTANT : Génère 1 scénario par cas de test du CSV. Ne saute AUCUN cas.\n" : "") +
+    (hasCSVCases && csvCaseCount > 0
+      ? "8. Tu DOIS retourner EXACTEMENT " + csvCaseCount + " scénarios. Pas plus, pas moins.\n"
+      : "8. Génère entre 1 et 6 scénarios maximum.\n") +
     "\nRetourne un JSON : { \"scenarios\": [ ... ] }";
 
   try {

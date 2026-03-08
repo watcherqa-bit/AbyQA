@@ -14591,7 +14591,8 @@ var _valState = {
   testPlan: null,
   testExec: null,
   testKey: null,
-  pwLaunched: false
+  pwLaunched: false,
+  manuelCases: []
 };
 var _valPwActive = false; // true quand Playwright tourne depuis la modal
 
@@ -15033,7 +15034,8 @@ function valLaunchPlaywright(testKey) {
       mode: "ui",
       source: "jira-key",
       key: testKey,
-      clientId: clientId
+      clientId: clientId,
+      noJiraPush: true
     })
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (!d.ok && d.error) {
@@ -15058,6 +15060,10 @@ function valHandlePlaywrightProgress(data) {
   if (data.step === "test-done" && steps) {
     var icon = data.status === "PASS" ? "✅" : "❌";
     steps.innerHTML = '<div>' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+  }
+  // Stocker les cas MANUEL pour affichage dans le rapport final
+  if (data.step === "scenarios-done" && data.manuelCases && data.manuelCases.length > 0) {
+    _valState.manuelCases = data.manuelCases;
   }
   if (data.step === "done") {
     if (bar) bar.style.width = "100%";
@@ -15097,6 +15103,28 @@ function valHandlePlaywrightReport(data) {
   html += '<span style="margin-right:14px">Fail : <b style="color:#ef4444">' + fail + '</b></span>';
   html += '<span>Total : <b>' + total + '</b></span>';
   html += '</div>';
+  // Scenarios summary
+  var sc = r.scenarios || null;
+  if (sc) {
+    html += '<div style="font-size:12px;color:var(--text2);margin-bottom:8px">';
+    html += '<span style="margin-right:14px">Scenarios AUTO : <b style="color:#10b981">' + (sc.autoPass||0) + '</b>/' + (sc.autoTotal||0) + '</span>';
+    if (sc.manuelTotal > 0) html += '<span style="color:#f59e0b">+ ' + sc.manuelTotal + ' MANUEL</span>';
+    html += '</div>';
+  }
+  // Checklist MANUEL
+  var manCases = (sc && sc.manuelCases) || (_valState.manuelCases || []);
+  if (manCases.length > 0) {
+    html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.25);border-radius:8px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:8px">📋 Cas MANUEL — vérification humaine</div>';
+    manCases.forEach(function(mc, mi) {
+      var cid = 'val-manuel-' + mi;
+      html += '<label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px;cursor:pointer;font-size:12px;color:var(--text1)">';
+      html += '<input type="checkbox" id="' + cid + '" style="margin-top:2px;accent-color:#f59e0b">';
+      html += '<span>' + (mc.titre || mc.action || "Cas manuel " + (mi+1)) + '</span>';
+      html += '</label>';
+    });
+    html += '</div>';
+  }
   // Preview rapport
   if (attachFile) {
     html += '<div style="margin-bottom:12px;border-radius:8px;overflow:hidden;border:1px solid var(--border)">';
