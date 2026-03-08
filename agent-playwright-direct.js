@@ -322,8 +322,7 @@ async function getUrlsFromJiraKey(key) {
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "read-ticket", message: "📖 Lecture ticket " + key + "...", pct: 5 }));
   console.log("[->] Lecture du ticket " + key + " dans Jira...");
   var issue = await jiraRequest("GET", "/rest/api/3/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks,attachment");
-  console.log("[DEBUG] Jira response key=" + (issue.key || "NONE") + " type=" + ((issue.fields && issue.fields.issuetype && issue.fields.issuetype.name) || "NONE") + " attachments=" + ((issue.fields && issue.fields.attachment) ? issue.fields.attachment.length : "NONE"));
-  if (!issue.key) { console.log("[DEBUG] issue.key vide — fallback accueil"); return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
+  if (!issue.key) { return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
   // Stocker les infos du ticket pour le rapport (ADF → markdown)
   TICKET_INFO = {
     key: issue.key,
@@ -332,7 +331,6 @@ async function getUrlsFromJiraKey(key) {
     type: (issue.fields.issuetype && issue.fields.issuetype.name) || ""
   };
   // Si ticket Test, remonter au ticket parent (Bug/US) pour avoir le cas de test complet
-  console.log("[DEBUG] TICKET_INFO.type = '" + TICKET_INFO.type + "' — isTest=" + (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case"));
   if (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case") {
     var links = (issue.fields.issuelinks || []);
     var parentKey = null;
@@ -362,26 +360,22 @@ async function getUrlsFromJiraKey(key) {
       console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "download-csv", message: "📎 Téléchargement " + csvAttachment.filename + "...", pct: 10 }));
       try {
         var csvContent = await downloadJiraAttachment(csvAttachment.content);
-        // Debug : afficher le contenu brut du CSV téléchargé
+        CSV_TEST_CASES = parseCSVTestCases(csvContent);
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "csv-loaded", message: "📎 CSV chargé — " + CSV_TEST_CASES.length + " cas de test", pct: 12 }));
+
+        // Afficher les cas parsés dans le terminal
         console.log("\n╔══════════════════════════════════════════════════════════════╗");
-        console.log("║  CSV BRUT TÉLÉCHARGÉ — " + csvAttachment.filename);
-        console.log("║  Taille : " + csvContent.length + " chars");
-        console.log("║  Premiers 500 chars :");
+        console.log("║  CSV PARSÉ — " + csvAttachment.filename + " — " + CSV_TEST_CASES.length + " cas de test");
         console.log("╠══════════════════════════════════════════════════════════════╣");
-        console.log(csvContent.substring(0, 500));
-        console.log("╠══════════════════════════════════════════════════════════════╣");
-        console.log("║  Char codes des 20 premiers : " + csvContent.substring(0, 20).split("").map(function(c) { return c.charCodeAt(0); }).join(","));
-        // Debug : tester le split
-        var debugLines = csvContent.replace(/^\uFEFF/, "").trim().split("\n");
-        console.log("║  Lignes après split(\\n) : " + debugLines.length);
-        debugLines.forEach(function(l, i) {
-          console.log("║  Ligne " + i + " (" + l.length + " chars) : " + l.substring(0, 80));
+        CSV_TEST_CASES.forEach(function(tc, i) {
+          console.log("║");
+          console.log("║  Cas " + (i + 1) + "/" + CSV_TEST_CASES.length);
+          console.log("║  Action  : " + tc.action.replace(/\n/g, " ").substring(0, 100));
+          console.log("║  Données : " + tc.data.replace(/\n/g, " | ").substring(0, 100));
+          console.log("║  Attendu : " + tc.expected.replace(/\n/g, " | ").substring(0, 100));
         });
         console.log("╚══════════════════════════════════════════════════════════════╝\n");
 
-        CSV_TEST_CASES = parseCSVTestCases(csvContent);
-        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "csv-loaded", message: "📎 CSV chargé — " + CSV_TEST_CASES.length + " cas de test", pct: 12 }));
-        console.log("[CSV] " + CSV_TEST_CASES.length + " cas de test parsés depuis " + csvAttachment.filename);
         TICKET_INFO.csvTestCases = CSV_TEST_CASES;
         TICKET_INFO.csvFileName = csvAttachment.filename;
       } catch(csvErr) {
@@ -428,6 +422,26 @@ async function getUrlsFromJiraKey(key) {
     .filter(function(u) {
       return !u.includes("atlassian.net") && !u.includes("avatar") && !seen[u] && (seen[u]=true);
     }).map(function(u) { return { url: u, label: u.split("/").slice(3).join("/") || "page", context: "ticket " + key }; });
+  // Si pas d'URL trouvée dans le ticket mais des cas CSV disponibles, extraire les URLs des cas
+  if (urls.length === 0 && CSV_TEST_CASES.length > 0) {
+    var csvUrls = [];
+    var csvSeen = {};
+    CSV_TEST_CASES.forEach(function(tc) {
+      var combined = tc.action + " " + tc.data;
+      var urlMatches = combined.match(/https?:\/\/[^\s<"'\]\),;•]+/g) || [];
+      urlMatches.forEach(function(u) {
+        u = u.replace(/[\)\(\]\[\|\_\{\}]+$/g, "").trim();
+        if (!csvSeen[u]) {
+          csvSeen[u] = true;
+          csvUrls.push({ url: u, label: u.split("/").slice(3).join("/") || "page", context: "CSV cas de test" });
+        }
+      });
+    });
+    if (csvUrls.length > 0) {
+      urls = csvUrls;
+      console.log("  [URL] " + urls.length + " URL(s) extraites depuis les cas CSV");
+    }
+  }
   if (urls.length === 0) urls = [{ url: ENV_URL + "/fr", label: "Accueil (fallback)", context: "ticket " + key }];
   // Charger les scénarios proposés depuis le ticket enrichi
   var enrichedKey = TICKET_INFO.parentKey || TICKET_INFO.key;
@@ -912,51 +926,58 @@ async function runScenarios(targets, envName) {
     return [];
   }
 
-  // 1. Générer les scénarios exécutables via IA
-  // Si des cas de test CSV sont disponibles, les inclure dans le contexte
-  var csvContext = "";
-  if (CSV_TEST_CASES.length > 0) {
-    console.log("\n╔══════════════════════════════════════════════════════════════╗");
-    console.log("║  SCÉNARIOS DEPUIS CSV — " + CSV_TEST_CASES.length + " cas de test");
-    console.log("╠══════════════════════════════════════════════════════════════╣");
-    CSV_TEST_CASES.forEach(function(tc, i) {
-      console.log("║ Cas " + (i + 1) + "/" + CSV_TEST_CASES.length);
-      console.log("║   Action   : " + tc.action.substring(0, 70));
-      console.log("║   Données  : " + tc.data.substring(0, 70));
-      console.log("║   Attendu  : " + tc.expected.substring(0, 70));
-    });
-    console.log("╚══════════════════════════════════════════════════════════════╝\n");
+  // 1. Générer les scénarios exécutables
+  var scenarios = [];
 
+  if (CSV_TEST_CASES.length > 0) {
+    // MODE CSV — convertir chaque cas du CSV en scénario Playwright via IA
     console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 Conversion de " + CSV_TEST_CASES.length + " cas CSV en scénarios Playwright...", pct: 15 }));
 
-    csvContext = "\n\nCAS DE TEST À EXÉCUTER (extraits du CSV attaché au ticket TEST) :\n" +
+    var csvPrompt = "CAS DE TEST À CONVERTIR EN SCÉNARIOS PLAYWRIGHT :\n\n" +
       CSV_TEST_CASES.map(function(tc, i) {
         return "Cas " + (i + 1) + " :\n" +
           "  Action : " + tc.action + "\n" +
           "  Données : " + tc.data + "\n" +
           "  Résultat attendu : " + tc.expected;
       }).join("\n\n") +
-      "\n\nIMPORTANT : Tu DOIS générer un scénario Playwright pour CHAQUE cas de test du CSV ci-dessus. " +
-      "Chaque cas = 1 scénario. Utilise les données du cas pour construire les actions et assertions.";
-  } else {
-    console.log("\n[SCENARIOS] Génération des scénarios exécutables via IA...");
-  }
+      "\n\nIMPORTANT : Génère EXACTEMENT " + CSV_TEST_CASES.length + " scénarios (1 par cas). " +
+      "Utilise les URLs et données de chaque cas pour construire les actions et assertions Playwright.";
 
-  var scenarios = [];
-  try {
-    scenarios = await leadQA.generateExecutableScenarios({
-      key: TICKET_INFO.key,
-      summary: TICKET_INFO.summary,
-      description: TICKET_INFO.description + csvContext,
-      type: TICKET_INFO.type,
-      urls: targets,
-      parentKey: TICKET_INFO.parentKey || null,
-      parentSummary: TICKET_INFO.parentSummary || "",
-      parentDescription: TICKET_INFO.parentDescription || ""
-    });
-  } catch(e) {
-    console.log("[SCENARIOS] Erreur génération : " + e.message.substring(0, 80));
-    return [];
+    try {
+      scenarios = await leadQA.generateExecutableScenarios({
+        key: TICKET_INFO.key,
+        summary: TICKET_INFO.summary,
+        description: csvPrompt,
+        type: TICKET_INFO.type,
+        urls: targets,
+        parentKey: TICKET_INFO.parentKey || null,
+        parentSummary: TICKET_INFO.parentSummary || "",
+        parentDescription: TICKET_INFO.parentDescription || ""
+      });
+    } catch(e) {
+      console.log("[SCENARIOS] Erreur conversion CSV → Playwright : " + e.message.substring(0, 80));
+      return [];
+    }
+  } else {
+    // PAS DE CSV — arrêter pour un ticket TEST, générer via IA pour les autres types
+    if (TICKET_INFO && (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case")) {
+      console.log("[SCENARIOS] ERREUR : Ticket TEST sans CSV attaché — impossible d'exécuter les cas de test");
+      console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "❌ Aucun CSV de cas de test trouvé sur le ticket", pct: 15 }));
+      return [];
+    }
+    console.log("\n[SCENARIOS] Génération des scénarios exécutables via IA...");
+    try {
+      scenarios = await leadQA.generateExecutableScenarios({
+        key: TICKET_INFO.key,
+        summary: TICKET_INFO.summary,
+        description: TICKET_INFO.description,
+        type: TICKET_INFO.type,
+        urls: targets
+      });
+    } catch(e) {
+      console.log("[SCENARIOS] Erreur génération : " + e.message.substring(0, 80));
+      return [];
+    }
   }
 
   if (!scenarios || scenarios.length === 0) {
