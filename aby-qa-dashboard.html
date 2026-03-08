@@ -14835,13 +14835,11 @@ function confirmValidationPush() {
 
   // Init progress steps
   var STEPS = [
-    { id: "jira-create", label: "Creation du ticket TEST dans Jira" },
-    { id: "jira-link",   label: "Lien avec le ticket source" },
-    { id: "xray-push",   label: "Import des cas de test dans Xray" },
-    { id: "xray-plan",   label: "Rattachement au Test Plan (Release)" },
-    { id: "xray-exec",   label: "Rattachement a la Test Execution (Release)" },
-    { id: "xray-library", label: "Ajout a la Bibliotheque de Test" },
-    { id: "complete",    label: "Finalisation" }
+    { id: "jira-create",  label: "Création du ticket TEST dans Jira" },
+    { id: "jira-link",    label: "Lien avec le ticket source" },
+    { id: "csv-export",   label: "Cas de test exportés en CSV" },
+    { id: "xray-library", label: "Ajout à la Bibliothèque de Test" },
+    { id: "complete",     label: "Finalisation" }
   ];
   var progressDiv = document.getElementById("val-progress-steps");
   progressDiv.innerHTML = STEPS.map(function(s) {
@@ -14862,10 +14860,7 @@ function confirmValidationPush() {
   .then(function(data) {
     if (data.ok) {
       _valState.testKey = data.key;
-      var extra = "";
-      if (data.testPlanKey) extra += " | Plan: " + data.testPlanKey;
-      if (data.testExecKey) extra += " | Exec: " + data.testExecKey;
-      document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket cree : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a>' + extra + '</span>';
+      document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket créé : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a></span>';
       document.getElementById("val-btn-push").textContent = "Termine";
       showToast("Ticket " + data.key + " cree", "ok");
       // Afficher le bloc auto-launch Playwright
