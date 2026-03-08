@@ -327,6 +327,23 @@ async function getUrlsFromJiraKey(key) {
       console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "download-csv", message: "📎 Téléchargement " + csvAttachment.filename + "...", pct: 10 }));
       try {
         var csvContent = await downloadJiraAttachment(csvAttachment.content);
+        // Debug : afficher le contenu brut du CSV téléchargé
+        console.log("\n╔══════════════════════════════════════════════════════════════╗");
+        console.log("║  CSV BRUT TÉLÉCHARGÉ — " + csvAttachment.filename);
+        console.log("║  Taille : " + csvContent.length + " chars");
+        console.log("║  Premiers 500 chars :");
+        console.log("╠══════════════════════════════════════════════════════════════╣");
+        console.log(csvContent.substring(0, 500));
+        console.log("╠══════════════════════════════════════════════════════════════╣");
+        console.log("║  Char codes des 20 premiers : " + csvContent.substring(0, 20).split("").map(function(c) { return c.charCodeAt(0); }).join(","));
+        // Debug : tester le split
+        var debugLines = csvContent.replace(/^\uFEFF/, "").trim().split("\n");
+        console.log("║  Lignes après split(\\n) : " + debugLines.length);
+        debugLines.forEach(function(l, i) {
+          console.log("║  Ligne " + i + " (" + l.length + " chars) : " + l.substring(0, 80));
+        });
+        console.log("╚══════════════════════════════════════════════════════════════╝\n");
+
         CSV_TEST_CASES = parseCSVTestCases(csvContent);
         console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "csv-loaded", message: "📎 CSV chargé — " + CSV_TEST_CASES.length + " cas de test", pct: 12 }));
         console.log("[CSV] " + CSV_TEST_CASES.length + " cas de test parsés depuis " + csvAttachment.filename);
