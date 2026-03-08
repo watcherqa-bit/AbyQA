@@ -323,6 +323,16 @@ function csvCaseToScenario(tc, index) {
     return acc.concat(l.split("- "));
   }, []).map(function(l) { return l.trim(); }).filter(Boolean);
 
+  // Mots-clés CSS/DOM techniques — JAMAIS traités comme du texte
+  var CSS_KEYWORDS = [
+    "css", "position", "z-index", "::before", "::after", "pseudo",
+    "absolute", "fixed", "relative", "overflow", "display",
+    "getcomputedstyle", "computedstyle", "opacity", "transform",
+    "superposition", "empile", "margin", "padding", "border",
+    "font-size", "font-weight", "background", "color:",
+    "appliqué sur", "propriété", "propriete", "style"
+  ];
+
   expectedLines.forEach(function(line) {
     var ll = line.toLowerCase();
 
@@ -339,28 +349,35 @@ function csvCaseToScenario(tc, index) {
       return;
     }
 
-    // "présent dans le DOM" / "visible"
-    if (ll.indexOf("dans le dom") !== -1 || ll.indexOf("est visible") !== -1 || ll.indexOf("est présent") !== -1) {
-      var visTarget = extractQuotedSelector(line);
-      assertions.push({ type: "element", operator: "toBeVisible", selector: visTarget || "body" });
-      return;
-    }
-
-    // "position CSS" / "propriété CSS"
-    if (ll.indexOf("position css") !== -1 || ll.indexOf("propriété css") !== -1 || ll.indexOf("propriete css") !== -1) {
-      var cssProp = extractQuotedOrAfter(line, "position") || extractQuotedOrAfter(line, "propriété") || "position";
-      assertions.push({ type: "cssProperty", operator: "exists", value: cssProp });
-      return;
-    }
-
     // "coordonnée Y" / "getBoundingClientRect"
     if (ll.indexOf("coordonnée y") !== -1 || ll.indexOf("coordonnee y") !== -1 || ll.indexOf("getboundingclientrect") !== -1 || ll.indexOf("bounding") !== -1) {
       assertions.push({ type: "boundingRect", operator: "yOrder", value: line });
       return;
     }
 
-    // "texte [X] affiché" / "contient [texte]"
-    if (ll.indexOf("texte") !== -1 || ll.indexOf("contient") !== -1 || ll.indexOf("affiché") !== -1) {
+    // CSS / DOM technique — détection AVANT texte/visible
+    var isCSSCheck = CSS_KEYWORDS.some(function(kw) { return ll.indexOf(kw) !== -1; });
+    if (isCSSCheck) {
+      assertions.push({ type: "cssProperty", operator: "exists", value: line.substring(0, 200) });
+      return;
+    }
+
+    // "présent dans le DOM" / "visible" / "affiché" (vérifications DOM simples)
+    if (ll.indexOf("dans le dom") !== -1 || ll.indexOf("est visible") !== -1 || ll.indexOf("est présent") !== -1 || ll.indexOf("est present") !== -1) {
+      var visTarget = extractQuotedSelector(line);
+      assertions.push({ type: "element", operator: "toBeVisible", selector: visTarget || "body" });
+      return;
+    }
+
+    // "affiché" sans contexte CSS → visibilité DOM
+    if (ll.indexOf("affiché") !== -1 || ll.indexOf("affiche") !== -1) {
+      var visTarget2 = extractQuotedSelector(line);
+      assertions.push({ type: "element", operator: "toBeVisible", selector: visTarget2 || "body" });
+      return;
+    }
+
+    // "texte [X]" / "contient [texte]" — UNIQUEMENT si pas CSS
+    if (ll.indexOf("texte") !== -1 || ll.indexOf("contient") !== -1) {
       var textVal = extractQuoted(line);
       if (textVal) assertions.push({ type: "text", operator: "toContain", value: textVal });
       return;
@@ -2276,6 +2293,77 @@ async function main() {
     }
   }
 
+  // ── MODE CSV — Scénarios UNIQUEMENT, pas de Pipeline URL ────────────────
+  // Quand un CSV est présent, les scénarios couvrent tout. Pas de runTest sur les targets.
+  if (CSV_TEST_CASES.length > 0 && SCENARIO_RESULTS.length > 0) {
+    var csvAutoResults = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
+    var csvPass = csvAutoResults.filter(function(s) { return s.pass === true; }).length;
+    var csvFail = csvAutoResults.filter(function(s) { return s.pass === false; }).length;
+    var csvTotal = csvAutoResults.length;
+    var csvPct = csvTotal > 0 ? Math.round(csvPass / csvTotal * 100) : 0;
+
+    // Extraire l'URL unique depuis les scénarios CSV
+    var csvUrl = "";
+    for (var cu = 0; cu < SCENARIO_RESULTS.length; cu++) {
+      if (SCENARIO_RESULTS[cu].url) { csvUrl = SCENARIO_RESULTS[cu].url; break; }
+    }
+    console.log("\n[CSV MODE] 1 URL testée depuis CSV : " + csvUrl);
+    console.log("[CSV MODE] " + csvPass + "/" + csvTotal + " AUTO PASS (" + csvPct + "%)");
+
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "report", message: "Génération du rapport...", pct: 90 }));
+    var sourceLabel = KEY || "csv";
+
+    // Convertir SCENARIO_RESULTS en format allResults pour le rapport
+    var allResults = csvAutoResults.map(function(sr) {
+      return {
+        label: sr.titre,
+        url: sr.url || csvUrl,
+        env: ENV_NAME,
+        status: sr.pass ? "PASS" : "FAIL",
+        issues: sr.error ? [sr.error] : [],
+        steps: (sr.actionsExecuted || []).map(function(a) { return { label: a.type, status: a.pass ? "PASS" : "FAIL", detail: a.detail || a.error || "" }; }),
+        screenshot: sr.screenshot || null,
+        device: DEVICES[0].name,
+        browser: BROWSERS[0]
+      };
+    });
+
+    var reportPath = generateHTMLReport(allResults, MODE, sourceLabel);
+    console.log("[RAPPORT HTML] " + path.basename(reportPath));
+    var pdfPath = await convertHtmlToPdf(reportPath);
+
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: csvPass + "/" + csvTotal + " PASS (" + csvPct + "%)", pct: 100, pass: csvPass, fail: csvFail, total: csvTotal, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
+
+    if (csvFail > 0 && NO_JIRA_PUSH) {
+      console.log("\n[INFO] " + csvFail + " FAIL(s) — pas de création de bugs Jira (--no-jira-push)");
+    }
+
+    var scenarioSummary = {
+      autoPass: csvPass, autoTotal: csvTotal,
+      manuelTotal: SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; }).length,
+      total: SCENARIO_RESULTS.length,
+      manuelCases: SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; }).map(function(m) {
+        return { id: m.id, titre: m.titre, action: m.csvCase ? m.csvCase.action.replace(/\n/g, " ").substring(0, 200) : "", expected: m.csvCase ? m.csvCase.expected.replace(/\n/g, " ").substring(0, 200) : "" };
+      })
+    };
+
+    console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass: csvPass, fail: csvFail, total: csvTotal, pct: csvPct, mode: MODE, env: ENV_NAME, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs: [], dryRun: DRY_RUN, ticketKey: KEY, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
+
+    var fullForDashboard = allResults.map(function(r) {
+      return { label: r.label, url: r.url, status: r.status, device: r.device, browser: r.browser, issues: r.issues, steps: r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
+    });
+    console.log("PLAYWRIGHT_DIRECT_FULL:" + JSON.stringify(fullForDashboard));
+
+    console.log("\n==================================================");
+    console.log("  PASS : " + csvPass + "/" + csvTotal + " (" + csvPct + "%) | FAIL : " + csvFail);
+    console.log("  " + (csvFail === 0 ? "✅ TOUT PASS" : "⚠️  " + csvFail + " FAIL(S)"));
+    console.log("==================================================\n");
+
+    process.exit(csvFail > 0 ? 1 : 0);
+    return;
+  }
+
+  // ── PIPELINE URL classique (quand PAS de CSV) ─────────────────────────────
   var allResults = [];
   var totalTests = BROWSERS.length * DEVICES.length * targets.length;
   var testIdx = 0;
