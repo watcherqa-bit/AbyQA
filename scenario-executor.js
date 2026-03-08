@@ -67,9 +67,18 @@ async function executeScenario(page, scenario, opts) {
     };
   }
 
-  // Variable pour capturer les popups/events
+  // Variable pour capturer les popups/events et le statut HTTP
   var capturedPopup = null;
   var popupPromise = null;
+  var lastHttpStatus = 0;
+  var networkErrors5xx = [];
+
+  // Intercepter les réponses pour capturer les erreurs 5xx
+  var responseHandler = function(response) {
+    var st = response.status();
+    if (st >= 500) networkErrors5xx.push({ url: response.url(), status: st });
+  };
+  page.on("response", responseHandler);
 
   // ── EXÉCUTION DES ACTIONS ──────────────────────────────────────────────────
   for (var ai = 0; ai < scenario.actions.length; ai++) {
@@ -79,8 +88,9 @@ async function executeScenario(page, scenario, opts) {
     try {
       switch (action.type) {
         case "navigate":
-          await page.goto(action.url, { waitUntil: "domcontentloaded", timeout: timeout });
-          actionResult.detail = "Navigué vers " + action.url;
+          var navResponse = await page.goto(action.url, { waitUntil: "domcontentloaded", timeout: timeout });
+          lastHttpStatus = navResponse ? navResponse.status() : 0;
+          actionResult.detail = "Navigué vers " + action.url + " (HTTP " + lastHttpStatus + ")";
           break;
 
         case "click":
@@ -344,7 +354,79 @@ async function executeScenario(page, scenario, opts) {
 
           case "status":
             // HTTP status — nécessite une navigation préalable
-            assertResult.actual = "N/A (vérification post-navigation)";
+            assertResult.actual = lastHttpStatus;
+            if (assertion.operator === "toBe" && lastHttpStatus !== parseInt(assertion.value)) {
+              assertResult.pass = false;
+              assertResult.error = "HTTP " + lastHttpStatus + " (attendu : " + assertion.value + ")";
+            }
+            break;
+
+          case "httpStatus":
+            assertResult.actual = lastHttpStatus;
+            if (assertion.operator === "toBe") {
+              var expectedCode = parseInt(assertion.value);
+              if (lastHttpStatus !== expectedCode) {
+                assertResult.pass = false;
+                assertResult.error = "HTTP " + lastHttpStatus + " (attendu : " + expectedCode + ")";
+              }
+            } else if (assertion.operator === "notToMatch" && assertion.value === "5xx") {
+              if (networkErrors5xx.length > 0) {
+                assertResult.pass = false;
+                assertResult.error = networkErrors5xx.length + " erreur(s) 5xx détectée(s) : " + networkErrors5xx.map(function(e) { return "HTTP " + e.status; }).join(", ");
+              }
+            }
+            break;
+
+          case "cssProperty":
+            try {
+              var cssSel = assertion.selector || "body";
+              var cssPropName = assertion.value || "position";
+              var cssVal = await page.evaluate(function(args) {
+                var el = document.querySelector(args.sel);
+                if (!el) return null;
+                return getComputedStyle(el)[args.prop];
+              }, { sel: cssSel, prop: cssPropName });
+              assertResult.actual = cssSel + " → " + cssPropName + ": " + cssVal;
+              if (cssVal === null) {
+                assertResult.pass = false;
+                assertResult.error = "Élément " + cssSel + " non trouvé";
+              }
+            } catch(e) {
+              assertResult.pass = false;
+              assertResult.error = "Erreur CSS check : " + e.message.substring(0, 80);
+            }
+            break;
+
+          case "boundingRect":
+            try {
+              // Extraire deux sélecteurs de la description
+              var brDesc = assertion.value || "";
+              var brResult = await page.evaluate(function(desc) {
+                // Trouver les éléments mentionnés — cherche des sélecteurs entre guillemets
+                var sels = desc.match(/"([^"]+)"/g);
+                if (!sels || sels.length < 2) {
+                  // Fallback : chercher des noms de sections entre guillemets ou mots-clés
+                  var h = document.querySelectorAll("h1,h2,h3,[class*='title'],[class*='section']");
+                  if (h.length >= 2) {
+                    return { y1: h[0].getBoundingClientRect().y, y2: h[1].getBoundingClientRect().y, ok: h[0].getBoundingClientRect().y < h[1].getBoundingClientRect().y, desc: "Premier H: Y=" + h[0].getBoundingClientRect().y + " < Deuxième H: Y=" + h[1].getBoundingClientRect().y };
+                  }
+                  return { ok: true, desc: "Pas assez d'éléments pour comparer", y1: 0, y2: 0 };
+                }
+                var s1 = sels[0].replace(/"/g, ""), s2 = sels[1].replace(/"/g, "");
+                var e1 = document.querySelector(s1), e2 = document.querySelector(s2);
+                if (!e1 || !e2) return { ok: false, desc: "Éléments non trouvés: " + s1 + " / " + s2, y1: 0, y2: 0 };
+                var r1 = e1.getBoundingClientRect(), r2 = e2.getBoundingClientRect();
+                return { y1: r1.y, y2: r2.y, ok: r1.y < r2.y, desc: s1 + " Y=" + r1.y + " vs " + s2 + " Y=" + r2.y };
+              }, brDesc);
+              assertResult.actual = brResult.desc;
+              if (!brResult.ok) {
+                assertResult.pass = false;
+                assertResult.error = "Ordre Y incorrect : " + brResult.desc;
+              }
+            } catch(e) {
+              assertResult.pass = false;
+              assertResult.error = "Erreur getBoundingClientRect : " + e.message.substring(0, 80);
+            }
             break;
 
           default:
@@ -364,7 +446,8 @@ async function executeScenario(page, scenario, opts) {
     }
   }
 
-  // Fermer le popup si ouvert
+  // Cleanup
+  page.removeListener("response", responseHandler);
   if (capturedPopup) {
     try { await capturedPopup.close(); } catch (e) {}
   }

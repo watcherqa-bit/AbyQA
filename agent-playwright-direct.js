@@ -258,6 +258,178 @@ function classifyCSVCase(action) {
   return "AUTO";
 }
 
+// ── CONVERSION DÉTERMINISTE CSV → SCÉNARIOS PLAYWRIGHT ──────────────────────
+// Zéro appel LLM. 1 cas CSV AUTO = 1 scénario Playwright.
+
+/**
+ * Extraire la première URL depuis un texte (colonne Données ou Action).
+ */
+function extractUrlFromText(text) {
+  var m = (text || "").match(/https?:\/\/[^\s|•",;)(\]]+/);
+  return m ? m[0].replace(/[.)]+$/, "") : null;
+}
+
+/**
+ * Convertir un cas CSV AUTO en scénario Playwright exécutable.
+ * Lecture déterministe des 3 colonnes : Action, Données, Résultat Attendu.
+ */
+function csvCaseToScenario(tc, index) {
+  var action = tc.action || "";
+  var data = tc.data || "";
+  var expected = tc.expected || "";
+  var lower = action.toLowerCase();
+
+  // 1. URL — extraire depuis Données, puis Action
+  var url = extractUrlFromText(data) || extractUrlFromText(action);
+
+  // 2. Construire les actions Playwright
+  var actions = [];
+  if (url) {
+    actions.push({ type: "navigate", url: url });
+  }
+
+  // Parser les lignes Gherkin de la colonne Action
+  var lines = action.split("\n").map(function(l) { return l.trim(); }).filter(Boolean);
+  lines.forEach(function(line) {
+    var ll = line.toLowerCase();
+
+    // "je scrolle jusqu'à [section]" ou "scroll"
+    if (ll.indexOf("scroll") !== -1) {
+      // Extraire le sélecteur entre guillemets ou après "jusqu'à"
+      var scrollTarget = extractQuotedOrAfter(line, "jusqu'à") || extractQuotedOrAfter(line, "jusqu'a") || null;
+      actions.push({ type: "scroll", selector: scrollTarget });
+    }
+    // "je clique sur [element]"
+    else if (ll.indexOf("clique") !== -1 || ll.indexOf("click") !== -1) {
+      var clickTarget = extractQuotedOrAfter(line, "sur") || extractQuotedOrAfter(line, "on") || null;
+      if (clickTarget) actions.push({ type: "click", selector: clickTarget });
+    }
+    // "j'attends" / "wait"
+    else if (ll.indexOf("attends") !== -1 || ll.indexOf("wait") !== -1) {
+      var msMatch = line.match(/(\d+)\s*(ms|secondes?|s)/i);
+      var waitMs = msMatch ? (msMatch[2].startsWith("s") && msMatch[2] !== "s" ? parseInt(msMatch[1]) * 1000 : parseInt(msMatch[1])) : 1000;
+      actions.push({ type: "wait", value: String(waitMs) });
+    }
+  });
+
+  // Si aucune action parsée et pas d'URL non plus → navigate fallback
+  if (actions.length === 0 && !url) {
+    actions.push({ type: "wait", value: "500" });
+  }
+
+  // 3. Construire les assertions depuis Résultat Attendu
+  var assertions = [];
+  var expectedLines = expected.split("\n").concat(expected.split("•")).reduce(function(acc, l) {
+    return acc.concat(l.split("- "));
+  }, []).map(function(l) { return l.trim(); }).filter(Boolean);
+
+  expectedLines.forEach(function(line) {
+    var ll = line.toLowerCase();
+
+    // "HTTP 200" / "statut HTTP 200"
+    var httpMatch = line.match(/HTTP\s*(\d{3})/i);
+    if (httpMatch) {
+      assertions.push({ type: "httpStatus", operator: "toBe", value: httpMatch[1] });
+      return;
+    }
+
+    // "aucune erreur HTTP 5xx" / "pas d'erreur 5xx"
+    if (ll.indexOf("5xx") !== -1 || ll.indexOf("erreur http") !== -1 || ll.indexOf("erreur serveur") !== -1) {
+      assertions.push({ type: "httpStatus", operator: "notToMatch", value: "5xx" });
+      return;
+    }
+
+    // "présent dans le DOM" / "visible"
+    if (ll.indexOf("dans le dom") !== -1 || ll.indexOf("est visible") !== -1 || ll.indexOf("est présent") !== -1) {
+      var visTarget = extractQuotedSelector(line);
+      assertions.push({ type: "element", operator: "toBeVisible", selector: visTarget || "body" });
+      return;
+    }
+
+    // "position CSS" / "propriété CSS"
+    if (ll.indexOf("position css") !== -1 || ll.indexOf("propriété css") !== -1 || ll.indexOf("propriete css") !== -1) {
+      var cssProp = extractQuotedOrAfter(line, "position") || extractQuotedOrAfter(line, "propriété") || "position";
+      assertions.push({ type: "cssProperty", operator: "exists", value: cssProp });
+      return;
+    }
+
+    // "coordonnée Y" / "getBoundingClientRect"
+    if (ll.indexOf("coordonnée y") !== -1 || ll.indexOf("coordonnee y") !== -1 || ll.indexOf("getboundingclientrect") !== -1 || ll.indexOf("bounding") !== -1) {
+      assertions.push({ type: "boundingRect", operator: "yOrder", value: line });
+      return;
+    }
+
+    // "texte [X] affiché" / "contient [texte]"
+    if (ll.indexOf("texte") !== -1 || ll.indexOf("contient") !== -1 || ll.indexOf("affiché") !== -1) {
+      var textVal = extractQuoted(line);
+      if (textVal) assertions.push({ type: "text", operator: "toContain", value: textVal });
+      return;
+    }
+  });
+
+  // Assertion par défaut si rien trouvé : page charge sans erreur
+  if (assertions.length === 0) {
+    assertions.push({ type: "httpStatus", operator: "toBe", value: "200" });
+  }
+
+  // Titre lisible
+  var titre = action.split("\n")[0].replace(/^(Étant donné|Lorsque|Alors|Given|When|Then)\s*/i, "").substring(0, 80);
+
+  return {
+    id: "csv-" + (index + 1),
+    titre: "Cas " + tc.csvIndex + " — " + titre,
+    type: "AUTO",
+    csvCase: tc,
+    url: url,
+    actions: actions,
+    assertions: assertions
+  };
+}
+
+/** Extraire un texte entre guillemets */
+function extractQuoted(text) {
+  var m = text.match(/"([^"]+)"/);
+  if (m) return m[1];
+  m = text.match(/«\s*([^»]+)\s*»/);
+  if (m) return m[1];
+  m = text.match(/'([^']+)'/);
+  return m ? m[1] : null;
+}
+
+/** Extraire un sélecteur CSS entre guillemets */
+function extractQuotedSelector(text) {
+  var q = extractQuoted(text);
+  if (q && (q.startsWith(".") || q.startsWith("#") || q.startsWith("[") || /^[a-z][\w-]*$/i.test(q))) return q;
+  // Chercher un pattern qui ressemble à un sélecteur CSS
+  var m = text.match(/([.#][\w-]+(?:\s+[.#>\w-]+)*)/);
+  return m ? m[1] : null;
+}
+
+/** Extraire le texte après un mot-clé, ou entre guillemets */
+function extractQuotedOrAfter(text, keyword) {
+  var q = extractQuoted(text);
+  if (q) return q;
+  var idx = text.toLowerCase().indexOf(keyword.toLowerCase());
+  if (idx !== -1) {
+    var after = text.substring(idx + keyword.length).trim().replace(/^[:\s]+/, "");
+    // Prendre jusqu'au prochain saut, virgule ou fin
+    var chunk = after.split(/[,\n]/)[0].trim().replace(/^["'«]|["'»]$/g, "");
+    return chunk || null;
+  }
+  return null;
+}
+
+/**
+ * Convertir tous les cas CSV AUTO en scénarios Playwright (déterministe, 0 LLM).
+ * @param {Array} csvAutoCases — cas CSV classifiés AUTO
+ * @returns {Array} scénarios au format scenario-executor.js
+ */
+function csvToScenarios(csvAutoCases) {
+  return csvAutoCases.map(function(tc, i) {
+    return csvCaseToScenario(tc, i);
+  });
+}
+
 // Parser un CSV cas de test (Action, Données, Résultat Attendu)
 // Gère les champs multilignes entre guillemets (RFC 4180)
 function parseCSVTestCases(csvContent) {
@@ -1076,8 +1248,8 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
  * @returns {Promise<Array>} résultats par scénario
  */
 async function runScenarios(targets, envName) {
-  if (!leadQA || !TICKET_INFO) {
-    console.log("[SCENARIOS] Pas de ticket info ou lead-qa indisponible — skip");
+  if (!TICKET_INFO) {
+    console.log("[SCENARIOS] Pas de ticket info — skip");
     return [];
   }
 
@@ -1090,7 +1262,7 @@ async function runScenarios(targets, envName) {
     var csvManuel = CSV_TEST_CASES.filter(function(tc) { return tc.csvType === "MANUEL"; });
 
     console.log("[CSV] Répartition : " + csvAuto.length + " AUTO + " + csvManuel.length + " MANUEL");
-    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 " + csvAuto.length + " cas AUTO à convertir + " + csvManuel.length + " MANUEL", pct: 15 }));
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "🎭 " + csvAuto.length + " cas AUTO (déterministe) + " + csvManuel.length + " MANUEL", pct: 15 }));
 
     // Lister les cas MANUEL dans les logs
     if (csvManuel.length > 0) {
@@ -1101,32 +1273,17 @@ async function runScenarios(targets, envName) {
       console.log("");
     }
 
-    // Convertir uniquement les cas AUTO en scénarios Playwright via IA
+    // Conversion déterministe CSV → scénarios (0 appel LLM)
     if (csvAuto.length > 0) {
-      var csvPrompt = "CAS DE TEST À CONVERTIR EN SCÉNARIOS PLAYWRIGHT :\n\n" +
-        csvAuto.map(function(tc, i) {
-          return "Cas " + (i + 1) + " :\n" +
-            "  Action : " + tc.action + "\n" +
-            "  Données : " + tc.data + "\n" +
-            "  Résultat attendu : " + tc.expected;
-        }).join("\n\n") +
-        "\n\nIMPORTANT : Génère EXACTEMENT " + csvAuto.length + " scénarios (1 par cas AUTO). " +
-        "Utilise les URLs et données de chaque cas pour construire les actions et assertions Playwright.";
-
-      try {
-        scenarios = await leadQA.generateExecutableScenarios({
-          key: TICKET_INFO.key,
-          summary: TICKET_INFO.summary,
-          description: csvPrompt,
-          type: TICKET_INFO.type,
-          urls: targets,
-          parentKey: TICKET_INFO.parentKey || null,
-          parentSummary: TICKET_INFO.parentSummary || "",
-          parentDescription: TICKET_INFO.parentDescription || ""
-        });
-      } catch(e) {
-        console.log("[SCENARIOS] Erreur conversion CSV → Playwright : " + e.message.substring(0, 80));
-      }
+      scenarios = csvToScenarios(csvAuto);
+      console.log("[CSV→SCENARIO] " + scenarios.length + " scénarios construits (déterministe, 0 appel IA)");
+      // Afficher chaque scénario construit
+      scenarios.forEach(function(s) {
+        console.log("  [" + s.id + "] " + s.titre);
+        console.log("    URL    : " + (s.url || "aucune"));
+        console.log("    Actions: " + s.actions.map(function(a) { return a.type; }).join(" → "));
+        console.log("    Asserts: " + s.assertions.map(function(a) { return a.type + "(" + (a.operator || "") + ")"; }).join(", "));
+      });
     }
 
     // Ajouter les cas MANUEL comme scénarios de type MANUEL (pas d'exécution Playwright)
@@ -1165,15 +1322,6 @@ async function runScenarios(targets, envName) {
   if (!scenarios || scenarios.length === 0) {
     console.log("[SCENARIOS] Aucun scénario généré");
     return [];
-  }
-
-  // Vérification : si CSV AUTO, on attend exactement N scénarios AUTO de l'IA
-  if (CSV_TEST_CASES.length > 0) {
-    var expectedAuto = CSV_TEST_CASES.filter(function(c) { return c.csvType === "AUTO"; }).length;
-    var gotAuto = scenarios.filter(function(s) { return s.type !== "MANUEL" || !s.csvCase; }).length;
-    if (gotAuto !== expectedAuto) {
-      console.log("[SCENARIOS] ⚠️ Attendu " + expectedAuto + " scénarios AUTO (1/cas CSV AUTO), reçu " + gotAuto);
-    }
   }
 
   console.log("[SCENARIOS] " + scenarios.length + " scénario(s) total — " +
@@ -2095,11 +2243,6 @@ async function main() {
   // ── MODE SINGLE ENV (comportement existant) ───────────────────────────────
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "resolve", message: "Résolution des cibles...", pct: 5 }));
   var targets = MODE === "tnr" ? getTNRPages() : await resolveTargets();
-
-  // Valider les URLs (HEAD check) — si 404, chercher dans le ticket source
-  if (KEY && SOURCE === "jira-key" && MODE !== "tnr") {
-    targets = await validateUrls(targets);
-  }
 
   console.log("[CIBLES] " + targets.length + " URL(s)");
   targets.forEach(function(t) { console.log("  → " + t.url + " (" + t.context + ")"); });
