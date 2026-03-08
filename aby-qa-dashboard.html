@@ -3367,82 +3367,40 @@
 
         <!-- TAB 3 : Config Test -->
         <div id="val-pane-config" style="display:none;padding:20px 24px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
 
-            <!-- Navigateurs -->
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">NAVIGATEURS</div>
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-br-chromium" checked style="accent-color:var(--green);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Chromium</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--green)">v2+</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-br-firefox" style="accent-color:var(--orange);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Firefox</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--orange)">v125+</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-br-webkit" style="accent-color:var(--red);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">WebKit / Safari</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--red)">17+</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Devices -->
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">DEVICES / RESOLUTIONS</div>
-              <div style="display:flex;flex-direction:column;gap:10px">
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-dev-desktop" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Desktop HD</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">1920x1080</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-dev-tablet" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Tablet (iPad)</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">768x1024</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-dev-iphone" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">iPhone</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">375x812</span>
-                </label>
-                <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                  <input type="checkbox" id="val-dev-samsung" style="accent-color:var(--text3);width:15px;height:15px;flex-shrink:0">
-                  <span style="font-size:13px;color:var(--text)">Samsung</span>
-                  <span style="margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--text3)">360x740</span>
-                </label>
-              </div>
+          <!-- Environnements -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">ENVIRONNEMENTS <span style="color:var(--text3);font-size:9px">(MULTI-SELECTION)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="val-env-sophie" checked><span>Sophie</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-env-paulo"><span>Paulo</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-env-prod"><span>Prod</span></label>
             </div>
           </div>
 
-          <!-- Environnements -->
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:14px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">ENVIRONNEMENTS (MULTI-SELECTION)</div>
-            <div style="display:flex;gap:24px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="val-env-sophie" checked style="accent-color:#eab308;width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Sophie</span>
-                <span style="font-family:var(--mono);font-size:10px;color:#eab308">(staging 1)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="val-env-paulo" style="accent-color:var(--orange);width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Paulo</span>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--orange)">(staging 2)</span>
-              </label>
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
-                <input type="checkbox" id="val-env-prod" style="accent-color:var(--blue);width:15px;height:15px">
-                <span style="font-size:13px;color:var(--text)">Prod</span>
-                <span style="font-family:var(--mono);font-size:10px;color:var(--blue)">production</span>
-              </label>
+          <!-- Devices -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">DEVICES <span style="color:var(--text3);font-size:9px">(MULTI-SELECTION)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="val-dev-desktop" checked><span>Desktop 1920x1080</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-dev-tablet"><span>iPad 768x1024</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-dev-iphone"><span>iPhone 375x812</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-dev-samsung"><span>Samsung 360x740</span></label>
+            </div>
+          </div>
+
+          <!-- Navigateurs -->
+          <div style="margin-bottom:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">NAVIGATEURS <span style="color:var(--text3);font-size:9px">(PLAYWRIGHT)</span></label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <label class="check-pill"><input type="checkbox" id="val-br-chromium" checked><span>Chromium</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-br-firefox"><span>Firefox</span></label>
+              <label class="check-pill"><input type="checkbox" id="val-br-webkit"><span>WebKit</span></label>
             </div>
           </div>
 
           <!-- Resume config -->
-          <div id="val-config-summary" style="padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;font-family:var(--mono);font-size:11px;color:var(--text2)"></div>
+          <div id="val-config-summary" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:11px;font-family:var(--mono);color:var(--text2);display:flex;gap:16px;flex-wrap:wrap"></div>
         </div>
 
         <!-- PROGRESS OVERLAY -->
@@ -14934,28 +14892,28 @@ function loadValConfig() {
 }
 
 function updateValConfigSummary() {
-  var brColors = {chromium:"var(--green)",firefox:"var(--orange)",webkit:"var(--red)"};
   var browsers = [];
   ["chromium","firefox","webkit"].forEach(function(b) {
     var el = document.getElementById("val-br-" + b);
-    if (el && el.checked) browsers.push('<span style="color:' + brColors[b] + '">' + b + '</span>');
+    if (el && el.checked) browsers.push(b);
   });
   var devices = [];
-  [["desktop","Desktop"],["tablet","iPad"],["iphone","iPhone"],["samsung","Samsung"]].forEach(function(d) {
+  [["desktop","Desktop HD"],["tablet","iPad"],["iphone","iPhone"],["samsung","Samsung"]].forEach(function(d) {
     var el = document.getElementById("val-dev-" + d[0]);
-    if (el && el.checked) devices.push('<span style="color:' + (d[0]==="desktop"?"var(--cyan)":"var(--text3)") + '">' + d[1] + '</span>');
+    if (el && el.checked) devices.push(d[1]);
   });
-  var envColors = {sophie:"#eab308",paulo:"var(--orange)",prod:"var(--blue)"};
   var envs = [];
   ["sophie","paulo","prod"].forEach(function(e) {
     var el = document.getElementById("val-env-" + e);
-    if (el && el.checked) envs.push('<span style="color:' + envColors[e] + '">' + e + '</span>');
+    if (el && el.checked) envs.push(e.charAt(0).toUpperCase() + e.slice(1));
   });
+  var combos = Math.max(1, envs.length) * Math.max(1, devices.length) * Math.max(1, browsers.length);
   var el = document.getElementById("val-config-summary");
   if (el) el.innerHTML =
-    "<strong style='color:var(--text3)'>NAVIGATEURS :</strong> " + (browsers.join(", ") || "aucun") +
-    " &nbsp;&middot;&nbsp; <strong style='color:var(--text3)'>DEVICES :</strong> " + (devices.join(", ") || "aucun") +
-    " &nbsp;&middot;&nbsp; <strong style='color:var(--text3)'>ENVS :</strong> " + (envs.join(", ") || "aucun");
+    "<span>🌍 " + (envs.join(", ") || "aucun") + "</span>" +
+    "<span>🖥️ " + (devices.join(", ") || "aucun") + "</span>" +
+    "<span>🟢 " + (browsers.join(", ") || "aucun") + "</span>" +
+    '<span style="color:var(--blue)">&rarr; ' + combos + " combinaison" + (combos > 1 ? "s" : "") + "</span>";
 }
 
 function collectValConfig() {
