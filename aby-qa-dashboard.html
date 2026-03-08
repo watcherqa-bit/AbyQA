@@ -3351,6 +3351,26 @@
           </div>
           <!-- Warnings -->
           <div id="val-warnings" style="display:none;margin-top:14px;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:12px"></div>
+
+          <!-- Rattachement Release -->
+          <div id="val-plan-exec-info" style="display:none;margin-top:16px">
+            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">RATTACHEMENT RELEASE</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div id="val-plan-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
+                <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST PLAN</div>
+                <div id="val-plan-status" style="font-size:13px;font-weight:600"></div>
+                <div id="val-plan-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:4px"></div>
+              </div>
+              <div id="val-exec-card" style="padding:12px 14px;background:var(--bg3);border:1px solid var(--border);border-radius:10px">
+                <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.08em;margin-bottom:6px">TEST EXECUTION</div>
+                <div id="val-exec-status" style="font-size:13px;font-weight:600"></div>
+                <div id="val-exec-key" style="font-size:11px;color:var(--cyan);font-family:var(--mono);margin-top:4px"></div>
+              </div>
+            </div>
+            <div style="margin-top:8px;font-family:var(--mono);font-size:11px;color:var(--text3)">
+              Release : <span id="val-release-version" style="color:var(--orange);font-weight:600"></span>
+            </div>
+          </div>
         </div>
 
         <!-- TAB 2 : Cas de test Xray -->
@@ -14534,7 +14554,10 @@ var _valState = {
   ticket: null,
   xraySteps: [],
   descriptionADF: null,
-  pushing: false
+  pushing: false,
+  release: null,
+  testPlan: null,
+  testExec: null
 };
 
 function openValidationModal(sourceKey, opts) {
@@ -14569,6 +14592,9 @@ function openValidationModal(sourceKey, opts) {
     _valState.ticket = data.ticket;
     _valState.xraySteps = data.xraySteps || [];
     _valState.descriptionADF = data.ticket.descriptionADF;
+    _valState.release = data.release || "";
+    _valState.testPlan = data.testPlan || null;
+    _valState.testExec = data.testExec || null;
 
     // Remplir onglet 1
     document.getElementById("val-summary").value = data.ticket.summary || "";
@@ -14584,6 +14610,37 @@ function openValidationModal(sourceKey, opts) {
       var wDiv = document.getElementById("val-warnings");
       wDiv.style.display = "";
       wDiv.innerHTML = "<strong>Violations detectees :</strong><br>" + data.validation.violations.map(function(v) { return "- " + v; }).join("<br>");
+    }
+
+    // Remplir plan/exec info
+    var peDiv = document.getElementById("val-plan-exec-info");
+    peDiv.style.display = "";
+    document.getElementById("val-release-version").textContent = data.release || "?";
+
+    var planCard = document.getElementById("val-plan-card");
+    var planStatus = document.getElementById("val-plan-status");
+    var planKey = document.getElementById("val-plan-key");
+    if (data.testPlan && data.testPlan.exists) {
+      planStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+      planKey.textContent = data.testPlan.key + " — " + data.testPlan.summary;
+      planCard.style.borderColor = "var(--green)";
+    } else {
+      planStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
+      planKey.textContent = (data.testPlan && data.testPlan.summary) || "Plan de Test - Release " + data.release;
+      planCard.style.borderColor = "var(--orange)";
+    }
+
+    var execCard = document.getElementById("val-exec-card");
+    var execStatus = document.getElementById("val-exec-status");
+    var execKey = document.getElementById("val-exec-key");
+    if (data.testExec && data.testExec.exists) {
+      execStatus.innerHTML = '<span style="color:var(--green)">&#10004; Detecte</span>';
+      execKey.textContent = data.testExec.key + " — " + data.testExec.summary;
+      execCard.style.borderColor = "var(--green)";
+    } else {
+      execStatus.innerHTML = '<span style="color:var(--orange)">&#9679; Sera cree</span>';
+      execKey.textContent = (data.testExec && data.testExec.summary) || "Test Execution - Release " + data.release;
+      execCard.style.borderColor = "var(--orange)";
     }
 
     // Remplir onglet 2
@@ -14694,7 +14751,8 @@ function collectValData() {
       parentKey:      _valState.sourceKey
     },
     xraySteps: _valState.xraySteps,
-    config: collectValConfig()
+    config: collectValConfig(),
+    release: _valState.release
   };
 }
 
@@ -14718,6 +14776,8 @@ function confirmValidationPush() {
     { id: "jira-create", label: "Creation du ticket TEST dans Jira" },
     { id: "jira-link",   label: "Lien avec le ticket source" },
     { id: "xray-push",   label: "Import des cas de test dans Xray" },
+    { id: "xray-plan",   label: "Rattachement au Test Plan (Release)" },
+    { id: "xray-exec",   label: "Rattachement a la Test Execution (Release)" },
     { id: "complete",    label: "Finalisation" }
   ];
   var progressDiv = document.getElementById("val-progress-steps");
@@ -14738,7 +14798,10 @@ function confirmValidationPush() {
   .then(function(r) { return r.json(); })
   .then(function(data) {
     if (data.ok) {
-      document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket cree : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a></span>';
+      var extra = "";
+      if (data.testPlanKey) extra += " | Plan: " + data.testPlanKey;
+      if (data.testExecKey) extra += " | Exec: " + data.testExecKey;
+      document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket cree : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a>' + extra + '</span>';
       document.getElementById("val-btn-push").textContent = "Termine";
       showToast("Ticket " + data.key + " cree", "ok");
     } else {

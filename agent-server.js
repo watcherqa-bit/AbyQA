@@ -174,6 +174,85 @@ const jiraQueue = require("./agent-jira-queue");
 const dailyJob  = require("./agent-daily-job");
 var DAILY_JOB_MODE = (process.env.DAILY_JOB_MODE || "").toLowerCase() === "true";
 
+// ── Helper Jira API (Promise) ────────────────────────────────────────────────
+function jiraApiCall(method, apiPath, body) {
+  var CFGapi = require("./config");
+  var authApi = Buffer.from(CFGapi.jira.email + ":" + CFGapi.jira.token).toString("base64");
+  var httpsApi = require("https");
+  var payload = body ? JSON.stringify(body) : null;
+  var headers = { "Authorization": "Basic " + authApi, "Accept": "application/json" };
+  if (payload) { headers["Content-Type"] = "application/json"; headers["Content-Length"] = Buffer.byteLength(payload); }
+  return new Promise(function(resolve, reject) {
+    var r = httpsApi.request({ hostname: CFGapi.jira.host, path: apiPath, method: method, headers: headers }, function(res) {
+      var d = ""; res.on("data", function(c) { d += c; });
+      res.on("end", function() { try { resolve({ status: res.statusCode, data: JSON.parse(d) }); } catch(e) { resolve({ status: res.statusCode, data: d }); } });
+    });
+    r.on("error", reject);
+    if (payload) r.write(payload);
+    r.end();
+  });
+}
+
+// ── Détection Test Plan / Test Execution par release ─────────────────────────
+async function findTestPlanExec(release) {
+  var CFGf = require("./config");
+  var project = CFGf.jira.project || "SAFWBST";
+  var result = { testPlan: null, testExec: null };
+  try {
+    var jqlPlan = 'project = ' + project + ' AND issuetype = "Test Plan" AND (labels = "' + release + '" OR summary ~ "' + release + '") ORDER BY created DESC';
+    var planRes = await jiraApiCall("GET", "/rest/api/2/search?jql=" + encodeURIComponent(jqlPlan) + "&fields=summary,status,key&maxResults=1");
+    if (planRes.data && planRes.data.issues && planRes.data.issues.length > 0) {
+      var p = planRes.data.issues[0];
+      result.testPlan = { key: p.key, summary: p.fields.summary, status: (p.fields.status || {}).name || "", exists: true };
+    }
+  } catch(e) { console.warn("[findTestPlanExec] Plan search error:", e.message); }
+  try {
+    var jqlExec = 'project = ' + project + ' AND issuetype = "Test Execution" AND (labels = "' + release + '" OR summary ~ "' + release + '") ORDER BY created DESC';
+    var execRes = await jiraApiCall("GET", "/rest/api/2/search?jql=" + encodeURIComponent(jqlExec) + "&fields=summary,status,key&maxResults=1");
+    if (execRes.data && execRes.data.issues && execRes.data.issues.length > 0) {
+      var e2 = execRes.data.issues[0];
+      result.testExec = { key: e2.key, summary: e2.fields.summary, status: (e2.fields.status || {}).name || "", exists: true };
+    }
+  } catch(e) { console.warn("[findTestPlanExec] Exec search error:", e.message); }
+  return result;
+}
+
+async function ensureTestPlanExec(release, testKey) {
+  var CFGe = require("./config");
+  var project = CFGe.jira.project || "SAFWBST";
+  var planExec = await findTestPlanExec(release);
+
+  if (!planExec.testPlan) {
+    try {
+      var pr = await jiraApiCall("POST", "/rest/api/2/issue", { fields: {
+        project: { key: project }, summary: "Plan de Test - Release " + release,
+        issuetype: { name: "Test Plan" }, labels: [release]
+      }});
+      if (pr.data && pr.data.key) planExec.testPlan = { key: pr.data.key, summary: "Plan de Test - Release " + release, exists: false, created: true };
+    } catch(e) { console.warn("[ensureTestPlanExec] Plan create error:", e.message); }
+  }
+
+  if (!planExec.testExec) {
+    try {
+      var er = await jiraApiCall("POST", "/rest/api/2/issue", { fields: {
+        project: { key: project }, summary: "Test Execution - Release " + release,
+        issuetype: { name: "Test Execution" }, labels: [release]
+      }});
+      if (er.data && er.data.key) planExec.testExec = { key: er.data.key, summary: "Test Execution - Release " + release, exists: false, created: true };
+    } catch(e) { console.warn("[ensureTestPlanExec] Exec create error:", e.message); }
+  }
+
+  if (planExec.testPlan && testKey) {
+    try { await jiraApiCall("POST", "/rest/raven/1.0/api/testplan/" + planExec.testPlan.key + "/test", { add: [testKey] }); }
+    catch(e) { console.warn("[ensureTestPlanExec] Plan attach error:", e.message); }
+  }
+  if (planExec.testExec && testKey) {
+    try { await jiraApiCall("POST", "/rest/raven/1.0/api/testexec/" + planExec.testExec.key + "/test", { add: [testKey] }); }
+    catch(e) { console.warn("[ensureTestPlanExec] Exec attach error:", e.message); }
+  }
+  return planExec;
+}
+
 function sendSSE(clientId, data) {
   var clients = sseClients[clientId] || [];
   clients.forEach(function(res) {
@@ -1070,10 +1149,21 @@ var server = http.createServer(function(req, res) {
         var validation = leadQA.validateJiraPayload(extPayload);
         var xraySteps  = await leadQA.buildXraySteps(sourceTicket);
 
+        // Déterminer la release
+        var settingsV = {};
+        try { settingsV = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        var release = (sourceTicket.labels && sourceTicket.labels.find(function(l) { return /^v\d/.test(l); }))
+                   || settingsV.latestRelease
+                   || "v1.25.0";
+
+        // Détecter Test Plan / Test Execution existants
+        var planExecInfo = await findTestPlanExec(release);
+
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({
           ok: true,
           sourceKey: sourceKey,
+          release: release,
           ticket: {
             summary:        extPayload.title || extPayload.fields.summary,
             descriptionADF: extPayload.fields.description,
@@ -1086,7 +1176,9 @@ var server = http.createServer(function(req, res) {
           },
           xraySteps: xraySteps,
           validation: validation,
-          source: sourceTicket
+          source: sourceTicket,
+          testPlan: planExecInfo.testPlan || { exists: false, willCreate: true, summary: "Plan de Test - Release " + release },
+          testExec: planExecInfo.testExec || { exists: false, willCreate: true, summary: "Test Execution - Release " + release }
         }));
       } catch(e) {
         console.error("[validation/preview] Erreur:", e.message);
@@ -1192,7 +1284,21 @@ var server = http.createServer(function(req, res) {
         }
         emitProgress("xray-push", xrayOk ? "done" : "error", xrayOk ? body.xraySteps.length + " steps" : "Push Xray échoué");
 
-        // STEP 4 — Résultat final
+        // STEP 4 — Test Plan (detect or create) + attach
+        emitProgress("xray-plan", "running");
+        var release = body.release || "v1.25.0";
+        var planExec = await ensureTestPlanExec(release, newKey);
+        var planOk = !!(planExec.testPlan && planExec.testPlan.key);
+        emitProgress("xray-plan", planOk ? "done" : "error",
+          planOk ? (planExec.testPlan.created ? "Cree : " : "Existant : ") + planExec.testPlan.key : "Test Plan echoue");
+
+        // STEP 5 — Test Execution (already handled by ensureTestPlanExec)
+        emitProgress("xray-exec", "running");
+        var execOk = !!(planExec.testExec && planExec.testExec.key);
+        emitProgress("xray-exec", execOk ? "done" : "error",
+          execOk ? (planExec.testExec.created ? "Cree : " : "Existant : ") + planExec.testExec.key : "Test Execution echouee");
+
+        // STEP 6 — Résultat final
         emitProgress("complete", "done", newKey);
         var issueUrl = "https://" + CFGp.jira.host + "/browse/" + newKey;
 
@@ -1204,6 +1310,8 @@ var server = http.createServer(function(req, res) {
           linked: linked,
           xrayOk: xrayOk,
           stepsCount: (body.xraySteps || []).length,
+          testPlanKey: planExec.testPlan ? planExec.testPlan.key : null,
+          testExecKey: planExec.testExec ? planExec.testExec.key : null,
           results: results
         }));
       } catch(e) {
