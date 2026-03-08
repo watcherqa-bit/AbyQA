@@ -1258,7 +1258,10 @@ var server = http.createServer(function(req, res) {
         function emitProgress(step, status, detail) {
           var evt = { type: "validation-progress", step: step, status: status };
           if (detail) evt.detail = detail;
-          sendSSE(evt);
+          // Broadcast à tous les clients SSE connectés
+          Object.keys(sseClients).forEach(function(cid) {
+            sendSSE(cid, evt);
+          });
           results.steps.push(evt);
         }
 

@@ -15032,7 +15032,8 @@ function valLaunchPlaywright(testKey) {
       agent: "playwright-direct",
       mode: "ui",
       source: "jira-key",
-      key: testKey
+      key: testKey,
+      clientId: clientId
     })
   }).then(function(r) { return r.json(); }).then(function(d) {
     if (!d.ok && d.error) {
