@@ -289,7 +289,8 @@ async function getUrlsFromJiraKey(key) {
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "read-ticket", message: "📖 Lecture ticket " + key + "...", pct: 5 }));
   console.log("[->] Lecture du ticket " + key + " dans Jira...");
   var issue = await jiraRequest("GET", "/rest/api/3/issue/" + key + "?fields=summary,description,comment,issuetype,issuelinks,attachment");
-  if (!issue.key) { return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
+  console.log("[DEBUG] Jira response key=" + (issue.key || "NONE") + " type=" + ((issue.fields && issue.fields.issuetype && issue.fields.issuetype.name) || "NONE") + " attachments=" + ((issue.fields && issue.fields.attachment) ? issue.fields.attachment.length : "NONE"));
+  if (!issue.key) { console.log("[DEBUG] issue.key vide — fallback accueil"); return [{ url: ENV_URL + "/fr", label: "Accueil", context: "ticket " + key }]; }
   // Stocker les infos du ticket pour le rapport (ADF → markdown)
   TICKET_INFO = {
     key: issue.key,
@@ -298,6 +299,7 @@ async function getUrlsFromJiraKey(key) {
     type: (issue.fields.issuetype && issue.fields.issuetype.name) || ""
   };
   // Si ticket Test, remonter au ticket parent (Bug/US) pour avoir le cas de test complet
+  console.log("[DEBUG] TICKET_INFO.type = '" + TICKET_INFO.type + "' — isTest=" + (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case"));
   if (TICKET_INFO.type === "Test" || TICKET_INFO.type === "Test Case") {
     var links = (issue.fields.issuelinks || []);
     var parentKey = null;
