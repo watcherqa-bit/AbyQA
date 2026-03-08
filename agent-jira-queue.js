@@ -200,7 +200,13 @@ function jiraApiAsync(method, apiPath, body) {
   });
 }
 
+// ── DRY-RUN gate : bloque toute écriture Jira sauf activation explicite ──────
+var _dryRun = true;
+function setDryRun(val) { _dryRun = !!val; }
+function isDryRun()     { return _dryRun; }
+
 function postComment(key, text) {
+  if (_dryRun) { console.log("[DRY-RUN] postComment(" + key + ") skipped"); return Promise.resolve(); }
   return jiraApiAsync("POST", "/rest/api/3/issue/" + key + "/comment", {
     body: {
       type: "doc", version: 1,
@@ -210,6 +216,7 @@ function postComment(key, text) {
 }
 
 function transitionIssue(key, targetStatus) {
+  if (_dryRun) { console.log("[DRY-RUN] transitionIssue(" + key + ", " + targetStatus + ") skipped"); return Promise.resolve(); }
   return new Promise(function(resolve) {
     jiraApi("GET", "/rest/api/3/issue/" + key + "/transitions", null, function(err, data) {
       if (err || !data || !data.transitions) { resolve(); return; }
@@ -227,11 +234,13 @@ function transitionIssue(key, targetStatus) {
 }
 
 function createJiraIssue(fields) {
+  if (_dryRun) { console.log("[DRY-RUN] createJiraIssue(" + (fields.summary || "?") + ") skipped"); return Promise.resolve({ data: { key: "DRY-RUN" } }); }
   return jiraApiAsync("POST", "/rest/api/3/issue", { fields: fields });
 }
 
 // Push des steps Xray sur un ticket TEST (format 3 colonnes)
 function pushXraySteps(testKey, steps) {
+  if (_dryRun) { console.log("[DRY-RUN] pushXraySteps(" + testKey + ", " + steps.length + " steps) skipped"); return Promise.resolve(); }
   var payload = { steps: steps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) };
   return jiraApiAsync("PUT", "/rest/raven/1.0/api/test/" + testKey + "/steps", payload);
 }
@@ -1057,4 +1066,4 @@ if (require.main === module) {
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-module.exports = { start, stop, poll, pollBacklog, requestValidation };
+module.exports = { start, stop, poll, pollBacklog, requestValidation, setDryRun, isDryRun };

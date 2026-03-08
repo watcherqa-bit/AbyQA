@@ -2617,6 +2617,32 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // GET /api/jira-dryrun — état du dryRun
+  if (method === "GET" && url === "/api/jira-dryrun") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ dryRun: jiraQueue.isDryRun() }));
+    return;
+  }
+
+  // POST /api/jira-dryrun — basculer dryRun on/off
+  if (method === "POST" && url === "/api/jira-dryrun") {
+    var bodyDR = "";
+    req.on("data", function(c) { bodyDR += c; });
+    req.on("end", function() {
+      try {
+        var parsed = JSON.parse(bodyDR);
+        jiraQueue.setDryRun(parsed.dryRun !== false);
+        console.log("[Server] Jira dryRun = " + jiraQueue.isDryRun());
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ dryRun: jiraQueue.isDryRun() }));
+      } catch(e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // GET /api/polling/status  —  Ã©tat du poller
   if (method === "GET" && url === "/api/polling/status") {
     res.writeHead(200, { "Content-Type": "application/json" });

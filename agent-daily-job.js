@@ -45,13 +45,18 @@ function jiraApi(method, apiPath, body) {
   });
 }
 
+// ── DRY-RUN gate : bloque toute écriture Jira sauf activation explicite ──────
+var _dryRun = true;
+
 function postComment(key, text) {
+  if (_dryRun) { console.log("[DRY-RUN] postComment(" + key + ") skipped"); return Promise.resolve(); }
   return jiraApi("POST", "/rest/api/3/issue/" + key + "/comment", {
     body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: text }] }] }
   });
 }
 
 function transitionIssue(key, targetName) {
+  if (_dryRun) { console.log("[DRY-RUN] transitionIssue(" + key + ", " + targetName + ") skipped"); return Promise.resolve(); }
   return jiraApi("GET", "/rest/api/3/issue/" + key + "/transitions", null).then(function(r) {
     var transitions = (r.data && r.data.transitions) || [];
     var t = transitions.find(function(tr) { return tr.name === targetName; });
@@ -60,10 +65,12 @@ function transitionIssue(key, targetName) {
 }
 
 function createJiraIssue(fields) {
+  if (_dryRun) { console.log("[DRY-RUN] createJiraIssue(" + (fields.summary || "?") + ") skipped"); return Promise.resolve({ data: { key: "DRY-RUN" } }); }
   return jiraApi("POST", "/rest/api/3/issue", { fields: fields });
 }
 
 function pushXraySteps(testKey, steps) {
+  if (_dryRun) { console.log("[DRY-RUN] pushXraySteps(" + testKey + ", " + steps.length + " steps) skipped"); return Promise.resolve(); }
   var payload = { steps: steps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) };
   return jiraApi("PUT", "/rest/raven/1.0/api/test/" + testKey + "/steps", payload);
 }
