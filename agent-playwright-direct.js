@@ -242,17 +242,19 @@ function downloadJiraAttachment(contentUrl) {
 }
 
 // Parser un CSV cas de test (Action, Données, Résultat Attendu)
+// Gère les champs multilignes entre guillemets (RFC 4180)
 function parseCSVTestCases(csvContent) {
-  // Retirer BOM UTF-8
-  var content = csvContent.replace(/^\uFEFF/, "").trim();
-  var lines = content.split("\n").map(function(l) { return l.trim(); }).filter(function(l) { return l; });
-  if (lines.length < 2) return [];
+  // Retirer BOM UTF-8 et normaliser les fins de ligne
+  var content = csvContent.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  // Parser tout le CSV en records (gère les champs multilignes)
+  var records = parseCSVRecords(content);
+  if (records.length < 2) return [];
 
   // Sauter la ligne d'en-tête
   var cases = [];
-  for (var i = 1; i < lines.length; i++) {
-    // Parser CSV avec gestion des guillemets
-    var fields = parseCSVLine(lines[i]);
+  for (var i = 1; i < records.length; i++) {
+    var fields = records[i];
     if (fields.length >= 3) {
       cases.push({
         action: fields[0] || "",
@@ -261,28 +263,59 @@ function parseCSVTestCases(csvContent) {
       });
     }
   }
+  console.log("[CSV PARSER] " + records.length + " records (dont 1 en-tête) → " + cases.length + " cas de test");
   return cases;
 }
 
-// Parser une ligne CSV (gère les guillemets et virgules dans les champs)
-function parseCSVLine(line) {
+// Parser un contenu CSV complet en tableau de records
+// Chaque record = tableau de champs. Gère les guillemets multilignes.
+function parseCSVRecords(content) {
+  var records = [];
   var fields = [];
   var current = "";
   var inQuotes = false;
-  for (var i = 0; i < line.length; i++) {
-    var c = line[i];
-    if (c === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-      else { inQuotes = !inQuotes; }
-    } else if (c === ',' && !inQuotes) {
-      fields.push(current.trim());
-      current = "";
+
+  for (var i = 0; i < content.length; i++) {
+    var c = content[i];
+
+    if (inQuotes) {
+      if (c === '"') {
+        if (content[i + 1] === '"') {
+          // Guillemet échappé ""
+          current += '"';
+          i++;
+        } else {
+          // Fin du champ entre guillemets
+          inQuotes = false;
+        }
+      } else {
+        current += c;
+      }
     } else {
-      current += c;
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === ',') {
+        fields.push(current.trim());
+        current = "";
+      } else if (c === '\n') {
+        fields.push(current.trim());
+        if (fields.some(function(f) { return f.length > 0; })) {
+          records.push(fields);
+        }
+        fields = [];
+        current = "";
+      } else {
+        current += c;
+      }
     }
   }
+  // Dernier champ/record
   fields.push(current.trim());
-  return fields;
+  if (fields.some(function(f) { return f.length > 0; })) {
+    records.push(fields);
+  }
+
+  return records;
 }
 
 async function getUrlsFromJiraKey(key) {
