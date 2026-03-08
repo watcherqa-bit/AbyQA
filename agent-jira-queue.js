@@ -230,6 +230,12 @@ function createJiraIssue(fields) {
   return jiraApiAsync("POST", "/rest/api/3/issue", { fields: fields });
 }
 
+// Push des steps Xray sur un ticket TEST (format 3 colonnes)
+function pushXraySteps(testKey, steps) {
+  var payload = { steps: steps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) };
+  return jiraApiAsync("PUT", "/rest/raven/1.0/api/test/" + testKey + "/steps", payload);
+}
+
 // Verrou mémoire anti-doublon (empêche les créations concurrentes)
 var _inProgress = new Set();
 
@@ -607,6 +613,20 @@ async function workflowUS(ticket) {
     var jiraTestResult = await createJiraIssue(extPayload.fields);
     var testKey = (jiraTestResult.data && jiraTestResult.data.key) ? jiraTestResult.data.key : "";
     if (testKey) log("[US] " + key + " — Ticket TEST créé : " + testKey);
+
+    // 6b. Générer et pousser les steps Xray (3 colonnes) sur le ticket TEST
+    if (testKey) {
+      try {
+        log("[US] " + key + " — Génération steps Xray...");
+        var xraySteps = await leadQA.buildXraySteps(sourceTicket);
+        if (xraySteps.length > 0) {
+          await pushXraySteps(testKey, xraySteps);
+          log("[US] " + key + " — " + xraySteps.length + " steps importés dans Xray (" + testKey + ")");
+        }
+      } catch(e) {
+        log("[US] " + key + " — Erreur push Xray steps : " + e.message);
+      }
+    }
 
     // Sauvegarder dans la file des tests → disponible dans Playwright Direct
     saveTestQueue(key + "-test", {

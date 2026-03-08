@@ -343,13 +343,11 @@ module.exports = function handle(method, url, req, res, ctx) {
             var desc  = f.description
               ? (typeof f.description === "string" ? f.description : JSON.stringify(f.description)).substring(0, 600)
               : "";
-            var prompt = "Tu es lead QA Xray. Génère les steps de test Xray pour ce ticket de test.\n\n" +
-              "TEST: " + xrayKey + " — " + (f.summary || "") + "\n" +
-              "DESCRIPTION / AC: " + desc + "\n\n" +
-              "Génère 3-6 steps sous forme JSON array :\n" +
-              '[{"action":"Action à réaliser (Étant donné/Lorsque)","data":"URL, identifiants, données de test","result":"Résultat attendu (Alors)"}]\n\n' +
-              "Sois précis, utilisable directement par un testeur. Réponds UNIQUEMENT avec le JSON array.";
-            var steps = await leadQA.askJSON(prompt);
+            var steps = await leadQA.buildXraySteps({
+              key: xrayKey,
+              summary: f.summary || "",
+              description: desc
+            });
             ensureBacklogDir();
             var pending4 = readBacklog(BACKLOG_PENDING);
             var pIdx2 = pending4.findIndex(function(t) { return t.key === xrayKey; });

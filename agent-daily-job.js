@@ -63,6 +63,11 @@ function createJiraIssue(fields) {
   return jiraApi("POST", "/rest/api/3/issue", { fields: fields });
 }
 
+function pushXraySteps(testKey, steps) {
+  var payload = { steps: steps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) };
+  return jiraApi("PUT", "/rest/raven/1.0/api/test/" + testKey + "/steps", payload);
+}
+
 function linkIssues(sourceKey, testKey) {
   return jiraApi("POST", "/rest/api/3/issueLink", {
     type: { name: "Test" },
@@ -333,19 +338,25 @@ async function pipelineUS(ticket, report) {
             log("[US] " + key + " — Lien " + key + " → " + testKey);
           }
 
-          // 4c. Importer CSV dans Xray
+          // 4c. Générer et pousser les steps Xray (3 colonnes)
+          if (testKey) {
+            try {
+              log("[US] " + key + " — Génération steps Xray...");
+              var xraySteps = await leadQA.buildXraySteps(sourceTicketUS);
+              if (xraySteps.length > 0) {
+                await pushXraySteps(testKey, xraySteps);
+                report.casTestImportesXray++;
+                log("[US] " + key + " — " + xraySteps.length + " steps importés dans Xray (" + testKey + ")");
+                sse({ type: "daily-job-progress", step: "xray-done", key: key, message: key + " — " + xraySteps.length + " steps Xray" });
+              }
+            } catch(e) {
+              log("[US] " + key + " — Erreur push Xray steps : " + e.message);
+            }
+          }
+          // Sauvegarder le CSV en local (backup)
           if (testAndCSV.csv) {
             leadQA.saveCSV(testAndCSV.csv, key + "-cas-test");
             generatedFiles.push(key + "-cas-test.csv");
-            report.casTestImportesXray++;
-            log("[US] " + key + " — Import CSV Xray...");
-            var xrayResult = await importXrayCSV(key, testAndCSV.csv);
-            if (xrayResult.ok) {
-              log("[US] " + key + " — CSV importé dans Xray (" + (xrayResult.count || "?") + " cas)");
-              sse({ type: "daily-job-progress", step: "xray-done", key: key, message: key + " — CSV importé Xray" });
-            } else {
-              log("[US] " + key + " — Import Xray échoué : " + (xrayResult.error || "?") + " (sauvé en local)");
-            }
           }
           phase = "pret-a-tester";
         } finally {
@@ -450,6 +461,17 @@ async function pipelineBug(ticket, report) {
             log("[BUG] " + key + " — Ticket TEST créé : " + testKey + " [" + testType + "]");
             sse({ type: "daily-job-progress", step: "test-created", key: key, testKey: testKey, message: key + " → " + testKey + " créé" });
             await linkIssues(key, testKey);
+
+            // Pousser les steps Xray (3 colonnes)
+            try {
+              var bugXraySteps = await leadQA.buildXraySteps(sourceTicketBug);
+              if (bugXraySteps.length > 0) {
+                await pushXraySteps(testKey, bugXraySteps);
+                log("[BUG] " + key + " — " + bugXraySteps.length + " steps importés dans Xray (" + testKey + ")");
+              }
+            } catch(e) {
+              log("[BUG] " + key + " — Erreur push Xray steps : " + e.message);
+            }
           }
           phase = "pret-a-tester";
         } finally {

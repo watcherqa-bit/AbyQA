@@ -652,6 +652,73 @@ function validateJiraPayload(payload) {
   return { valid: true, violations: [] };
 }
 
+// ── 5e. GÉNÉRER LES STEPS XRAY — format 3 colonnes strict ───────────────────
+async function buildXraySteps(sourceTicket) {
+  var source = sourceTicket || {};
+  var key     = source.key || "?";
+  var summary = source.summary || (source.fields && source.fields.summary) || "";
+  var desc    = source.description || extractText((source.fields && source.fields.description) || "");
+
+  var prompt =
+    ANTI_HALLU +
+    "Génère les cas de test Xray au format 3 colonnes strict pour ce ticket.\n\n" +
+    "=== TICKET SOURCE ===\n" +
+    "Clé     : " + key + "\n" +
+    "Résumé  : " + summary + "\n" +
+    "Description :\n" + desc.substring(0, 2000) + "\n" +
+    "=== FIN TICKET SOURCE ===\n\n" +
+    "FORMAT STRICT — chaque cas de test est un objet JSON avec 3 champs :\n\n" +
+    "1. action (Gherkin strict) :\n" +
+    "   \"Étant donné [contexte extrait du ticket]\\nLorsque [action précise]\\nAlors [résultat observable]\"\n" +
+    "   - 1 seul comportement par cas de test\n" +
+    "   - Infos concrètes extraites du ticket source\n\n" +
+    "2. data :\n" +
+    "   \"• URL : [URL concrète du ticket]\\n• Device : Desktop 1920x1080\\n• [Autres données]\"\n" +
+    "   - URLs extraites du ticket source, pas de placeholder\n" +
+    "   - Si une info manque, écrire \"À confirmer : [raison]\"\n" +
+    "   - Environnement par défaut : Sophie\n\n" +
+    "3. result :\n" +
+    "   \"• [Vérification mesurable 1]\\n• [Vérification mesurable 2]\\n• Aucune erreur HTTP 5xx\"\n" +
+    "   - Chaque puce = 1 vérification observable\n" +
+    "   - Formulé de façon mesurable et vérifiable\n\n" +
+    "Génère 3 à 8 cas de test couvrant les scénarios principaux.\n" +
+    "Retourne UNIQUEMENT un JSON array : [{\"action\":\"...\",\"data\":\"...\",\"result\":\"...\"}]";
+
+  var steps = await askJSON(prompt, MODEL_QUALITY);
+  if (!Array.isArray(steps)) {
+    console.error("[LeadQA] buildXraySteps — réponse invalide (pas un array)");
+    return [];
+  }
+
+  // Normaliser et valider chaque step
+  var validated = [];
+  var warnings = [];
+  steps.forEach(function(s, i) {
+    var action = (s.action || "").trim();
+    var data   = (s.data || "").trim();
+    var result = (s.result || s.expectedResult || "").trim();
+    if (!action) return; // ignorer les steps vides
+
+    // Vérifier les placeholders interdits
+    [action, data, result].forEach(function(field, fi) {
+      var fieldName = ["action", "data", "result"][fi];
+      if (/\[À préciser\]|\[URL à préciser\]|\[à compléter\]/i.test(field)) {
+        warnings.push("Step " + (i + 1) + " — " + fieldName + " contient un placeholder interdit");
+      }
+    });
+
+    validated.push({ action: action, data: data, result: result });
+  });
+
+  if (warnings.length > 0) {
+    warnings.forEach(function(w) { console.warn("[LeadQA] " + w); });
+  }
+
+  console.log("[LeadQA] buildXraySteps — " + validated.length + " cas de test générés" +
+    (warnings.length > 0 ? " (" + warnings.length + " warning(s))" : ""));
+  return validated;
+}
+
 // ── 6. GÉNÉRER DES CAS DE TEST CSV ───────────────────────────────────────────
 async function generateTestCasesCSV(us, count) {
   var usKey   = us.key || "SAFWBST-?";
@@ -1276,10 +1343,11 @@ module.exports = {
   generateTestTicket,
   generateTestCasesCSV,
   generateBugTicket,
-  // Vue interne/externe + validation
+  // Vue interne/externe + validation + Xray
   buildInternalView,
   buildExternalJiraPayload,
   validateJiraPayload,
+  buildXraySteps,
   generateReport,
   handleDirectRequest,
   // Vision & extraction
