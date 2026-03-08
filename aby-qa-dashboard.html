@@ -5580,11 +5580,15 @@ function loadTestPlan(release) {
 
 function launchTestPlanTicket(key) {
   showToast("Lancement " + key + "...", "▶");
+  handlePlaywrightProgress({ step: "init", message: "Démarrage du test " + key + "...", pct: 0 });
   fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      if (d.ok) showToast(key + " lancé", "🧪");
-      else showToast("Erreur : " + (d.error || "?"), "⚠️");
+      if (d.ok) showToast(key + " lancé" + (d.mode ? " (mode " + d.mode + ")" : ""), "🧪");
+      else {
+        showToast("Erreur : " + (d.error || "?"), "⚠️");
+        var o = document.getElementById("pw-progress-overlay"); if (o) { clearInterval(o._timer); o.remove(); }
+      }
     })
     .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
 }
@@ -13430,15 +13434,57 @@ function sophieMarkManualResult(key, pass) {
 }
 
 function sophieLaunchOne(key) {
+  // Changer le bouton en spinner "en cours"
+  var btns = document.querySelectorAll('#sophie-list button');
+  btns.forEach(function(b) {
+    if (b.onclick && b.onclick.toString().includes(key)) {
+      b._originalHTML = b.innerHTML;
+      b.innerHTML = '⏳ En cours...';
+      b.disabled = true;
+      b.style.background = 'var(--border)';
+      b.style.color = 'var(--text2)';
+    }
+  });
+
+  // Stocker la clé du test en cours pour le progress overlay
+  window._sophieTestingKey = key;
+
   showToast("Lancement test " + key + "...", "▶");
+  // Forcer l'affichage du progress overlay immédiatement
+  handlePlaywrightProgress({ step: "init", message: "Démarrage du test " + key + "...", pct: 0, key: key });
+
   fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      if (d.ok) showToast(key + " lancé", "🧪");
-      else showToast("Erreur : " + (d.error || "?"), "⚠️");
-      setTimeout(loadSophieColumn, 3000);
+      if (d.ok) {
+        var modeMsg = d.mode ? " (mode " + d.mode + ")" : "";
+        showToast(key + " lancé" + modeMsg, "🧪");
+      } else {
+        showToast("Erreur : " + (d.error || "?"), "⚠️");
+        sophieResetButton(key);
+        var overlay = document.getElementById("pw-progress-overlay");
+        if (overlay) { clearInterval(overlay._timer); overlay.remove(); }
+      }
     })
-    .catch(function(e) { showToast("Erreur : " + e.message, "⚠️"); });
+    .catch(function(e) {
+      showToast("Erreur : " + e.message, "⚠️");
+      sophieResetButton(key);
+      var overlay = document.getElementById("pw-progress-overlay");
+      if (overlay) { clearInterval(overlay._timer); overlay.remove(); }
+    });
+}
+
+function sophieResetButton(key) {
+  var btns = document.querySelectorAll('#sophie-list button');
+  btns.forEach(function(b) {
+    if (b.disabled && b._originalHTML) {
+      b.innerHTML = b._originalHTML;
+      b.disabled = false;
+      b.style.background = '';
+      b.style.color = '';
+    }
+  });
+  window._sophieTestingKey = null;
 }
 
 function sophieLaunchAll() {
@@ -13598,7 +13644,7 @@ function showTestResultPanel(data) {
   // Boutons d'action
   html += '<div style="padding:14px 20px;border-top:1px solid var(--border,#333);display:flex;gap:10px;justify-content:flex-end">';
   // Relancer
-  html += '<button onclick="document.getElementById(\'pw-result-panel\').remove();launchTestPlanTicket(\'' + key + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3,#2a2a3e);color:var(--text);cursor:pointer;font-size:13px">🔄 Relancer</button>';
+  html += '<button onclick="document.getElementById(\'pw-result-panel\').remove();(typeof sophieLaunchOne===\'function\'?sophieLaunchOne:launchTestPlanTicket)(\'' + key + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3,#2a2a3e);color:var(--text);cursor:pointer;font-size:13px">🔄 Relancer</button>';
   // Attacher à Jira (si PDF ou HTML disponible)
   var attachFile = pdfFile || reportFile;
   if (attachFile) {
@@ -13676,6 +13722,9 @@ function handleTestDoneNotification(data) {
     gain.gain.value = 0.08;
     osc.start(); osc.stop(ctx.currentTime + 0.15);
   } catch(e) {}
+
+  // Remettre le bouton Sophie à l'état initial
+  if (typeof sophieResetButton === "function") sophieResetButton(key);
 
   // Rafraîchir la colonne Sophie
   setTimeout(loadSophieColumn, 2000);
