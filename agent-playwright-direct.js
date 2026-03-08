@@ -85,6 +85,24 @@ catch(e) { BROWSERS = ["chromium"]; }
 var BROWSER_MAP = { chromium: chromium, firefox: firefox, webkit: webkit, edge: chromium };
 var ENV_URL = CFG.envs[ENV_NAME] || CFG.envs.sophie;
 
+// ── VÉRIFICATION STORAGESTATE ──────────────────────────────────────────────
+// Les cookies Cloudflare expirent en ~24h. Vérifier l'âge du fichier auth.
+var STORAGE_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
+
+function checkStorageStateAge(envName) {
+  var authFile = path.join(__dirname, "auth", envName + ".json");
+  if (!fs.existsSync(authFile)) {
+    return { ok: false, expired: true, absent: true, age: null, message: "Session absente pour " + envName + " — relancer login-save-state.js " + envName };
+  }
+  var stat = fs.statSync(authFile);
+  var ageMs = Date.now() - stat.mtimeMs;
+  if (ageMs > STORAGE_STATE_MAX_AGE_MS) {
+    var ageH = Math.round(ageMs / 3600000);
+    return { ok: false, expired: true, absent: false, age: ageH, message: "Session expirée (" + ageH + "h) pour " + envName + " — relancer login-save-state.js " + envName };
+  }
+  return { ok: true, expired: false, absent: false, age: Math.round(ageMs / 3600000) };
+}
+
 function jiraRequest(method, apiPath, body) {
   return new Promise(function(resolve, reject) {
     var auth    = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
@@ -1108,6 +1126,26 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
     var t0 = Date.now();
     var resp = await page.goto(target.url, { waitUntil: "domcontentloaded", timeout: 30000 });
     var loadMs = Date.now() - t0;
+
+    // ── Détection Cloudflare — AVANT tout autre test ──────────────────────────
+    var httpCode0 = resp ? resp.status() : 0;
+    var cfCheck = await scenarioExec.detectCloudflare(page, httpCode0);
+    if (cfCheck.blocked) {
+      console.log("  " + cfCheck.reason);
+      result.status = "BLOCKED";
+      result.failType = "CLOUDFLARE_BLOCKED";
+      result.issues.push(cfCheck.reason);
+      result.steps.push({ label: "Cloudflare", status: "BLOCKED", detail: cfCheck.reason });
+      // Screenshot de la page bloquée
+      try {
+        var cfShotName = [mode, thisEnv, "cloudflare-blocked", Date.now()].join("_") + ".png";
+        result.screenshot = path.join(SCREENSHOTS_DIR, cfShotName);
+        await page.screenshot({ path: result.screenshot, fullPage: false });
+      } catch(e) { console.error("  [SCREENSHOT] Erreur capture CF :", e.message); }
+      if (browser) await browser.close().catch(function(){});
+      return result;
+    }
+
     // Scroll progressif pour déclencher le lazy-loading
     await page.evaluate(async function() {
       await new Promise(function(resolve) {
@@ -1420,8 +1458,16 @@ async function runScenarios(targets, envName) {
       var execResult = await scenarioExec.executeScenario(page, scenario, { timeout: 15000 });
       sr.pass = execResult.pass;
       sr.error = execResult.error;
+      sr.blocked = execResult.blocked || false;
       sr.actionsExecuted = execResult.actionsExecuted;
       sr.assertionsChecked = execResult.assertionsChecked;
+
+      // Si bloqué par Cloudflare → statut BLOCKED (ni PASS ni FAIL)
+      if (sr.blocked) {
+        sr.pass = null; // ni true ni false
+        sr.type = "BLOCKED";
+        console.log("    -> BLOCKED — " + sr.error);
+      }
 
       // Screenshot post-exécution
       try {
@@ -1439,12 +1485,14 @@ async function runScenarios(targets, envName) {
     } finally {
       if (browser) await browser.close().catch(function(){});
     }
-    // Émettre progress PASS/FAIL pour le dashboard
+    // Émettre progress PASS/FAIL/BLOCKED pour le dashboard
+    var srStatus = sr.blocked ? "BLOCKED" : (sr.pass ? "PASS" : "FAIL");
+    var srIcon = sr.blocked ? "⚠️" : (sr.pass ? "✅" : "❌");
     console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({
       step: "test-done",
-      status: sr.pass ? "PASS" : "FAIL",
+      status: srStatus,
       label: "Cas " + (i + 1) + "/" + validScenarios.length + " — " + (scenario.titre || ""),
-      message: (sr.pass ? "✅" : "❌") + " Cas " + (i + 1) + " " + (sr.pass ? "PASS" : "FAIL") + (sr.error ? " — " + sr.error.substring(0, 60) : ""),
+      message: srIcon + " Cas " + (i + 1) + " " + srStatus + (sr.error ? " — " + sr.error.substring(0, 60) : ""),
       pct: 20 + Math.floor(70 * (i + 1) / validScenarios.length)
     }));
     results.push(sr);
@@ -1455,6 +1503,11 @@ async function runScenarios(targets, envName) {
 
 async function createBugJira(result, mode) {
   if (DRY_RUN) { console.log("  [DRY_RUN] Bug Jira ignoré : " + result.label); return null; }
+  // Ne JAMAIS créer de bug pour un blocage Cloudflare
+  if (result.status === "BLOCKED" || result.failType === "CLOUDFLARE_BLOCKED") {
+    console.log("  [BUG] Ignoré — blocage Cloudflare (pas un vrai bug) : " + result.label);
+    return null;
+  }
   var date = new Date().toLocaleString("fr-FR");
   var stepsSummary = (result.steps||[]).map(function(s) {
     return (s.status==="PASS"?"[OK]":"[FAIL]") + " " + s.label + " — " + (s.detail||"").substring(0,80);
@@ -1585,10 +1638,11 @@ var PRINT_CSS =
 
 function failTypeBadge(ft) {
   var cfg = {
-    SESSION_EXPIRED: { label: "SESSION EXPIRÉE", color: "#ff9500", bg: "rgba(255,149,0,.18)"   },
-    URL_INVALIDE:    { label: "URL INVALIDE",    color: "#8892a4", bg: "rgba(136,146,164,.18)" },
-    REGRESSION:      { label: "RÉGRESSION",      color: "#ff3b5c", bg: "rgba(255,59,92,.18)"   },
-    IMAGE_MANQUANTE: { label: "IMAGE MANQUANTE", color: "#e879f9", bg: "rgba(232,121,249,.18)" }
+    SESSION_EXPIRED:    { label: "SESSION EXPIRÉE",    color: "#ff9500", bg: "rgba(255,149,0,.18)"   },
+    CLOUDFLARE_BLOCKED: { label: "CLOUDFLARE BLOQUÉ",  color: "#ff9500", bg: "rgba(255,149,0,.18)"   },
+    URL_INVALIDE:       { label: "URL INVALIDE",       color: "#8892a4", bg: "rgba(136,146,164,.18)" },
+    REGRESSION:         { label: "RÉGRESSION",         color: "#ff3b5c", bg: "rgba(255,59,92,.18)"   },
+    IMAGE_MANQUANTE:    { label: "IMAGE MANQUANTE",    color: "#e879f9", bg: "rgba(232,121,249,.18)" }
   };
   var c = cfg[ft] || { label: ft, color: "#ff3b5c", bg: "rgba(255,59,92,.18)" };
   return "<span style='font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:monospace;background:" + c.bg + ";color:" + c.color + "'>" + c.label + "</span>";
@@ -1624,8 +1678,11 @@ function buildScenariosHtml(scenarioResults) {
     var badgeLabel = isAuto ? "AUTO" : "MANUEL";
     var badgeBg = isAuto ? "rgba(0,232,122,.15)" : "rgba(245,158,11,.15)";
 
+    var isBlocked = sr.type === "BLOCKED" || sr.blocked;
     var statusHtml = "";
-    if (isAuto && sr.pass === true) {
+    if (isBlocked) {
+      statusHtml = "<span style='font-weight:700;color:#ff9500;font-size:12px'>⚠️ BLOQUÉ — Cloudflare</span>";
+    } else if (isAuto && sr.pass === true) {
       statusHtml = "<span style='font-weight:700;color:#00e87a;font-size:12px'>✅ PASS</span>";
     } else if (isAuto && sr.pass === false) {
       statusHtml = "<span style='font-weight:700;color:#ff3b5c;font-size:12px'>❌ FAIL</span>";
@@ -1634,7 +1691,7 @@ function buildScenariosHtml(scenarioResults) {
     }
 
     // Bordure couleur selon résultat
-    var borderColor = !isAuto ? "#f59e0b" : (sr.pass ? "#00e87a" : "#ff3b5c");
+    var borderColor = isBlocked ? "#ff9500" : (!isAuto ? "#f59e0b" : (sr.pass ? "#00e87a" : "#ff3b5c"));
 
     html += "<div class='scenario-card' style='margin-bottom:12px;padding:14px;background:#111520;border:1px solid #1e2536;border-radius:8px;border-left:3px solid " + borderColor + ";page-break-inside:avoid'>" +
       "<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:8px'>" +
@@ -1823,8 +1880,9 @@ function buildTicketContextHtml(ticketInfo) {
 function generateHTMLReport(allResults, mode, sourceLabel) {
   var pass=allResults.filter(function(r){return r.status==="PASS";}).length;
   var fail=allResults.filter(function(r){return r.status==="FAIL";}).length;
+  var blocked=allResults.filter(function(r){return r.status==="BLOCKED";}).length;
   var total=allResults.length;
-  var pct=total>0?Math.round(pass/total*100):0;
+  var pct=total>0?Math.round(pass/(total-blocked)*100):0; // BLOCKED exclu du calcul
   var date=new Date().toLocaleDateString("fr-FR");
   var pctColor=pct>=80?"#00e87a":pct>=50?"#ff9500":"#ff3b5c";
 
@@ -1844,13 +1902,29 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     return "<tr style='border-bottom:1px solid #1e2536'>" +
       "<td style='padding:10px 14px;font-family:monospace;font-size:12px;color:#00d4ff;vertical-align:top'>"+((r.label||r.url).substring(0,50))+"<div style='margin-top:2px'>"+urlLink+"</div></td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.device||"—")+" / "+(r.browser||"—")+"</td>" +
-      "<td style='padding:10px 14px;text-align:center;font-family:monospace;font-weight:700;color:"+(r.status==="PASS"?"#00e87a":"#ff3b5c")+";vertical-align:top'>"+(r.status==="PASS"?"✅ PASS":"❌ FAIL")+"</td>" +
+      "<td style='padding:10px 14px;text-align:center;font-family:monospace;font-weight:700;color:"+(r.status==="PASS"?"#00e87a":r.status==="BLOCKED"?"#ff9500":"#ff3b5c")+";vertical-align:top'>"+(r.status==="PASS"?"✅ PASS":r.status==="BLOCKED"?"⚠️ BLOQUÉ":"❌ FAIL")+"</td>" +
       "<td style='padding:10px 14px;text-align:center;vertical-align:top'>"+(r.failType ? failTypeBadge(r.failType) : "<span style='color:#00e87a;font-size:11px'>—</span>")+"</td>" +
       "<td style='padding:10px 14px;vertical-align:top'>"+stepsDetail+"</td>" +
       "<td style='padding:10px 14px;font-size:11px;color:#8892a4;vertical-align:top'>"+(r.issues&&r.issues[0]?r.issues[0].substring(0,60):"—")+"</td>" +
       "<td style='padding:6px 10px;text-align:center;vertical-align:top'>"+shotThumb+"</td>" +
       "</tr>";
   }).join("");
+
+  // Section BLOQUÉ (Cloudflare)
+  var blockedSection = "";
+  if (blocked > 0) {
+    blockedSection = "<div style='margin-top:24px;padding:16px 20px;background:rgba(255,149,0,.08);border:1px solid rgba(255,149,0,.25);border-radius:10px'>" +
+      "<h2 style='font-size:13px;color:#ff9500;margin:0 0 12px'>⚠️ BLOQUÉ PAR CLOUDFLARE (" + blocked + ")</h2>" +
+      "<div style='font-size:12px;color:#8892a4;margin-bottom:12px'>Le storageState est peut-être expiré. Relancer <code style='background:rgba(255,255,255,.1);padding:2px 6px;border-radius:3px'>node login-save-state.js</code> pour renouveler la session.</div>" +
+      allResults.filter(function(r){return r.status==="BLOCKED";}).map(function(r) {
+        return "<div style='margin-bottom:8px;padding:10px;background:#111520;border-radius:6px;border-left:3px solid #ff9500'>" +
+          "<div style='font-family:monospace;font-size:12px;color:#ff9500;font-weight:700'>" + (r.label||r.url) + "</div>" +
+          (r.issues||[]).map(function(i){return "<div style='font-size:11px;color:#8892a4;margin-top:4px'>• "+i+"</div>";}).join("") +
+          (r.screenshot ? "<div style='margin-top:8px'>" + reporterUtils.buildScreenshotHtml(r.screenshot, null, SCREENSHOTS_DIR, { maxWidth:"180px", clickToZoom:true }) + "</div>" : "") +
+          "</div>";
+      }).join("") +
+      "</div>";
+  }
 
   var failsSection = "";
   if (fail > 0) {
@@ -1945,12 +2019,14 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #00e87a'><div class='stat-num pass-text' style='font-family:monospace;font-size:28px;font-weight:700;color:#00e87a'>"+pass+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>PASS</div></div>" +
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+(fail>0?"#ff3b5c":"#00e87a")+"'><div class='stat-num fail-text' style='font-family:monospace;font-size:28px;font-weight:700;color:"+(fail>0?"#ff3b5c":"#00e87a")+"'>"+fail+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>FAIL</div></div>" +
     "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid "+pctColor+"'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:"+pctColor+"'>"+pct+"%</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>Qualité</div></div>" +
+    (blocked > 0 ? "<div class='stat-card' style='background:#111520;border:1px solid #1e2536;border-radius:10px;padding:18px;text-align:center;border-top:2px solid #ff9500'><div class='stat-num' style='font-family:monospace;font-size:28px;font-weight:700;color:#ff9500'>"+blocked+"</div><div class='stat-lbl' style='font-size:12px;color:#8892a4'>BLOQUÉ</div></div>" : "") +
     "</div>" +
     buildTicketContextHtml(TICKET_INFO) +
     buildScenariosHtml(SCENARIO_RESULTS) +
     "<h2 style='font-size:14px;margin:0 0 12px;color:#8892a4'>RÉSULTATS PAR TEST</h2>" +
     "<table><thead><tr><th>Page / URL</th><th>Device / Browser</th><th>Statut</th><th>Catégorie</th><th>Étapes de contrôle</th><th>Problème</th><th>📸</th></tr></thead><tbody>"+rows+"</tbody></table>" +
     failsSection +
+    blockedSection +
     // Section screenshots plein format
     (function() {
       var shots = allResults.filter(function(r) { return r.screenshot; });
@@ -2179,6 +2255,22 @@ async function main() {
   if (IS_MULTI_ENV) console.log("  [COMPARAISON] " + ENV_NAMES.join(" vs "));
   console.log("==================================================\n");
 
+  // ── Vérification âge storageState (cookies Cloudflare expirent en ~24h) ───
+  var envsToCheck = IS_MULTI_ENV ? ENV_NAMES : [ENV_NAME];
+  var sessionWarnings = [];
+  envsToCheck.forEach(function(envN) {
+    // Ne vérifier que les envs staging (pas prod)
+    if (envN === "prod") return;
+    var ssCheck = checkStorageStateAge(envN);
+    if (!ssCheck.ok) {
+      sessionWarnings.push(ssCheck);
+      console.log("  [AUTH] ⚠️ " + ssCheck.message);
+      console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "session-warning", message: "⚠️ " + ssCheck.message, pct: 2, sessionExpired: true, env: envN }));
+    } else {
+      console.log("  [AUTH] ✅ Session " + envN + " valide (" + ssCheck.age + "h)");
+    }
+  });
+
   // ── MODE MULTI-ENV : comparaison côte-à-côte ─────────────────────────────
   if (IS_MULTI_ENV) {
     // 1. Résoudre les cibles une seule fois (avec le premier env comme base)
@@ -2302,10 +2394,13 @@ async function main() {
   // Quand un CSV est présent, les scénarios couvrent tout. Pas de runTest sur les targets.
   if (CSV_TEST_CASES.length > 0 && SCENARIO_RESULTS.length > 0) {
     var csvAutoResults = SCENARIO_RESULTS.filter(function(s) { return s.type === "AUTO"; });
+    var csvBlockedResults = SCENARIO_RESULTS.filter(function(s) { return s.type === "BLOCKED" || s.blocked; });
     var csvPass = csvAutoResults.filter(function(s) { return s.pass === true; }).length;
     var csvFail = csvAutoResults.filter(function(s) { return s.pass === false; }).length;
+    var csvBlocked = csvBlockedResults.length;
     var csvTotal = csvAutoResults.length;
-    var csvPct = csvTotal > 0 ? Math.round(csvPass / csvTotal * 100) : 0;
+    var csvEffective = csvTotal - csvBlocked;
+    var csvPct = csvEffective > 0 ? Math.round(csvPass / csvEffective * 100) : 0;
 
     // Extraire l'URL unique depuis les scénarios CSV
     var csvUrl = "";
@@ -2313,18 +2408,21 @@ async function main() {
       if (SCENARIO_RESULTS[cu].url) { csvUrl = SCENARIO_RESULTS[cu].url; break; }
     }
     console.log("\n[CSV MODE] 1 URL testée depuis CSV : " + csvUrl);
-    console.log("[CSV MODE] " + csvPass + "/" + csvTotal + " AUTO PASS (" + csvPct + "%)");
+    console.log("[CSV MODE] " + csvPass + "/" + csvTotal + " AUTO PASS (" + csvPct + "%)" + (csvBlocked > 0 ? " — " + csvBlocked + " BLOQUÉ(S) Cloudflare" : ""));
 
     console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "report", message: "Génération du rapport...", pct: 90 }));
     var sourceLabel = KEY || "csv";
 
-    // Convertir SCENARIO_RESULTS en format allResults pour le rapport
-    var allResults = csvAutoResults.map(function(sr) {
+    // Convertir SCENARIO_RESULTS en format allResults pour le rapport (AUTO + BLOCKED)
+    var allCsvResults = csvAutoResults.concat(csvBlockedResults);
+    var allResults = allCsvResults.map(function(sr) {
+      var isBlk = sr.type === "BLOCKED" || sr.blocked;
       return {
         label: sr.titre,
         url: sr.url || csvUrl,
         env: ENV_NAME,
-        status: sr.pass ? "PASS" : "FAIL",
+        status: isBlk ? "BLOCKED" : (sr.pass ? "PASS" : "FAIL"),
+        failType: isBlk ? "CLOUDFLARE_BLOCKED" : null,
         issues: sr.error ? [sr.error] : [],
         steps: (sr.actionsExecuted || []).map(function(a) { return { label: a.type, status: a.pass ? "PASS" : "FAIL", detail: a.detail || a.error || "" }; }),
         screenshot: sr.screenshot || null,
@@ -2337,7 +2435,7 @@ async function main() {
     console.log("[RAPPORT HTML] " + path.basename(reportPath));
     var pdfPath = await convertHtmlToPdf(reportPath);
 
-    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: csvPass + "/" + csvTotal + " PASS (" + csvPct + "%)", pct: 100, pass: csvPass, fail: csvFail, total: csvTotal, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: csvPass + "/" + csvTotal + " PASS (" + csvPct + "%)" + (csvBlocked > 0 ? " — " + csvBlocked + " BLOQUÉ(S)" : ""), pct: 100, pass: csvPass, fail: csvFail, blocked: csvBlocked, total: csvTotal, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
 
     if (csvFail > 0 && NO_JIRA_PUSH) {
       console.log("\n[INFO] " + csvFail + " FAIL(s) — pas de création de bugs Jira (--no-jira-push)");
@@ -2352,7 +2450,7 @@ async function main() {
       })
     };
 
-    console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass: csvPass, fail: csvFail, total: csvTotal, pct: csvPct, mode: MODE, env: ENV_NAME, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs: [], dryRun: DRY_RUN, ticketKey: KEY, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
+    console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass: csvPass, fail: csvFail, blocked: csvBlocked, total: csvTotal, pct: csvPct, mode: MODE, env: ENV_NAME, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs: [], dryRun: DRY_RUN, ticketKey: KEY, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
 
     var fullForDashboard = allResults.map(function(r) {
       return { label: r.label, url: r.url, status: r.status, device: r.device, browser: r.browser, issues: r.issues, steps: r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
@@ -2360,8 +2458,8 @@ async function main() {
     console.log("PLAYWRIGHT_DIRECT_FULL:" + JSON.stringify(fullForDashboard));
 
     console.log("\n==================================================");
-    console.log("  PASS : " + csvPass + "/" + csvTotal + " (" + csvPct + "%) | FAIL : " + csvFail);
-    console.log("  " + (csvFail === 0 ? "✅ TOUT PASS" : "⚠️  " + csvFail + " FAIL(S)"));
+    console.log("  PASS : " + csvPass + "/" + csvTotal + " (" + csvPct + "%) | FAIL : " + csvFail + (csvBlocked > 0 ? " | BLOQUÉ : " + csvBlocked : ""));
+    console.log("  " + (csvBlocked > 0 ? "⚠️ " + csvBlocked + " test(s) bloqué(s) par Cloudflare — session expirée" : (csvFail === 0 ? "✅ TOUT PASS" : "⚠️  " + csvFail + " FAIL(S)")));
     console.log("==================================================\n");
 
     process.exit(csvFail > 0 ? 1 : 0);
@@ -2393,8 +2491,10 @@ async function main() {
 
   var pass=allResults.filter(function(r){return r.status==="PASS";}).length;
   var fail=allResults.filter(function(r){return r.status==="FAIL";}).length;
+  var blockedPipeline=allResults.filter(function(r){return r.status==="BLOCKED";}).length;
   var total=allResults.length;
-  var pct=total>0?Math.round(pass/total*100):0;
+  var effective=total-blockedPipeline;
+  var pct=effective>0?Math.round(pass/effective*100):0;
 
   console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "report", message: "Génération du rapport...", pct: 90 }));
   var sourceLabel = SOURCE==="jira-key"&&KEY?KEY : SOURCE==="xml"?(XML_FILE||"xml") : SOURCE==="text"?"texte libre" : (URLS_RAW||"url");
@@ -2403,7 +2503,7 @@ async function main() {
 
   // Conversion HTML → PDF
   var pdfPath = await convertHtmlToPdf(reportPath);
-  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: pass + "/" + total + " PASS (" + pct + "%)", pct: 100, pass: pass, fail: fail, total: total, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: pass + "/" + total + " PASS (" + pct + "%)" + (blockedPipeline > 0 ? " — " + blockedPipeline + " BLOQUÉ(S)" : ""), pct: 100, pass: pass, fail: fail, blocked: blockedPipeline, total: total, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
 
   var bugKeys = [];
   var fails = allResults.filter(function(r){return r.status==="FAIL";});

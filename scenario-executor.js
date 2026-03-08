@@ -72,6 +72,7 @@ async function executeScenario(page, scenario, opts) {
   var popupPromise = null;
   var lastHttpStatus = 0;
   var networkErrors5xx = [];
+  var cloudflareBlocked = false;
 
   // Intercepter les réponses pour capturer les erreurs 5xx
   var responseHandler = function(response) {
@@ -91,6 +92,18 @@ async function executeScenario(page, scenario, opts) {
           var navResponse = await page.goto(action.url, { waitUntil: "domcontentloaded", timeout: timeout });
           lastHttpStatus = navResponse ? navResponse.status() : 0;
           actionResult.detail = "Navigué vers " + action.url + " (HTTP " + lastHttpStatus + ")";
+          // Détection Cloudflare
+          var cfCheck = await detectCloudflare(page, lastHttpStatus);
+          if (cfCheck.blocked) {
+            cloudflareBlocked = true;
+            actionResult.pass = false;
+            actionResult.error = cfCheck.reason;
+            result.pass = false;
+            result.blocked = true;
+            result.error = cfCheck.reason;
+            result.actionsExecuted.push(actionResult);
+            break;
+          }
           break;
 
         case "click":
@@ -181,11 +194,12 @@ async function executeScenario(page, scenario, opts) {
     }
 
     result.actionsExecuted.push(actionResult);
+    if (cloudflareBlocked) break;
   }
 
   // ── VÉRIFICATION DES ASSERTIONS ────────────────────────────────────────────
-  // Seulement si toutes les actions ont réussi
-  if (result.pass) {
+  // Seulement si toutes les actions ont réussi (et pas bloqué par Cloudflare)
+  if (result.pass && !cloudflareBlocked) {
     for (var asi = 0; asi < scenario.assertions.length; asi++) {
       var assertion = scenario.assertions[asi];
       var assertResult = { type: assertion.type, operator: assertion.operator, expected: assertion.value, pass: true, actual: null, error: null };
@@ -455,4 +469,54 @@ async function executeScenario(page, scenario, opts) {
   return result;
 }
 
-module.exports = { executeScenario, validateScenario };
+/**
+ * Détecte si la page est bloquée par Cloudflare (faux positif QA).
+ * Vérifie le titre, le contenu HTML et le statut HTTP.
+ * @param {import('playwright').Page} page
+ * @param {number} httpStatus — code HTTP de la navigation
+ * @returns {Promise<{ blocked: boolean, reason: string }>}
+ */
+async function detectCloudflare(page, httpStatus) {
+  try {
+    var title = await page.title().catch(function() { return ""; });
+    var titleLower = (title || "").toLowerCase();
+
+    // 1. Titre de la page
+    var CF_TITLES = ["attention required", "sorry, you have been blocked", "access denied", "403 forbidden", "cloudflare"];
+    for (var i = 0; i < CF_TITLES.length; i++) {
+      if (titleLower.indexOf(CF_TITLES[i]) !== -1) {
+        return { blocked: true, reason: "[CLOUDFLARE] Page bloquée — titre : " + title.substring(0, 80) };
+      }
+    }
+
+    // 2. Contenu HTML (marqueurs Cloudflare)
+    var bodyHtml = await page.evaluate(function() {
+      return document.body ? document.body.innerHTML.substring(0, 5000) : "";
+    }).catch(function() { return ""; });
+
+    var CF_MARKERS = ["cf-error-details", "cloudflare-static", "Ray ID", "__cf_bm"];
+    for (var j = 0; j < CF_MARKERS.length; j++) {
+      if (bodyHtml.indexOf(CF_MARKERS[j]) !== -1) {
+        return { blocked: true, reason: "[CLOUDFLARE] Page bloquée — marqueur détecté : " + CF_MARKERS[j] };
+      }
+    }
+
+    // 3. Body text "Sorry, you have been blocked" (même sans marqueurs HTML)
+    var bodyText = await page.evaluate(function() {
+      return document.body ? document.body.innerText.substring(0, 2000) : "";
+    }).catch(function() { return ""; });
+    if (bodyText.indexOf("Sorry, you have been blocked") !== -1 || bodyText.indexOf("You have been blocked") !== -1) {
+      return { blocked: true, reason: "[CLOUDFLARE] Page bloquée — texte de blocage détecté" };
+    }
+
+    // 4. HTTP 403 combiné avec indices Cloudflare dans les headers ou body
+    if (httpStatus === 403 && (bodyHtml.indexOf("cloudflare") !== -1 || bodyHtml.indexOf("cf-") !== -1)) {
+      return { blocked: true, reason: "[CLOUDFLARE] HTTP 403 avec indices Cloudflare" };
+    }
+  } catch(e) {
+    // Erreur de détection non bloquante
+  }
+  return { blocked: false, reason: "" };
+}
+
+module.exports = { executeScenario, validateScenario, detectCloudflare };

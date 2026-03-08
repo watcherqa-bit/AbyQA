@@ -13683,14 +13683,19 @@ function handlePlaywrightProgress(data) {
   if (bar && data.pct != null) bar.style.width = data.pct + "%";
   if (msg && data.message) msg.textContent = data.message;
   if (data.step === "test-done" && steps) {
-    var icon = data.status === "PASS" ? "✅" : "❌";
-    steps.innerHTML = '<div>' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+    var icon = data.status === "BLOCKED" ? "⚠️" : (data.status === "PASS" ? "✅" : "❌");
+    var stepColor = data.status === "BLOCKED" ? "color:#f59e0b" : "";
+    steps.innerHTML = '<div style="' + stepColor + '">' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+  }
+  if (data.step === "session-warning" && data.sessionExpired && steps) {
+    steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expirée") + '</div>' + steps.innerHTML;
   }
   if (data.step === "done") {
     if (bar) bar.style.width = "100%";
-    if (bar) bar.style.background = (data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)";
+    var doneBlocked = (data.blocked || 0) > 0;
+    if (bar) bar.style.background = doneBlocked ? "linear-gradient(90deg,#f59e0b,#fbbf24)" : ((data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)");
     var title = document.getElementById("pw-progress-title");
-    if (title) title.textContent = (data.fail > 0 ? "❌ " : "✅ ") + (data.message || "Terminé");
+    if (title) title.textContent = (doneBlocked ? "⚠️ " : (data.fail > 0 ? "❌ " : "✅ ")) + (data.message || "Terminé");
     // Fermer auto après 5s (sera remplacé par le result panel)
     setTimeout(function() {
       var o = document.getElementById("pw-progress-overlay");
@@ -15058,8 +15063,13 @@ function valHandlePlaywrightProgress(data) {
   if (bar && data.pct != null) bar.style.width = data.pct + "%";
   if (msg && data.message) msg.textContent = data.message;
   if (data.step === "test-done" && steps) {
-    var icon = data.status === "PASS" ? "✅" : "❌";
-    steps.innerHTML = '<div>' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+    var icon = data.status === "BLOCKED" ? "⚠️" : (data.status === "PASS" ? "✅" : "❌");
+    var stepColor = data.status === "BLOCKED" ? "color:#f59e0b" : "";
+    steps.innerHTML = '<div style="' + stepColor + '">' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+  }
+  // Alerte session expirée
+  if (data.step === "session-warning" && data.sessionExpired) {
+    if (steps) steps.innerHTML = '<div style="color:#f59e0b;font-weight:700">⚠️ ' + (data.message || "Session expirée") + '</div>' + steps.innerHTML;
   }
   // Stocker les cas MANUEL pour affichage dans le rapport final
   if (data.step === "scenarios-done" && data.manuelCases && data.manuelCases.length > 0) {
@@ -15067,9 +15077,10 @@ function valHandlePlaywrightProgress(data) {
   }
   if (data.step === "done") {
     if (bar) bar.style.width = "100%";
-    if (bar) bar.style.background = (data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)";
+    var hasBlocked = (data.blocked || 0) > 0;
+    if (bar) bar.style.background = hasBlocked ? "linear-gradient(90deg,#f59e0b,#fbbf24)" : ((data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)");
     var title = document.getElementById("val-pw-title");
-    if (title) title.textContent = (data.fail > 0 ? "❌ " : "✅ ") + (data.message || "Termine");
+    if (title) title.textContent = (hasBlocked ? "⚠️ " : (data.fail > 0 ? "❌ " : "✅ ")) + (data.message || "Termine");
   }
   return true; // intercepte
 }
@@ -15082,10 +15093,12 @@ function valHandlePlaywrightReport(data) {
   if (zone._timer) clearInterval(zone._timer);
 
   var r = data.result || {};
-  var ok = (r.fail || 0) === 0;
+  var blockedCount = r.blocked || 0;
+  var ok = (r.fail || 0) === 0 && blockedCount === 0;
+  var hasBlocked = blockedCount > 0;
   var pass = r.pass || 0, fail = r.fail || 0, total = r.total || 0;
-  var statusColor = ok ? "#10b981" : "#ef4444";
-  var statusText = ok ? "PASS" : "FAIL";
+  var statusColor = hasBlocked ? "#f59e0b" : (ok ? "#10b981" : "#ef4444");
+  var statusText = hasBlocked ? "BLOQUÉ" : (ok ? "PASS" : "FAIL");
   var testKey = _valState.testKey || r.ticketKey || "?";
   var pdfFile = r.pdfFile || null;
   var reportFile = r.reportFile || null;
@@ -15101,8 +15114,17 @@ function valHandlePlaywrightReport(data) {
   html += '<div style="font-size:12px;color:var(--text2);margin-bottom:12px">';
   html += '<span style="margin-right:14px">Pass : <b style="color:#10b981">' + pass + '</b></span>';
   html += '<span style="margin-right:14px">Fail : <b style="color:#ef4444">' + fail + '</b></span>';
+  if (blockedCount > 0) html += '<span style="margin-right:14px">Bloqué : <b style="color:#f59e0b">' + blockedCount + '</b></span>';
   html += '<span>Total : <b>' + total + '</b></span>';
   html += '</div>';
+  // Alerte Cloudflare
+  if (hasBlocked) {
+    html += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:8px">';
+    html += '<div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:6px">⚠️ ' + blockedCount + ' test(s) bloqué(s) par Cloudflare</div>';
+    html += '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">Le storageState est peut-être expiré. Relancez <code>node login-save-state.js</code> pour renouveler la session.</div>';
+    html += '<button onclick="valRenewSession()" style="padding:5px 12px;border-radius:6px;border:1px solid #f59e0b;background:rgba(245,158,11,.12);color:#f59e0b;cursor:pointer;font-weight:600;font-size:11px">🔄 Renouveler session</button>';
+    html += '</div>';
+  }
   // Scenarios summary
   var sc = r.scenarios || null;
   if (sc) {
@@ -15143,6 +15165,12 @@ function valHandlePlaywrightReport(data) {
   // Permettre le relaunch
   _valState.pwLaunched = false;
   return true;
+}
+
+function valRenewSession() {
+  var env = _valState.env || "sophie";
+  fetch(SERVER + '/api/claude-code', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ prompt: 'node login-save-state.js ' + env, clientId: 'default' }) });
+  showToast('🔄 Renouvellement session ' + env + ' lancé — connectez-vous manuellement dans le navigateur qui s\'ouvre', 'info');
 }
 
 function valAttachReport(key, file) {
