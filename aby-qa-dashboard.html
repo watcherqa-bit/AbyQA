@@ -3283,6 +3283,103 @@
       </div>
     </div>
 
+    <!-- ══ MODAL VALIDATION PRÉ-ENVOI JIRA/XRAY ══ -->
+    <div id="validation-modal" style="display:none;position:fixed;inset:0;z-index:9200;background:rgba(0,0,0,.75);backdrop-filter:blur(6px);overflow-y:auto;padding:24px">
+      <div style="max-width:920px;margin:0 auto;background:var(--bg2);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+        <!-- HEADER -->
+        <div style="padding:18px 24px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-size:20px;font-weight:700;color:var(--cyan)">Validation</span>
+            <span style="font-size:13px;color:var(--text2)">Pre-envoi Jira / Xray</span>
+            <span id="val-source-badge" style="background:var(--cyan);color:#000;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:700"></span>
+          </div>
+          <button onclick="closeValidationModal()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">&times;</button>
+        </div>
+
+        <!-- TABS -->
+        <div style="display:flex;border-bottom:1px solid var(--border)">
+          <button id="val-tab-ticket" onclick="switchValTab(0)" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid var(--cyan);color:var(--cyan);font-weight:700;font-size:13px;cursor:pointer">Ticket TEST</button>
+          <button id="val-tab-xray" onclick="switchValTab(1)" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid transparent;color:var(--text2);font-weight:600;font-size:13px;cursor:pointer">Cas de test Xray</button>
+        </div>
+
+        <!-- TAB 1 : Ticket TEST -->
+        <div id="val-pane-ticket" style="padding:20px 24px">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Resume</label>
+              <input id="val-summary" type="text" style="width:100%;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;color:var(--text1);font-size:13px">
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Type de test</label>
+              <select id="val-testtype" style="width:100%;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;color:var(--text1);font-size:13px">
+                <option value="Manuel">Manuel</option>
+                <option value="Auto">Auto</option>
+                <option value="Mix" selected>Mix</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Priorite</label>
+              <select id="val-priority" style="width:100%;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;color:var(--text1);font-size:13px">
+                <option value="Highest">Highest</option>
+                <option value="High">High</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="Low">Low</option>
+                <option value="Lowest">Lowest</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Labels</label>
+              <input id="val-labels" type="text" placeholder="v1.25.0, qa-auto" style="width:100%;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;color:var(--text1);font-size:13px">
+            </div>
+          </div>
+          <div style="margin-bottom:14px">
+            <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Description</label>
+            <textarea id="val-description" rows="4" style="width:100%;padding:8px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:8px;color:var(--text1);font-size:13px;resize:vertical"></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Ticket source</label>
+              <span id="val-parent" style="color:var(--cyan);font-weight:600;font-size:13px"></span>
+            </div>
+            <div>
+              <label style="display:block;font-size:11px;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Type</label>
+              <span id="val-issuetype" style="color:var(--orange);font-weight:600;font-size:13px"></span>
+            </div>
+          </div>
+          <!-- Warnings -->
+          <div id="val-warnings" style="display:none;margin-top:14px;padding:10px 14px;background:rgba(239,68,68,.1);border:1px solid var(--red);border-radius:8px;color:var(--red);font-size:12px"></div>
+        </div>
+
+        <!-- TAB 2 : Cas de test Xray -->
+        <div id="val-pane-xray" style="display:none;padding:20px 24px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;background:var(--border);border-radius:8px;overflow:hidden;margin-bottom:14px">
+            <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--cyan);text-transform:uppercase;text-align:center">Action</div>
+            <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;text-align:center">Donnees</div>
+            <div style="background:var(--bg1);padding:10px;font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;text-align:center">Resultat attendu</div>
+          </div>
+          <div id="val-xray-rows" style="display:flex;flex-direction:column;gap:8px"></div>
+          <button onclick="addValXrayStep()" style="margin-top:12px;background:none;border:1px dashed var(--border);border-radius:8px;padding:10px;width:100%;color:var(--text2);cursor:pointer;font-size:13px">+ Ajouter un cas de test</button>
+        </div>
+
+        <!-- PROGRESS OVERLAY -->
+        <div id="val-progress" style="display:none;padding:20px 24px">
+          <div style="font-size:14px;font-weight:700;color:var(--text1);margin-bottom:16px">Envoi en cours...</div>
+          <div id="val-progress-steps" style="display:flex;flex-direction:column;gap:10px"></div>
+        </div>
+
+        <!-- FOOTER -->
+        <div style="padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          <span id="val-status" style="font-size:12px;color:var(--text2)">Pret a envoyer</span>
+          <div style="display:flex;gap:10px">
+            <button onclick="closeValidationModal()" class="btn btn-secondary">Annuler</button>
+            <button id="val-btn-push" onclick="confirmValidationPush()" class="btn" style="background:var(--green);border-color:var(--green);color:#000;font-weight:700">Valider et envoyer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ══ PARAMÈTRES QA ══ -->
     <div class="panel" id="panel-settings">
       <div class="panel-header">
@@ -14471,6 +14568,256 @@ function clearAllLogs() {
     })
     .then(function() { loadTestLogs(); });
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VALIDATION MODAL — Pre-envoi Jira / Xray
+// ══════════════════════════════════════════════════════════════════════════════
+
+var _valState = {
+  sourceKey: null,
+  ticket: null,
+  xraySteps: [],
+  descriptionADF: null,
+  pushing: false
+};
+
+function openValidationModal(sourceKey, opts) {
+  opts = opts || {};
+  _valState.sourceKey = sourceKey;
+  _valState.pushing = false;
+
+  var modal = document.getElementById("validation-modal");
+  modal.style.display = "";
+  document.getElementById("val-source-badge").textContent = sourceKey;
+  document.getElementById("val-btn-push").disabled = false;
+  document.getElementById("val-btn-push").textContent = "Valider et envoyer";
+  document.getElementById("val-status").textContent = "Chargement...";
+  document.getElementById("val-pane-ticket").style.display = "";
+  document.getElementById("val-pane-xray").style.display = "none";
+  document.getElementById("val-progress").style.display = "none";
+  document.getElementById("val-warnings").style.display = "none";
+  switchValTab(0);
+
+  // Fetch preview
+  fetch(SERVER + "/api/validation/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sourceKey: sourceKey, testType: opts.testType || "Mix" })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (!data.ok) { showToast("Erreur preview : " + (data.error || "?"), "x"); return; }
+
+    _valState.ticket = data.ticket;
+    _valState.xraySteps = data.xraySteps || [];
+    _valState.descriptionADF = data.ticket.descriptionADF;
+
+    // Remplir onglet 1
+    document.getElementById("val-summary").value = data.ticket.summary || "";
+    document.getElementById("val-testtype").value = data.ticket.testType || "Mix";
+    document.getElementById("val-priority").value = data.ticket.priority || "Medium";
+    document.getElementById("val-labels").value = (data.ticket.labels || []).join(", ");
+    document.getElementById("val-description").value = data.ticket.descriptionText || "";
+    document.getElementById("val-parent").textContent = data.ticket.parentKey || sourceKey;
+    document.getElementById("val-issuetype").textContent = data.ticket.issuetype || "Test";
+
+    // Warnings
+    if (data.validation && !data.validation.valid) {
+      var wDiv = document.getElementById("val-warnings");
+      wDiv.style.display = "";
+      wDiv.innerHTML = "<strong>Violations detectees :</strong><br>" + data.validation.violations.map(function(v) { return "- " + v; }).join("<br>");
+    }
+
+    // Remplir onglet 2
+    renderValXraySteps(_valState.xraySteps);
+
+    document.getElementById("val-status").textContent = "Pret a envoyer";
+  })
+  .catch(function(err) {
+    showToast("Erreur : " + err.message, "x");
+    document.getElementById("val-status").textContent = "Erreur chargement";
+  });
+}
+
+function closeValidationModal() {
+  document.getElementById("validation-modal").style.display = "none";
+  _valState.pushing = false;
+}
+
+function switchValTab(idx) {
+  var tabTicket = document.getElementById("val-tab-ticket");
+  var tabXray   = document.getElementById("val-tab-xray");
+  var paneTicket = document.getElementById("val-pane-ticket");
+  var paneXray   = document.getElementById("val-pane-xray");
+
+  if (idx === 0) {
+    tabTicket.style.borderBottomColor = "var(--cyan)";  tabTicket.style.color = "var(--cyan)";
+    tabXray.style.borderBottomColor   = "transparent";  tabXray.style.color   = "var(--text2)";
+    paneTicket.style.display = "";  paneXray.style.display = "none";
+  } else {
+    tabTicket.style.borderBottomColor = "transparent";  tabTicket.style.color = "var(--text2)";
+    tabXray.style.borderBottomColor   = "var(--orange)"; tabXray.style.color  = "var(--orange)";
+    paneTicket.style.display = "none";  paneXray.style.display = "";
+  }
+}
+
+function renderValXraySteps(steps) {
+  var container = document.getElementById("val-xray-rows");
+  container.innerHTML = "";
+  steps.forEach(function(step, i) {
+    var row = document.createElement("div");
+    row.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr 36px;gap:2px;background:var(--border);border-radius:8px;overflow:hidden";
+    row.innerHTML =
+      '<textarea data-field="action" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.action || "") + '</textarea>' +
+      '<textarea data-field="data" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.data || "") + '</textarea>' +
+      '<textarea data-field="result" data-idx="' + i + '" rows="4" style="background:var(--bg1);padding:10px;border:none;color:var(--text1);font-size:12px;resize:vertical">' + escHtml(step.result || "") + '</textarea>' +
+      '<button onclick="removeValXrayStep(' + i + ')" style="background:var(--bg1);border:none;color:var(--red);cursor:pointer;font-size:16px">&times;</button>';
+    container.appendChild(row);
+  });
+}
+
+function escHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function addValXrayStep() {
+  _valState.xraySteps.push({ action: "", data: "", result: "" });
+  renderValXraySteps(_valState.xraySteps);
+}
+
+function removeValXrayStep(idx) {
+  _valState.xraySteps.splice(idx, 1);
+  renderValXraySteps(_valState.xraySteps);
+}
+
+function collectValData() {
+  // Collecter les textareas Xray editees
+  var rows = document.querySelectorAll("#val-xray-rows textarea");
+  rows.forEach(function(ta) {
+    var idx = parseInt(ta.dataset.idx);
+    var field = ta.dataset.field;
+    if (_valState.xraySteps[idx]) _valState.xraySteps[idx][field] = ta.value;
+  });
+
+  // Reconstruire l'ADF description avec le texte edite
+  var descText = document.getElementById("val-description").value;
+  var testType = document.getElementById("val-testtype").value;
+  var descriptionADF = {
+    type: "doc", version: 1,
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: descText }] },
+      { type: "rule" },
+      { type: "paragraph", content: [
+        { type: "text", text: "Type de test : ", marks: [{ type: "strong" }] },
+        { type: "text", text: testType }
+      ]}
+    ]
+  };
+
+  var labelsStr = document.getElementById("val-labels").value.trim();
+  var labels = labelsStr ? labelsStr.split(",").map(function(l) { return l.trim(); }).filter(Boolean) : [];
+
+  return {
+    ticket: {
+      summary:        document.getElementById("val-summary").value,
+      descriptionADF: descriptionADF,
+      issuetype:      "Test",
+      priority:       document.getElementById("val-priority").value,
+      labels:         labels,
+      testType:       testType,
+      parentKey:      _valState.sourceKey
+    },
+    xraySteps: _valState.xraySteps
+  };
+}
+
+function confirmValidationPush() {
+  if (_valState.pushing) return;
+  _valState.pushing = true;
+
+  var payload = collectValData();
+
+  // Masquer les onglets, afficher la progression
+  document.getElementById("val-pane-ticket").style.display = "none";
+  document.getElementById("val-pane-xray").style.display = "none";
+  document.getElementById("val-progress").style.display = "";
+  document.getElementById("val-btn-push").disabled = true;
+  document.getElementById("val-btn-push").textContent = "Envoi en cours...";
+  document.getElementById("val-status").textContent = "Envoi en cours...";
+
+  // Init progress steps
+  var STEPS = [
+    { id: "jira-create", label: "Creation du ticket TEST dans Jira" },
+    { id: "jira-link",   label: "Lien avec le ticket source" },
+    { id: "xray-push",   label: "Import des cas de test dans Xray" },
+    { id: "complete",    label: "Finalisation" }
+  ];
+  var progressDiv = document.getElementById("val-progress-steps");
+  progressDiv.innerHTML = STEPS.map(function(s) {
+    return '<div id="val-step-' + s.id + '" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--bg1);border-radius:8px;border-left:3px solid var(--border)">' +
+      '<span class="val-step-icon" style="font-size:16px;width:20px;text-align:center">&#9723;</span>' +
+      '<span style="font-size:13px;color:var(--text1)">' + s.label + '</span>' +
+      '<span class="val-step-detail" style="margin-left:auto;font-size:12px;color:var(--text2)"></span>' +
+    '</div>';
+  }).join("");
+
+  // Envoyer
+  fetch(SERVER + "/api/validation/push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (data.ok) {
+      document.getElementById("val-status").innerHTML = '<span style="color:var(--green);font-weight:700">Ticket cree : <a href="' + data.url + '" target="_blank" style="color:var(--cyan)">' + data.key + '</a></span>';
+      document.getElementById("val-btn-push").textContent = "Termine";
+      showToast("Ticket " + data.key + " cree", "ok");
+    } else {
+      document.getElementById("val-status").innerHTML = '<span style="color:var(--red)">Erreur : ' + (data.error || "inconnue") + '</span>';
+      document.getElementById("val-btn-push").disabled = false;
+      document.getElementById("val-btn-push").textContent = "Reessayer";
+      _valState.pushing = false;
+    }
+    // Mettre a jour les steps de progression depuis results
+    if (data.results && data.results.steps) {
+      data.results.steps.forEach(function(s) { updateValProgressStep(s.step, s.status, s.detail); });
+    }
+  })
+  .catch(function(err) {
+    document.getElementById("val-status").innerHTML = '<span style="color:var(--red)">Erreur : ' + err.message + '</span>';
+    document.getElementById("val-btn-push").disabled = false;
+    document.getElementById("val-btn-push").textContent = "Reessayer";
+    _valState.pushing = false;
+  });
+}
+
+function updateValProgressStep(stepId, status, detail) {
+  var el = document.getElementById("val-step-" + stepId);
+  if (!el) return;
+  var icon = el.querySelector(".val-step-icon");
+  var det  = el.querySelector(".val-step-detail");
+  if (status === "running") {
+    icon.innerHTML = "&#9203;";
+    el.style.borderLeftColor = "var(--cyan)";
+  } else if (status === "done") {
+    icon.innerHTML = "&#10004;";
+    icon.style.color = "var(--green)";
+    el.style.borderLeftColor = "var(--green)";
+  } else if (status === "error") {
+    icon.innerHTML = "&#10008;";
+    icon.style.color = "var(--red)";
+    el.style.borderLeftColor = "var(--red)";
+  }
+  if (detail) det.textContent = detail;
+}
+
+// Hook SSE pour progression en temps reel
+var _origHandleSSE_val = handleSSE;
+handleSSE = function(data) {
+  _origHandleSSE_val(data);
+  if (data.type === "validation-progress") {
+    updateValProgressStep(data.step, data.status, data.detail);
+  }
+};
 </script>
 </body>
 </html>

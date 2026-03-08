@@ -1020,6 +1020,201 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Validation preview — génère payload sans pousser ──────────────────
+  if (method === "POST" && url === "/api/validation/preview") {
+    var vpChunks = [];
+    req.on("data", function(c) { vpChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(vpChunks).toString());
+        var sourceKey = body.sourceKey;
+        if (!sourceKey) { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: "sourceKey requis" })); return; }
+
+        // Lire ticket enrichi ou depuis Jira via Render
+        var enrichedPath = path.join(BASE_DIR, "inbox", "enriched", sourceKey + ".json");
+        var sourceTicket;
+        if (fs.existsSync(enrichedPath)) {
+          sourceTicket = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
+        } else {
+          // Fallback : fetch depuis Jira
+          var CFGv = require("./config");
+          var authV = Buffer.from(CFGv.jira.email + ":" + CFGv.jira.token).toString("base64");
+          var ticketData = await new Promise(function(resolve, reject) {
+            var tr = require("https").request({
+              hostname: CFGv.jira.host,
+              path: "/rest/api/2/issue/" + sourceKey + "?fields=summary,status,issuetype,priority,labels,description,fixVersions,customfield_10014",
+              method: "GET",
+              headers: { "Authorization": "Basic " + authV, "Accept": "application/json" }
+            }, function(tRes) {
+              var d = ""; tRes.on("data", function(c) { d += c; });
+              tRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { reject(e); } });
+            });
+            tr.on("error", reject); tr.end();
+          });
+          if (ticketData.errorMessages) { res.writeHead(404, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: "Ticket introuvable : " + sourceKey })); return; }
+          sourceTicket = {
+            key: ticketData.key,
+            summary: ticketData.fields.summary,
+            type: ticketData.fields.issuetype.name,
+            status: (ticketData.fields.status || {}).name || "",
+            priority: (ticketData.fields.priority || {}).name || "Medium",
+            labels: ticketData.fields.labels || [],
+            description: ticketData.fields.description || "",
+            epic: (ticketData.fields.customfield_10014) || ""
+          };
+        }
+
+        // Générer payload Jira + steps Xray
+        var testResult = { status: "N/A", scenarios: [], duration: 0, browser: "chromium", url: "", epic: sourceTicket.epic || "" };
+        var extPayload = leadQA.buildExternalJiraPayload(testResult, sourceTicket, { testType: body.testType || "Mix" });
+        var validation = leadQA.validateJiraPayload(extPayload);
+        var xraySteps  = await leadQA.buildXraySteps(sourceTicket);
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: true,
+          sourceKey: sourceKey,
+          ticket: {
+            summary:        extPayload.title || extPayload.fields.summary,
+            descriptionADF: extPayload.fields.description,
+            descriptionText: "Vérifier que la fonction « " + sourceTicket.summary + " » fonctionne correctement selon les critères d'acceptation de " + sourceKey + ".",
+            issuetype:      (extPayload.fields.issuetype || {}).name || "Test",
+            priority:       (sourceTicket.priority || "Medium"),
+            labels:         extPayload.fields.labels || [],
+            testType:       extPayload.testType || "Mix",
+            parentKey:      sourceKey
+          },
+          xraySteps: xraySteps,
+          validation: validation,
+          source: sourceTicket
+        }));
+      } catch(e) {
+        console.error("[validation/preview] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── API : Validation push — envoi séquentiel vers Jira + Xray ─────────────
+  if (method === "POST" && url === "/api/validation/push") {
+    var vxChunks = [];
+    req.on("data", function(c) { vxChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(vxChunks).toString());
+        var CFGp = require("./config");
+        var authP = Buffer.from(CFGp.jira.email + ":" + CFGp.jira.token).toString("base64");
+        var httpsP = require("https");
+        var results = { steps: [] };
+
+        function emitProgress(step, status, detail) {
+          var evt = { type: "validation-progress", step: step, status: status };
+          if (detail) evt.detail = detail;
+          sendSSE(evt);
+          results.steps.push(evt);
+        }
+
+        // STEP 1 — Créer ticket TEST dans Jira
+        emitProgress("jira-create", "running");
+        var fields = {
+          project:     { key: CFGp.jira.project || "SAFWBST" },
+          summary:     body.ticket.summary,
+          description: body.ticket.descriptionADF,
+          issuetype:   { name: body.ticket.issuetype || "Test" },
+          priority:    { name: body.ticket.priority || "Medium" }
+        };
+        if (body.ticket.labels && body.ticket.labels.length) fields.labels = body.ticket.labels;
+
+        var createPayload = JSON.stringify({ fields: fields });
+        var createResult = await new Promise(function(resolve, reject) {
+          var cr = httpsP.request({
+            hostname: CFGp.jira.host, path: "/rest/api/3/issue", method: "POST",
+            headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(createPayload) }
+          }, function(cRes) {
+            var d = ""; cRes.on("data", function(c) { d += c; });
+            cRes.on("end", function() { try { resolve(JSON.parse(d)); } catch(e) { resolve({ error: d }); } });
+          });
+          cr.on("error", reject);
+          cr.write(createPayload); cr.end();
+        });
+
+        if (!createResult.key) {
+          emitProgress("jira-create", "error", (createResult.errors ? JSON.stringify(createResult.errors) : "Erreur création ticket").substring(0, 200));
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Création ticket échouée", results: results }));
+          return;
+        }
+        var newKey = createResult.key;
+        emitProgress("jira-create", "done", newKey);
+
+        // STEP 2 — Lien avec ticket source
+        emitProgress("jira-link", "running");
+        var linked = false;
+        if (body.ticket.parentKey) {
+          try {
+            var linkPayload = JSON.stringify({
+              type: { name: "Tests" },
+              inwardIssue: { key: newKey },
+              outwardIssue: { key: body.ticket.parentKey }
+            });
+            await new Promise(function(resolve) {
+              var lr = httpsP.request({
+                hostname: CFGp.jira.host, path: "/rest/api/3/issueLink", method: "POST",
+                headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(linkPayload) }
+              }, function(lRes) { lRes.resume(); linked = lRes.statusCode < 300; resolve(); });
+              lr.on("error", function() { resolve(); });
+              lr.write(linkPayload); lr.end();
+            });
+          } catch(e) { /* ignore link error */ }
+        }
+        emitProgress("jira-link", linked ? "done" : "error", linked ? body.ticket.parentKey : "Lien non créé");
+
+        // STEP 3 — Push steps Xray
+        emitProgress("xray-push", "running");
+        var xrayOk = false;
+        if (body.xraySteps && body.xraySteps.length) {
+          try {
+            var xrayPayload = JSON.stringify({ steps: body.xraySteps.map(function(s) { return { action: s.action || "", data: s.data || "", result: s.result || "" }; }) });
+            var xrayResult = await new Promise(function(resolve, reject) {
+              var xr = httpsP.request({
+                hostname: CFGp.jira.host, path: "/rest/raven/1.0/api/test/" + newKey + "/steps", method: "PUT",
+                headers: { "Authorization": "Basic " + authP, "Content-Type": "application/json", "Accept": "application/json", "Content-Length": Buffer.byteLength(xrayPayload) }
+              }, function(xRes) {
+                var d = ""; xRes.on("data", function(c) { d += c; });
+                xRes.on("end", function() { xrayOk = xRes.statusCode < 300; resolve(d); });
+              });
+              xr.on("error", reject);
+              xr.write(xrayPayload); xr.end();
+            });
+          } catch(e) { /* xray error */ }
+        }
+        emitProgress("xray-push", xrayOk ? "done" : "error", xrayOk ? body.xraySteps.length + " steps" : "Push Xray échoué");
+
+        // STEP 4 — Résultat final
+        emitProgress("complete", "done", newKey);
+        var issueUrl = "https://" + CFGp.jira.host + "/browse/" + newKey;
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: true,
+          key: newKey,
+          url: issueUrl,
+          linked: linked,
+          xrayOk: xrayOk,
+          stepsCount: (body.xraySteps || []).length,
+          results: results
+        }));
+      } catch(e) {
+        console.error("[validation/push] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── API : Upload session storageState (cookies Cloudflare + Drupal) ──────────
   if (method === "POST" && /^\/api\/session\/[a-z-]+$/.test(url)) {
     var sessEnv = url.split("/").pop();
