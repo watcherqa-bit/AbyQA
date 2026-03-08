@@ -2644,7 +2644,7 @@ var server = http.createServer(function(req, res) {
         cycle.stopCron();
         cycle.startCron(sendSSE, runAgent, function() {
           try { return JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) { return {}; }
-        });
+        }, leadQA);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true }));
       } catch(e) {
@@ -2696,16 +2696,27 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // GET /api/cycle/history  —  historique des runs
+  if (method === "GET" && url === "/api/cycle/history") {
+    var history = cycle.getHistory();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(history));
+    return;
+  }
+
   // POST /api/cycle/stop/:id  —  arrÃªter un cycle TNR en cours (2 ou 3)
   if (method === "POST" && url.startsWith("/api/cycle/stop/")) {
     var stopId = url.replace("/api/cycle/stop/", "").trim();
     try {
       if (stopId === "2") {
-        if (runningProcs["playwright-direct-tnr-release"]) {
-          try { runningProcs["playwright-direct-tnr-release"].kill(); } catch(e) {}
-          delete runningProcs["playwright-direct-tnr-release"];
-          delete agentLocks["playwright-direct-tnr-release"];
-        }
+        // Tuer tous les process c2 en cours (par ticket)
+        Object.keys(runningProcs).forEach(function(k) {
+          if (k.startsWith("playwright-direct-c2-") || k === "playwright-direct-tnr-release") {
+            try { runningProcs[k].kill(); } catch(e) {}
+            delete runningProcs[k];
+            delete agentLocks[k];
+          }
+        });
         cycle.stopCycle2();
       } else if (stopId === "3") {
         if (runningProcs["playwright-direct-tnr"]) {
@@ -4149,7 +4160,7 @@ server.listen(PORT, "0.0.0.0", function() {
     catch(e) { return {}; }
   }
   try {
-    cycle.startCron(sendSSE, runAgent, getFreshSettings);
+    cycle.startCron(sendSSE, runAgent, getFreshSettings, leadQA);
     if (startupSettings.tnr && startupSettings.tnr.enabled) {
       console.log("  â° TNR Cron  : actif  —  dÃ©clenchement Ã  " + (startupSettings.tnr.hour || "22:00"));
     } else {

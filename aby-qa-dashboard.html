@@ -1462,6 +1462,8 @@
             <pre id="c2-error-log" style="display:none;margin:0;padding:8px;font-size:9px;font-family:var(--mono);color:var(--text2);background:var(--bg3);max-height:120px;overflow-y:auto;white-space:pre-wrap;word-break:break-all"></pre>
           </div>
           <button id="c2-err-btn" onclick="openCycleErrModal(2)" style="display:none;margin-bottom:8px;width:100%;background:rgba(255,69,58,.1);border:1px solid rgba(255,69,58,.35);color:var(--red);border-radius:6px;padding:5px 10px;cursor:pointer;font-size:10px;font-family:var(--mono);text-align:left">⚠ Voir détail erreur…</button>
+          <div id="c2-progress" style="display:none;margin-bottom:8px"></div>
+          <div id="c2-tickets" style="display:none;margin-bottom:8px;max-height:100px;overflow-y:auto"></div>
           <div style="display:flex;align-items:center;gap:6px">
             <input id="c2-release-input" type="text" placeholder="v1.25.0" value="v1.25.0"
               style="flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:11px">
@@ -4193,13 +4195,29 @@ function handleSSE(data) {
     handleTestDoneNotification(data);
   } else if (data.type === "cycle1-fail-analysis") {
     handleFailAnalysis(data);
+  } else if (data.type === "cycle2-progress") {
+    handleCycle2Progress(data);
   } else if (data.type === "cycle2-start" || data.type === "cycle2-done" ||
              data.type === "cycle3-start" || data.type === "cycle3-done" ||
              data.type === "cycle2-stopped" || data.type === "cycle3-stopped") {
     loadCycleState();
     if (data.type === "cycle3-start")   showToast("TNR Complet démarré", "🚀");
-    if (data.type === "cycle3-done")    showToast(data.ok ? "TNR Complet — ✅ PASS" : "TNR Complet — ❌ FAIL", data.ok ? "✅" : "❌");
-    if (data.type === "cycle2-done")    showToast("TNR Release " + (data.release || "") + (data.ok ? " — ✅ PASS" : " — ❌ FAIL"), data.ok ? "✅" : "❌");
+    if (data.type === "cycle3-done") {
+      var c3msg = data.ok ? "TNR Complet — PASS" : "TNR Complet — FAIL";
+      if (data.duration) c3msg += " (" + formatDuration(data.duration) + ")";
+      if (data.regression) c3msg += " — REGRESSION détectée";
+      showToast(c3msg, data.ok ? "✅" : "❌");
+      if (data.regression) showToast("Régression : " + (data.prevResult ? data.prevResult.fail + " FAIL avant → " + data.result.fail + " FAIL maintenant" : "nouveaux échecs"), "⚠️");
+      handleTestDoneNotification({ key: "TNR-Complet", result: data.result, ok: data.ok, reportFile: data.reportFile });
+    }
+    if (data.type === "cycle2-done") {
+      var c2msg = "TNR Release " + (data.release || "");
+      c2msg += data.ok ? " — PASS" : " — FAIL";
+      if (data.duration) c2msg += " (" + formatDuration(data.duration) + ")";
+      if (data.empty) c2msg = "Release " + (data.release || "") + " — aucun ticket";
+      showToast(c2msg, data.ok ? "✅" : (data.empty ? "📭" : "❌"));
+      if (!data.empty) handleTestDoneNotification({ key: "Release-" + (data.release || ""), result: data.result, ok: data.ok });
+    }
     if (data.type === "cycle2-stopped") showToast("TNR Release — arrêté", "⏹");
     if (data.type === "cycle3-stopped") showToast("TNR Complet — arrêté", "⏹");
   } else if (data.type === "daily-job-started") {
@@ -8707,9 +8725,35 @@ function renderCycleState(s) {
       : "Aucun ticket en attente";
   }
 
-  // Cycle 2 : release
+  // Cycle 2 : release + progress
   var c2Release = document.getElementById("c2-release-input");
   if (c2Release && s.cycle2 && s.cycle2.release) c2Release.value = s.cycle2.release;
+
+  var c2Progress = document.getElementById("c2-progress");
+  if (c2Progress && s.cycle2) {
+    if (s.cycle2.status === "running" && s.cycle2.progress) {
+      var p = s.cycle2.progress;
+      var pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
+      c2Progress.style.display = "block";
+      c2Progress.innerHTML = '<div style="background:var(--bg);border-radius:4px;height:6px;margin:6px 0"><div style="background:var(--orange);height:100%;border-radius:4px;width:' + pct + '%;transition:width .3s"></div></div>' +
+        '<div style="font-size:10px;color:var(--text2)">' + p.done + ' / ' + p.total + ' tickets testés</div>';
+    } else {
+      c2Progress.style.display = "none";
+    }
+  }
+
+  // Cycle 2 : tickets de la release
+  var c2Tickets = document.getElementById("c2-tickets");
+  if (c2Tickets && s.cycle2 && s.cycle2.tickets && s.cycle2.tickets.length > 0) {
+    c2Tickets.style.display = "block";
+    var tHtml = s.cycle2.tickets.map(function(t) {
+      var icon = t.status === "pass" ? "✅" : t.status === "fail" ? "❌" : t.status === "running" ? "🔄" : "⏳";
+      return '<div style="font-size:10px;padding:2px 0;color:var(--text2)">' + icon + ' ' + t.key + ' — ' + (t.summary || "").substring(0, 50) + '</div>';
+    }).join("");
+    c2Tickets.innerHTML = tHtml;
+  } else if (c2Tickets) {
+    c2Tickets.style.display = "none";
+  }
 
   // Cycle 3 : prochain run
   var c3Next = document.getElementById("c3-next-run");
@@ -13443,6 +13487,22 @@ function sophieLaunchAll() {
 
 // ── NOTIFICATION FIN DE TEST ─────────────────────────────────────────────────
 var _testNotifications = [];
+
+function formatDuration(seconds) {
+  if (!seconds) return "";
+  if (seconds < 60) return seconds + "s";
+  var min = Math.floor(seconds / 60);
+  var sec = seconds % 60;
+  return min + "m" + (sec > 0 ? sec + "s" : "");
+}
+
+function handleCycle2Progress(data) {
+  var pct = data.tickets > 0 ? Math.round((data.done / data.tickets) * 100) : 0;
+  var msg = "Release " + (data.release || "") + " : " + data.done + "/" + data.tickets;
+  if (data.currentKey) msg += " — " + data.currentKey + " " + (data.currentResult || "");
+  showToast(msg, pct < 100 ? "🔄" : "🏁");
+  loadCycleState();
+}
 
 function handleTestDoneNotification(data) {
   var key = data.key || "?";
