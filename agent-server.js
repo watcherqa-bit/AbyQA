@@ -291,6 +291,16 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   });
   runningProcs[agentId] = proc;
 
+  // Timeout global — 5 minutes max par agent
+  var AGENT_TIMEOUT_MS = (opts.timeout || 5 * 60) * 1000;
+  var killTimer = setTimeout(function() {
+    if (runningProcs[agentId]) {
+      console.log("[runAgent] TIMEOUT " + (AGENT_TIMEOUT_MS / 1000) + "s — kill " + agentId);
+      sendSSE(clientId, { type: "err", agent: agentId, line: "⏱ Timeout " + (AGENT_TIMEOUT_MS / 1000) + "s dépassé — process arrêté" });
+      try { proc.kill(); } catch(e) {}
+    }
+  }, AGENT_TIMEOUT_MS);
+
   proc.stdout.on("data", function(data) {
     data.toString().split("\n").forEach(function(line) {
       if (line.trim()) {
@@ -317,14 +327,16 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
     });
   });
   proc.on("close", function(code) {
+    clearTimeout(killTimer);
     delete runningProcs[agentId];
     delete agentLocks[agentId];
     sendSSE(clientId, { type: "done", agent: agentId, code: code });
     if (opts.onDone) opts.onDone(code, logBuf);
-    // Auto-debug : dÃ©clencher l'analyse IA si erreur
+    // Auto-debug : déclencher l'analyse IA si erreur
     if (code !== 0 && !opts.skipAutoDebug) triggerAutoDebug(agentId, logBuf, clientId);
   });
   proc.on("error", function(e) {
+    clearTimeout(killTimer);
     delete agentLocks[agentId];
     sendSSE(clientId, { type: "err", agent: agentId, line: "Erreur spawn : " + e.message });
     sendSSE(clientId, { type: "done", agent: agentId, code: 1 });
