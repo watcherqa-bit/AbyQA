@@ -227,7 +227,7 @@ async function auditPage(page, env, pageConfig, browserName, device) {
         var fonts = [];
         try {
           document.fonts.forEach(function(f) { fonts.push(f.family); });
-        } catch (e) {}
+        } catch (e) { /* API fonts indisponible */ }
         if (fonts.length === 0) {
           issues.push("Aucune police personnalisee detectee");
         }
@@ -315,8 +315,8 @@ async function auditPage(page, env, pageConfig, browserName, device) {
     console.log("    ERREUR : " + e.message);
   } finally {
     // Retirer les listeners pour éviter l'accumulation sur un objet page réutilisé
-    try { page.off("console",       _consoleHandler); } catch(e) {}
-    try { page.off("requestfailed", _failedHandler);  } catch(e) {}
+    try { page.off("console",       _consoleHandler); } catch(e) { /* listener deja retire */ }
+    try { page.off("requestfailed", _failedHandler);  } catch(e) { /* listener deja retire */ }
   }
 
   return result;
@@ -622,7 +622,7 @@ async function main() {
     try {
       rawUrlsSource = require("fs").readFileSync(tmpFile, "utf8").trim();
       // Nettoyer le fichier temp après lecture
-      try { require("fs").unlinkSync(tmpFile); } catch(e) {}
+      try { require("fs").unlinkSync(tmpFile); } catch(e) { /* fichier tmp absent */ }
     } catch(e) {
       console.log("[URLs] Erreur lecture fichier temporaire : " + e.message);
     }
@@ -711,7 +711,7 @@ async function main() {
     try {
       var devFile = devicesFileArg.replace("--devices-file=", "").trim();
       activeDevices = JSON.parse(fs.readFileSync(devFile, "utf8"));
-      try { fs.unlinkSync(devFile); } catch(e) {}
+      try { fs.unlinkSync(devFile); } catch(e) { /* fichier tmp absent */ }
     } catch(e) { console.log("[WARN] Devices file illisible : " + e.message); }
   }
 

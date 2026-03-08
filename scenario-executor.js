@@ -449,7 +449,7 @@ async function executeScenario(page, scenario, opts) {
   // Cleanup
   page.removeListener("response", responseHandler);
   if (capturedPopup) {
-    try { await capturedPopup.close(); } catch (e) {}
+    try { await capturedPopup.close(); } catch (e) { /* popup deja fermee */ }
   }
 
   return result;

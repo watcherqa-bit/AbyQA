@@ -1065,7 +1065,7 @@ function saveReleaseTracking(ticket, playwrightResults, bugs, csvPath, reportPat
     if (fs.existsSync(trackerPath)) {
       tracker = JSON.parse(fs.readFileSync(trackerPath, "utf8"));
     }
-  } catch(e) {}
+  } catch(e) { console.error("[XRAY] Erreur lecture tracker :", e.message); }
 
   var release = CFG.xray.fixVersion;
   if (!tracker[release]) tracker[release] = { release: release, tickets: [], lastUpdate: "" };

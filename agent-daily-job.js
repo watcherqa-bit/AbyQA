@@ -612,7 +612,7 @@ runDailyQAJob = async function() {
     _running = false;
     var crashReport = { date: new Date().toISOString(), ticketsTraites: 0, usTraitees:0, bugsTraites:0, usEnrichies:0, testsCascade:0, casTestImportesXray:0, erreurs: [{ key:"crash", type:"system", error: e.message }], details:[], dureeMs: 0 };
     _lastReport = crashReport;
-    try { saveReport(crashReport); } catch(se) {}
+    try { saveReport(crashReport); } catch(se) { console.error("[DAILY-JOB] Erreur sauvegarde crash report :", se.message); }
     sse({ type: "daily-job-completed", report: crashReport });
     return crashReport;
   } finally {

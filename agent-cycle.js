@@ -53,7 +53,7 @@ function loadState() {
         cycle3: Object.assign({}, DEFAULT_STATE.cycle3, raw.cycle3 || {})
       };
     }
-  } catch(e) {}
+  } catch(e) { console.error("[CYCLE] Erreur lecture state :", e.message); }
   return JSON.parse(JSON.stringify(DEFAULT_STATE));
 }
 
@@ -66,7 +66,7 @@ function saveState(state) {
 function loadHistory() {
   try {
     if (fs.existsSync(HISTORY_FILE)) return JSON.parse(fs.readFileSync(HISTORY_FILE, "utf8"));
-  } catch(e) {}
+  } catch(e) { console.error("[CYCLE] Erreur lecture historique :", e.message); }
   return [];
 }
 
@@ -75,7 +75,7 @@ function saveHistory(history) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   // Garder max 200 entrees
   if (history.length > 200) history = history.slice(-200);
-  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), "utf8"); } catch(e) {}
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), "utf8"); } catch(e) { console.error("[CYCLE] Erreur sauvegarde historique :", e.message); }
 }
 
 function addHistoryEntry(cycleId, entry) {
@@ -233,7 +233,7 @@ function _parseResult(logs) {
       result.fail = r.fail || 0;
       result.total = r.total || 0;
       result.reportPath = r.reportPath || null;
-    } catch(e) {}
+    } catch(e) { console.error("[CYCLE] Erreur parse resultat Playwright :", e.message); }
   }
   return result;
 }
@@ -245,7 +245,7 @@ function _analyzeAndNotify(cycleType, key, result, logs, settings, reportPath) {
   var reportContent = "";
   if (reportPath) {
     var rpPath = path.join(__dirname, "reports", reportPath);
-    try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) {}
+    try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) { console.error("[CYCLE] Erreur lecture rapport :", e.message); }
   }
 
   _leadQA.analyzePlaywrightFail(failLogs, {
@@ -296,7 +296,7 @@ function triggerTNRComplet(settings, clientId) {
   }
 
   var devFile = path.join(__dirname, "uploads", ".tnr-devices-tmp.json");
-  try { fs.writeFileSync(devFile, JSON.stringify(devices), "utf8"); } catch(e) {}
+  try { fs.writeFileSync(devFile, JSON.stringify(devices), "utf8"); } catch(e) { console.error("[CYCLE] Erreur ecriture devices tmp :", e.message); }
 
   var startTime = Date.now();
   _runAgent("playwright-direct-tnr", "node", [

@@ -69,7 +69,7 @@ module.exports = function handle(method, url, req, res, ctx) {
                 sendSSE(clientId, { type: "done", agent: agentLabel, code: 0,
                   stats: { elapsed: elapsed, tokens: tokenCount, tps: tps, model: model } });
               }
-            } catch(e) {}
+            } catch(e) { console.error("[CHAT] Erreur parse Ollama token :", e.message); }
           });
         });
         ollamaRes.on("error", function(e) {
@@ -339,7 +339,7 @@ module.exports = function handle(method, url, req, res, ctx) {
       try {
         var logEvt = JSON.parse(Buffer.concat(leChunks).toString());
         var logsDir = path.join(BASE_DIR, "inbox", "logs");
-        if (!fs.existsSync(logsDir)) { try { fs.mkdirSync(logsDir, { recursive: true }); } catch(e) {} }
+        if (!fs.existsSync(logsDir)) { try { fs.mkdirSync(logsDir, { recursive: true }); } catch(e) { console.error("[CHAT] Erreur creation logsDir :", e.message); } }
         var logFile = path.join(logsDir, "diag-actions.jsonl");
         fs.appendFileSync(logFile, JSON.stringify(logEvt) + "\n", "utf8");
         res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ ok: true }));
@@ -355,7 +355,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var ccChunks = [];
     req.on("data", function(c) { ccChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(ccChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(ccChunks).toString()); } catch(e) { console.error("[CHAT] Erreur parse body claude-code :", e.message); }
       var ccPrompt   = body.prompt || "";
       var ccClientId = body.clientId || "default";
       if (!ccPrompt) { res.writeHead(400); res.end(JSON.stringify({ error: "prompt vide" })); return; }
@@ -441,10 +441,10 @@ module.exports = function handle(method, url, req, res, ctx) {
 
   if (method === "GET" && url === "/api/chat-projects") {
     var cpFiles = [];
-    try { cpFiles = fs.readdirSync(CHAT_PROJECTS_DIR).filter(function(f) { return f.endsWith(".json"); }); } catch(e) {}
+    try { cpFiles = fs.readdirSync(CHAT_PROJECTS_DIR).filter(function(f) { return f.endsWith(".json"); }); } catch(e) { console.error("[CHAT] Erreur lecture chat-projects :", e.message); }
     var cpList = cpFiles.map(function(f) {
       var stat = fs.statSync(path.join(CHAT_PROJECTS_DIR, f));
-      var dat  = {}; try { dat = JSON.parse(fs.readFileSync(path.join(CHAT_PROJECTS_DIR, f), "utf8")); } catch(e) {}
+      var dat  = {}; try { dat = JSON.parse(fs.readFileSync(path.join(CHAT_PROJECTS_DIR, f), "utf8")); } catch(e) { console.error("[CHAT] Erreur parse projet :", e.message); }
       return { name: f.replace(".json", ""), updatedAt: stat.mtime, messageCount: (dat.messages || []).length };
     });
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -456,7 +456,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var cpPostChunks = [];
     req.on("data", function(c) { cpPostChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(cpPostChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(cpPostChunks).toString()); } catch(e) { console.error("[CHAT] Erreur parse body :", e.message); }
       var cpName = (body.name || "").replace(/[^\w\s\-]/g, "").trim();
       if (!cpName) { res.writeHead(400); res.end(JSON.stringify({ error: "nom vide" })); return; }
       fs.writeFileSync(path.join(CHAT_PROJECTS_DIR, cpName + ".json"), JSON.stringify({ name: cpName, messages: [], createdAt: new Date() }, null, 2));
@@ -480,9 +480,9 @@ module.exports = function handle(method, url, req, res, ctx) {
     var cpPutChunks = [];
     req.on("data", function(c) { cpPutChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(cpPutChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(cpPutChunks).toString()); } catch(e) { console.error("[CHAT] Erreur parse body PUT :", e.message); }
       var cpPutFile = path.join(CHAT_PROJECTS_DIR, cpPutName + ".json");
-      var existing  = {}; try { if (fs.existsSync(cpPutFile)) existing = JSON.parse(fs.readFileSync(cpPutFile, "utf8")); } catch(e) {}
+      var existing  = {}; try { if (fs.existsSync(cpPutFile)) existing = JSON.parse(fs.readFileSync(cpPutFile, "utf8")); } catch(e) { console.error("[CHAT] Erreur lecture projet existant :", e.message); }
       existing.messages   = body.messages || [];
       existing.updatedAt  = new Date();
       fs.writeFileSync(cpPutFile, JSON.stringify(existing, null, 2));

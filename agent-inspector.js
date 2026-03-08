@@ -64,7 +64,7 @@ async function inspect() {
         console.log("INSPECTOR_RESULT:" + JSON.stringify(cached));
         return;
       }
-    } catch(e) {}
+    } catch(e) { console.error("[INSPECTOR] Erreur lecture cache :", e.message); }
   }
 
   console.log("[inspector] Navigation → " + FULL_URL);
@@ -99,7 +99,7 @@ async function inspect() {
     try {
       var sess = JSON.parse(fs.readFileSync(sessionFile, "utf8"));
       if (sess.cookies && sess.cookies.length) await ctx.addCookies(sess.cookies);
-    } catch(e) {}
+    } catch(e) { console.error("[INSPECTOR] Erreur chargement session :", e.message); }
   }
 
   var page = await ctx.newPage();
@@ -203,7 +203,7 @@ async function inspect() {
   };
 
   // Sauvegarder cache
-  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(result, null, 2)); } catch(e) {}
+  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(result, null, 2)); } catch(e) { console.error("[INSPECTOR] Erreur ecriture cache :", e.message); }
 
   var s = snapshot;
   console.log("[inspector] ✅ " + title);

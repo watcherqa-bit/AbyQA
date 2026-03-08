@@ -29,7 +29,7 @@ function loadSeen() {
     if (fs.existsSync(SEEN_FILE)) {
       return JSON.parse(fs.readFileSync(SEEN_FILE, "utf8"));
     }
-  } catch(e) {}
+  } catch(e) { console.error("[POLLER] Erreur lecture seen :", e.message); }
   return {};
 }
 
@@ -38,7 +38,7 @@ function saveSeen(seen) {
     var dir = path.dirname(SEEN_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(SEEN_FILE, JSON.stringify(seen, null, 2), "utf8");
-  } catch(e) {}
+  } catch(e) { console.error("[POLLER] Erreur sauvegarde seen :", e.message); }
 }
 
 // ── BACKLOG PERSISTANT ──────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ var BACKLOG_FILE = path.join(__dirname, "inbox", "backlog", "backlog.json");
 function loadBacklog() {
   try {
     if (fs.existsSync(BACKLOG_FILE)) return JSON.parse(fs.readFileSync(BACKLOG_FILE, "utf8"));
-  } catch(e) {}
+  } catch(e) { console.error("[POLLER] Erreur lecture backlog :", e.message); }
   return {};
 }
 

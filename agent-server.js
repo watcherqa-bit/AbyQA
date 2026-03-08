@@ -262,7 +262,7 @@ async function ensureTestPlanExec(release, testKey) {
 function sendSSE(clientId, data) {
   var clients = sseClients[clientId] || [];
   clients.forEach(function(res) {
-    try { res.write("data: " + JSON.stringify(data) + "\n\n"); } catch(e) {}
+    try { res.write("data: " + JSON.stringify(data) + "\n\n"); } catch(e) { /* client deconnecte */ }
   });
 }
 
@@ -274,7 +274,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
     return;
   }
   if (runningProcs[agentId]) {
-    try { runningProcs[agentId].kill(); } catch(e) {}
+    try { runningProcs[agentId].kill(); } catch(e) { /* process deja mort */ }
   }
 
   // DRY_RUN : prÃ©fixer tous les logs SSE
@@ -297,7 +297,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
     if (runningProcs[agentId]) {
       console.log("[runAgent] TIMEOUT " + (AGENT_TIMEOUT_MS / 1000) + "s — kill " + agentId);
       sendSSE(clientId, { type: "err", agent: agentId, line: "⏱ Timeout " + (AGENT_TIMEOUT_MS / 1000) + "s dépassé — process arrêté" });
-      try { proc.kill(); } catch(e) {}
+      try { proc.kill(); } catch(e) { /* process deja mort */ }
     }
   }, AGENT_TIMEOUT_MS);
 
@@ -311,7 +311,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
             progressData.type = "playwright-progress";
             progressData.agent = agentId;
             sendSSE(clientId, progressData);
-          } catch(e) {}
+          } catch(e) { console.error("[SERVER] Erreur parse PLAYWRIGHT_PROGRESS :", e.message); }
         }
         sendSSE(clientId, { type: "log", agent: agentId, line: dryPrefix + line.trim() });
         logBuf.push(line.trim());
@@ -376,7 +376,7 @@ function triggerAutoDebug(agentId, logs, clientId) {
         var num = start + i + 1;
         return (num === fileInfo.line ? ">>> " : "    ") + num + ": " + l;
       }).join("\n");
-    } catch(e) {}
+    } catch(e) { console.error("[SERVER] Erreur lecture contexte code :", e.message); }
   }
 
   // 4. Notifier le dashboard que l'analyse est en cours
@@ -1169,7 +1169,7 @@ var server = http.createServer(function(req, res) {
 
         // Déterminer la release — source unique : settings.currentRelease
         var settingsV = {};
-        try { settingsV = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        try { settingsV = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) { console.error("[SERVER] Erreur lecture settings.json :", e.message); }
         var release = settingsV.currentRelease || "v1.25.0";
 
         // Détecter si un ticket TEST existe déjà pour ce sourceKey
@@ -1589,7 +1589,7 @@ var server = http.createServer(function(req, res) {
     req.on("data", function(c) { importBody += c; });
     req.on("end", function() {
       var importKey = "";
-      try { importKey = JSON.parse(importBody).key; } catch(e) {}
+      try { importKey = JSON.parse(importBody).key; } catch(e) { console.error("[SERVER] Erreur parse import body :", e.message); }
       if (!importKey) { res.writeHead(400); res.end(JSON.stringify({ error: "ClÃ© manquante" })); return; }
 
       var httpsJI = require("https");
@@ -1710,7 +1710,7 @@ var server = http.createServer(function(req, res) {
         .filter(function(f) { return f.match(/\.(md|xlsx|csv)$/); })
         .map(function(f) { var s = fs.statSync(path.join(REPORTS_DIR, f)); return { name: f, size: s.size, date: s.mtime }; })
         .sort(function(a, b) { return b.date - a.date; }).slice(0, 20);
-    } catch(e) {}
+    } catch(e) { console.error("[SERVER] Erreur listage rapports :", e.message); }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(files));
     return;
@@ -1787,7 +1787,7 @@ var server = http.createServer(function(req, res) {
           case "xray-pipeline":
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
             var localXml1 = path.join(BASE_DIR, "uploads", "ticket.xml");
-            try { fs.copyFileSync(params.xmlPath, localXml1); } catch(e) {}
+            try { fs.copyFileSync(params.xmlPath, localXml1); } catch(e) { console.error("[SERVER] Erreur copie XML :", e.message); }
             var xArgs = ["agent-xray-full.js", "uploads/ticket.xml", "--env=" + (params.env || "sophie")];
             if (params.devices)      xArgs.push("--devices=" + params.devices);
             if (params.browsers)     xArgs.push("--browsers=" + params.browsers);
@@ -1800,7 +1800,7 @@ var server = http.createServer(function(req, res) {
           case "playwright-multi":
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
             var localXmlPW = path.join(BASE_DIR, "uploads", "ticket.xml");
-            try { fs.copyFileSync(params.xmlPath, localXmlPW); } catch(e) {}
+            try { fs.copyFileSync(params.xmlPath, localXmlPW); } catch(e) { console.error("[SERVER] Erreur copie XML :", e.message); }
             var pwArgs = ["agent-playwright-direct.js", "--mode=ui", "--source=xml", "--xml=uploads/ticket.xml"];
             if (params.envs)         pwArgs.push("--envs=" + params.envs);
             if (params.devices)      pwArgs.push("--devices-file=" + params.devices);
@@ -1811,7 +1811,7 @@ var server = http.createServer(function(req, res) {
           case "jira-reader":
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
             var localXml2 = path.join(BASE_DIR, "uploads", "ticket.xml");
-            try { fs.copyFileSync(params.xmlPath, localXml2); } catch(e) {}
+            try { fs.copyFileSync(params.xmlPath, localXml2); } catch(e) { console.error("[SERVER] Erreur copie XML :", e.message); }
             var rArgs = ["agent-jira-reader.js", "uploads/ticket.xml", "--env=" + (params.env || "sophie")];
             if (params.noPlaywright) rArgs.push("--no-playwright");
             runAgent(agent, "node", rArgs, clientId);
@@ -1882,7 +1882,7 @@ var server = http.createServer(function(req, res) {
             // XML uploadÃ©
             if (params.xmlPath) {
               var pdXml = path.join(BASE_DIR, "uploads", "ticket.xml");
-              try { fs.copyFileSync(params.xmlPath, pdXml); } catch(e) {}
+              try { fs.copyFileSync(params.xmlPath, pdXml); } catch(e) { console.error("[SERVER] Erreur copie XML :", e.message); }
               pdArgs.push("--xml=uploads/ticket.xml");
             }
             var pdClientId = clientId;
@@ -1913,13 +1913,13 @@ var server = http.createServer(function(req, res) {
                 function saveDiag(diagContent) {
                   if (!result.reportPath) return;
                   var dName = path.basename(result.reportPath).replace(".html", "-diag.json");
-                  try { fs.writeFileSync(path.join(BASE_DIR, "reports", dName), JSON.stringify(diagContent, null, 2), "utf8"); } catch(e) {}
+                  try { fs.writeFileSync(path.join(BASE_DIR, "reports", dName), JSON.stringify(diagContent, null, 2), "utf8"); } catch(e) { console.error("[SERVER] Erreur ecriture diag :", e.message); }
                 }
                 // Capturer les logs de tests FAIL → inbox/logs/
                 var logLines2 = logs.filter(function(l) { return l.startsWith("PLAYWRIGHT_TEST_LOG:"); });
                 if (logLines2.length > 0) {
                   var logsDir2 = path.join(BASE_DIR, "inbox", "logs");
-                  if (!fs.existsSync(logsDir2)) { try { fs.mkdirSync(logsDir2, { recursive: true }); } catch(e) {} }
+                  if (!fs.existsSync(logsDir2)) { try { fs.mkdirSync(logsDir2, { recursive: true }); } catch(e) { console.error("[SERVER] Erreur creation logsDir :", e.message); } }
                   logLines2.forEach(function(line) {
                     try {
                       var logData2 = JSON.parse(line.replace("PLAYWRIGHT_TEST_LOG:", ""));
@@ -1928,7 +1928,7 @@ var server = http.createServer(function(req, res) {
                       fs.writeFileSync(logFile2, JSON.stringify(Object.assign({ id: logId2 }, logData2), null, 2), "utf8");
                       sendSSE(pdClientId,  { type: "test-log-new", log: Object.assign({ id: logId2 }, logData2) });
                       if (pdClientId !== "default") sendSSE("default", { type: "test-log-new", log: Object.assign({ id: logId2 }, logData2) });
-                    } catch(e) {}
+                    } catch(e) { console.error("[SERVER] Erreur traitement test-log :", e.message); }
                   });
                 }
 
@@ -2195,7 +2195,7 @@ var server = http.createServer(function(req, res) {
           var diag     = null;
           if (fs.existsSync(path.join(rDir, diagFile))) {
             try { diag = JSON.parse(fs.readFileSync(path.join(rDir, diagFile), "utf8")); }
-            catch(e) {}
+            catch(e) { console.error("[SERVER] Erreur parse diag.json :", e.message); }
           }
           // Extraire la clé ticket : depuis diag.json en priorité, sinon depuis le nom de fichier
           var ticketKey = (diag && diag.result && diag.result.ticketKey) || null;
@@ -2681,7 +2681,7 @@ var server = http.createServer(function(req, res) {
         // Tuer tous les process c2 en cours (par ticket)
         Object.keys(runningProcs).forEach(function(k) {
           if (k.startsWith("playwright-direct-c2-") || k === "playwright-direct-tnr-release") {
-            try { runningProcs[k].kill(); } catch(e) {}
+            try { runningProcs[k].kill(); } catch(e) { /* process deja mort */ }
             delete runningProcs[k];
             delete agentLocks[k];
           }
@@ -2689,7 +2689,7 @@ var server = http.createServer(function(req, res) {
         cycle.stopCycle2();
       } else if (stopId === "3") {
         if (runningProcs["playwright-direct-tnr"]) {
-          try { runningProcs["playwright-direct-tnr"].kill(); } catch(e) {}
+          try { runningProcs["playwright-direct-tnr"].kill(); } catch(e) { /* process deja mort */ }
           delete runningProcs["playwright-direct-tnr"];
           delete agentLocks["playwright-direct-tnr"];
         }
@@ -2716,7 +2716,7 @@ var server = http.createServer(function(req, res) {
     req.on("end", function() {
       try {
         var c1Opts = {};
-        try { c1Opts = JSON.parse(c1Body); } catch(e) {}
+        try { c1Opts = JSON.parse(c1Body); } catch(e) { console.error("[SERVER] Erreur parse c1Body :", e.message); }
         cycle.markTicketRunning(ticketKey);
         var c1Settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8"));
 
@@ -2773,7 +2773,7 @@ var server = http.createServer(function(req, res) {
             onDone: function(exitCode, logs) {
               var c1Result = { pass: 0, fail: 0, total: 0 };
               var rLine = logs.find(function(l) { return l.startsWith("PLAYWRIGHT_DIRECT_RESULT:"); });
-              if (rLine) { try { c1Result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e){} }
+              if (rLine) { try { c1Result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e) { console.error("[SERVER] Erreur parse c1Result :", e.message); } }
               cycle.markTicketDone(ticketKey, c1Result);
               var allPass = c1Result.fail === 0 && c1Result.total > 0;
 
@@ -2786,7 +2786,7 @@ var server = http.createServer(function(req, res) {
                 var reportContent = "";
                 if (c1Result.reportPath) {
                   var rpPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
-                  try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) {}
+                  try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) { console.error("[SERVER] Erreur lecture rapport :", e.message); }
                 }
                 leadQA.analyzePlaywrightFail(failLogs, {
                   ticketKey: ticketKey, mode: mode || "ui", env: (c1Settings.envs || ["sophie"]).join(","),
@@ -3187,7 +3187,7 @@ var server = http.createServer(function(req, res) {
           iRes.on("data", function(c) { iData += c; });
           iRes.on("end", function() {
             var issueInfo = {};
-            try { issueInfo = JSON.parse(iData); } catch(e) {}
+            try { issueInfo = JSON.parse(iData); } catch(e) { console.error("[SERVER] Erreur parse issueInfo :", e.message); }
             var usSummary = (issueInfo.fields && issueInfo.fields.summary) || sourceKey;
 
             var fonction = (diag.pages && diag.pages[0]) || diag.causeProbable || "Dysfonctionnement détecté";
@@ -3465,7 +3465,7 @@ var server = http.createServer(function(req, res) {
           })
           .sort(function(a, b) { return b.timestamp.localeCompare(a.timestamp); });
       }
-    } catch(e) {}
+    } catch(e) { console.error("[SERVER] Erreur listage backups :", e.message); }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(list));
     return;
@@ -3610,6 +3610,33 @@ server.on("error", function(e) {
     console.error("[ERR]", e.message);
   }
   process.exit(1);
+});
+
+// ── GRACEFUL SHUTDOWN ──────────────────────────────────────────────────────
+process.on("SIGTERM", function() {
+  console.log("[SHUTDOWN] SIGTERM reçu — fermeture propre...");
+  server.close(function() {
+    console.log("[SHUTDOWN] Serveur fermé");
+    process.exit(0);
+  });
+  setTimeout(function() {
+    console.error("[SHUTDOWN] Timeout 10s — forçage sortie");
+    process.exit(1);
+  }, 10000);
+});
+
+process.on("SIGINT", function() {
+  console.log("[SHUTDOWN] SIGINT reçu — fermeture propre...");
+  server.close(function() { process.exit(0); });
+  setTimeout(function() { process.exit(1); }, 5000);
+});
+
+process.on("uncaughtException", function(err) {
+  console.error("[CRITIQUE] Exception non capturée :", err.message, err.stack);
+});
+
+process.on("unhandledRejection", function(reason) {
+  console.error("[CRITIQUE] Promise rejetée non gérée :", reason);
 });
 
 

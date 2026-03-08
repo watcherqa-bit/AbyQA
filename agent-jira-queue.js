@@ -46,7 +46,7 @@ function saveTestQueue(key, data) {
 // ── CONSTANTES ────────────────────────────────────────────────────────────────
 const POLL_MS         = 60000;             // Polling "To Do" tickets (60s)
 const POLL_BACKLOG_MS = 5 * 60000;         // Polling backlog US (5 min)
-const VALIDATION_TIMEOUT_MS = 10 * 60000; // Auto-approve après 10 min si pas de réponse
+const VALIDATION_TIMEOUT_MS = 10 * 60000; // Auto-REJET après 10 min si pas de réponse (sécurité)
 const SERVER_PORT     = CFG.server.port;
 const INBOX_DIR       = path.join(__dirname, "inbox");
 const STATE_FILE      = path.join(INBOX_DIR, "queue-processed.json");
@@ -67,7 +67,7 @@ function loadState() {
       var today = new Date().toDateString();
       if (raw.date === today) return new Set(raw.keys || []);
     }
-  } catch(e) {}
+  } catch(e) { console.error("[JIRA-QUEUE] Erreur lecture state :", e.message); }
   return new Set();
 }
 
@@ -77,20 +77,20 @@ function saveState() {
       date: new Date().toDateString(),
       keys: Array.from(processed)
     }), "utf8");
-  } catch(e) {}
+  } catch(e) { console.error("[JIRA-QUEUE] Erreur sauvegarde state :", e.message); }
 }
 
 // ── VALIDATION GATE ───────────────────────────────────────────────────────────
 // Système de validation avant push Jira :
 // 1. Sauvegarde dans validations.json
 // 2. Pousse SSE vers le dashboard
-// 3. Attend résolution (approve/reject) avec timeout auto-approve
+// 3. Attend résolution (approve/reject) avec timeout auto-REJET (sécurité)
 
 function loadValidations() {
   try {
     if (fs.existsSync(VALIDATIONS_FILE))
       return JSON.parse(fs.readFileSync(VALIDATIONS_FILE, "utf8"));
-  } catch(e) {}
+  } catch(e) { console.error("[JIRA-QUEUE] Erreur lecture validations :", e.message); }
   return {};
 }
 
@@ -98,7 +98,7 @@ function saveValidations(data) {
   try {
     fs.mkdirSync(INBOX_DIR, { recursive: true });
     fs.writeFileSync(VALIDATIONS_FILE, JSON.stringify(data, null, 2), "utf8");
-  } catch(e) {}
+  } catch(e) { console.error("[JIRA-QUEUE] Erreur sauvegarde validations :", e.message); }
 }
 
 // Crée une entrée de validation et retourne une Promise résolue quand l'utilisateur décide
@@ -1070,7 +1070,7 @@ if (require.main === module) {
   console.log("  Compte  : " + CFG.jira.email);
   console.log("  Polling To Do    : " + (POLL_MS / 1000) + "s");
   console.log("  Polling Backlog  : " + (POLL_BACKLOG_MS / 1000) + "s");
-  console.log("  Validation gate  : " + (VALIDATION_TIMEOUT_MS / 60000) + "min (auto-approve)");
+  console.log("  Validation gate  : " + (VALIDATION_TIMEOUT_MS / 60000) + "min (auto-REJET si pas de réponse)");
   console.log("  LLM              : API (Anthropic)");
   console.log("══════════════════════════════════════════════════\n");
   start();

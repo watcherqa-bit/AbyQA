@@ -44,7 +44,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var blAddChunks = [];
     req.on("data", function(c) { blAddChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(blAddChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(blAddChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       if (!body.key) { res.writeHead(400); res.end(JSON.stringify({ error: "key requis" })); return; }
       ensureBacklogDir();
       var pending = readBacklog(BACKLOG_PENDING);
@@ -77,7 +77,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var blPhaseChunks = [];
     req.on("data", function(c) { blPhaseChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(blPhaseChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(blPhaseChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var pending = readBacklog(BACKLOG_PENDING);
       var idx = pending.findIndex(function(t) { return t.key === blPhaseKey; });
       if (idx < 0) { res.writeHead(404); res.end(JSON.stringify({ error: "introuvable" })); return; }
@@ -96,7 +96,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var blArchChunks = [];
     req.on("data", function(c) { blArchChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(blArchChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(blArchChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var pending = readBacklog(BACKLOG_PENDING);
       var done    = readBacklog(BACKLOG_DONE);
       var idx     = pending.findIndex(function(t) { return t.key === blArchKey; });
@@ -210,7 +210,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var cascChunks = [];
     req.on("data", function(c) { cascChunks.push(c); });
     req.on("end", async function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(cascChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(cascChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var https4 = require("https");
       var auth4  = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
       var jReq = https4.request({
@@ -260,7 +260,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var cascCreateChunks = [];
     req.on("data", function(c) { cascCreateChunks.push(c); });
     req.on("end", async function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(cascCreateChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(cascCreateChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var parentKey = body.parentKey || "";
       var tickets   = Array.isArray(body.tickets) ? body.tickets : [];
       var https5    = require("https");
@@ -325,7 +325,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var xsChunks = [];
     req.on("data", function(c) { xsChunks.push(c); });
     req.on("end", async function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(xsChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(xsChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var https6 = require("https");
       var auth6  = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
       var xjReq  = https6.request({
@@ -371,7 +371,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var xpChunks = [];
     req.on("data", function(c) { xpChunks.push(c); });
     req.on("end", async function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(xpChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(xpChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var steps = Array.isArray(body.steps) ? body.steps : [];
       var https7 = require("https");
       var auth7  = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
@@ -401,7 +401,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var xrChunks = [];
     req.on("data", function(c) { xrChunks.push(c); });
     req.on("end", function() {
-      var body = {}; try { body = JSON.parse(Buffer.concat(xrChunks).toString()); } catch(e) {}
+      var body = {}; try { body = JSON.parse(Buffer.concat(xrChunks).toString()); } catch(e) { console.error("[BACKLOG] Erreur parse body :", e.message); }
       var pending5 = readBacklog(BACKLOG_PENDING);
       var done2    = readBacklog(BACKLOG_DONE);
       var idx5     = pending5.findIndex(function(t) { return t.key === body.key; });
@@ -467,7 +467,7 @@ module.exports = function handle(method, url, req, res, ctx) {
             return { key: key, file: f, path: "inbox/xray-pending/" + f };
           });
       }
-    } catch(e) {}
+    } catch(e) { console.error("[BACKLOG] Erreur lecture xray-pending :", e.message); }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(pendingList));
     return true;

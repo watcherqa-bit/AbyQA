@@ -55,7 +55,7 @@ if (URLS_FILE_ARG) {
   var tmpFile = URLS_FILE_ARG.replace("--urls-file=", "").trim();
   try {
     URLS_RAW = fs.readFileSync(tmpFile, "utf8").trim();
-    try { fs.unlinkSync(tmpFile); } catch(e) {}
+    try { fs.unlinkSync(tmpFile); } catch(e) { /* fichier tmp absent */ }
   } catch(e) { console.log("[WARN] Erreur lecture --urls-file : " + e.message); }
 }
 // Décoder les entités HTML résiduelles — gère &quot; ET &quot (sans ; final)
@@ -780,7 +780,7 @@ async function validateUrls(targets) {
           } else {
             console.log("  [URL] ⚠️ HTTP " + s2 + " sur URL source : " + sourceUrls[j].url);
           }
-        } catch(e) {}
+        } catch(e) { console.error("  [URL] Erreur validation URL source :", e.message); }
       }
     }
     if (validated.length === 0) {
@@ -1010,7 +1010,7 @@ async function annotateScreenshot(page, steps) {
           ].join(";");
           badge.textContent = (isPass ? "✓ " : "✗ ") + step.label;
           overlay.appendChild(badge);
-        } catch(e) {}
+        } catch(e) { /* badge overlay non critique */ }
       });
 
       // Bandeau récapitulatif en bas de page
@@ -1225,7 +1225,7 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
             };
           }, fStep.selector);
           if (snippet) domSnippets.push({ selector: fStep.selector, label: fStep.label, snippet: snippet });
-        } catch(e) {}
+        } catch(e) { /* DOM snippet non critique */ }
       }
     }
 
@@ -1252,7 +1252,9 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
       var annotableSteps = result.steps.filter(function(s) { return s.selector; });
       if (annotableSteps.length > 0) await annotateScreenshot(page, annotableSteps);
       await page.screenshot({ path: result.screenshot, fullPage: false });
-    } catch(e) {}
+    } catch(e) {
+      console.error("[ERREUR] screenshot " + (target.label || "") + " :", e.message || e);
+    }
   }
   if (browser) await browser.close().catch(function(){});
   return result;
@@ -1426,7 +1428,7 @@ async function runScenarios(targets, envName) {
         var shotName = "scenario_" + scenario.id + "_" + thisEnv + "_" + Date.now() + ".png";
         sr.screenshot = path.join(SCREENSHOTS_DIR, shotName);
         await page.screenshot({ path: sr.screenshot, fullPage: false });
-      } catch(e) {}
+      } catch(e) { console.error("    [SCREENSHOT] Erreur capture :", e.message); }
 
       var statusIcon = sr.pass ? "PASS" : "FAIL";
       console.log("    -> " + statusIcon + (sr.error ? " — " + sr.error.substring(0, 60) : ""));
@@ -1434,6 +1436,8 @@ async function runScenarios(targets, envName) {
       sr.pass = false;
       sr.error = "Erreur exécution : " + e.message.substring(0, 100);
       console.log("    -> FAIL — " + sr.error);
+    } finally {
+      if (browser) await browser.close().catch(function(){});
     }
     // Émettre progress PASS/FAIL pour le dashboard
     console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({
@@ -1443,7 +1447,6 @@ async function runScenarios(targets, envName) {
       message: (sr.pass ? "✅" : "❌") + " Cas " + (i + 1) + " " + (sr.pass ? "PASS" : "FAIL") + (sr.error ? " — " + sr.error.substring(0, 60) : ""),
       pct: 20 + Math.floor(70 * (i + 1) / validScenarios.length)
     }));
-    if (browser) await browser.close().catch(function(){});
     results.push(sr);
   }
 
@@ -1989,9 +1992,10 @@ function generateHTMLReport(allResults, mode, sourceLabel) {
  */
 async function convertHtmlToPdf(htmlPath) {
   var pdfPath = htmlPath.replace(/\.html$/, ".pdf");
+  var browser = null;
   try {
     console.log("[PDF] Conversion du rapport en PDF...");
-    var browser = await chromium.launch();
+    browser = await chromium.launch();
     var page = await browser.newPage();
     // Émuler le media print pour activer le thème clair
     await page.emulateMedia({ media: "print" });
@@ -2015,12 +2019,13 @@ async function convertHtmlToPdf(htmlPath) {
       footerTemplate: footerHtml,
       margin: { top: "40px", bottom: "40px", left: "24px", right: "24px" }
     });
-    await browser.close();
     console.log("[PDF] " + path.basename(pdfPath));
     return pdfPath;
   } catch(e) {
     console.log("[PDF] Erreur conversion : " + e.message.substring(0, 80));
     return null;
+  } finally {
+    if (browser) await browser.close().catch(function(){});
   }
 }
 
