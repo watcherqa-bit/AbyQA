@@ -1,5 +1,5 @@
 // agent-jira-queue.js — Surveillance automatique de la file Jira
-// Orchestré par agent-lead-qa.js (Claude API)
+// Orchestré par agent-lead-qa.js (LLM API)
 // Workflows : US Backlog (enrichissement) + US To Do + Bug + Test
 // Usage : node agent-jira-queue.js
 
@@ -419,7 +419,7 @@ function extractDesc(fields) {
 
 // ══════════════════════════════════════════════════════════════════════════════
 // WORKFLOW 1 : US BACKLOG — Enrichissement et amélioration
-// Détecte les US en Backlog sans AC complets → Lead QA enrichit → Validation Gate
+// Détecte les US en Backlog sans AC complets → IA enrichit → Validation Gate
 // ══════════════════════════════════════════════════════════════════════════════
 async function workflowBacklog(ticket) {
   var key     = ticket.key;
@@ -440,7 +440,7 @@ async function workflowBacklog(ticket) {
       return;
     }
 
-    // 2. Enrichir l'US avec le Lead QA
+    // 2. Enrichir l'US avec l'IA
     log("[BACKLOG] " + key + " — Enrichissement en cours... (manque : " + (review.missingElements || []).join(", ") + ")");
     pushSSE({ type: "log", agent: "lead-qa", line: "[" + key + "] Enrichissement US — manque : " + (review.missingElements || []).join(", ") });
 
@@ -507,11 +507,11 @@ async function workflowBacklog(ticket) {
 
     // 5. Commenter sur le ticket
     await postComment(key,
-      "[QA Auto]📋 US enrichie par Lead QA\n" +
+      "[QA Auto] US enrichie\n" +
       "Score initial : " + review.score + "/100\n" +
       "Éléments ajoutés : " + (review.missingElements || []).join(", ") + "\n" +
       "Fichier : " + path.basename(filepath) + "\n" +
-      "🤖 QA Automation — Lead QA Claude"
+      "QA"
     );
 
     statsToday.enriched++;
@@ -543,8 +543,8 @@ async function workflowUS(ticket) {
   pushSSE({ type: "queue-item", key: key, issueType: "US", status: "running", summary: summary });
 
   try {
-    // 1. Analyse complète par Lead QA
-    log("[US] " + key + " — Analyse Lead QA...");
+    // 1. Analyse complète par IA
+    log("[US] " + key + " — Analyse IA...");
     var analysis = await leadQA.analyzeUS(ticket);
     log("[US] " + key + " — Complexité : " + analysis.complexity + " | Type : " + analysis.automationType + " | Priorité : " + analysis.priority);
     pushSSE({ type: "log", agent: "lead-qa", line: "[" + key + "] Type: " + analysis.automationType + " | Complexité: " + analysis.complexity });
@@ -651,7 +651,7 @@ async function workflowUS(ticket) {
       "CSV cas de test : " + path.basename(csvFilepath) + "\n" +
       "Résultat Playwright : " + resultLine + "\n" +
       "Release : " + version + "\n" +
-      "🤖 QA Automation — Lead QA Claude"
+      "QA"
     );
 
     // 9. Transition statut
@@ -699,7 +699,7 @@ async function workflowBug(ticket) {
 
     log("[BUG] " + key + " — Reproduit : " + reproduced);
 
-    // 2. Générer le ticket BUG via Lead QA
+    // 2. Générer le ticket BUG via IA
     log("[BUG] " + key + " — Génération ticket BUG...");
 
     // Chercher l'US liée (si le bug mentionne une US)
@@ -786,7 +786,7 @@ async function workflowBug(ticket) {
       "[QA Auto]" + (reproduced ? "❌ Bug REPRODUIT" : "⚠️ Bug non reproduit automatiquement") + "\n" +
       "Ticket BUG créé : " + (newBugKey || "N/A") + " — " + bugResult.title + "\n" +
       (reproduced ? "Screenshots disponibles dans /screenshots/\n" : "Vérification manuelle recommandée\n") +
-      "🤖 QA Automation — Lead QA Claude"
+      "QA"
     );
 
     // 7. Transition
@@ -899,7 +899,7 @@ async function workflowTest(ticket) {
       "Test Execution : " + (execKey || "N/A") + "\n" +
       (bugKey ? "BUG créé : " + bugKey + "\n" : "") +
       "Mode : " + strategy.decision + "\n" +
-      "🤖 QA Automation — Lead QA Claude"
+      "QA"
     );
 
     await transitionIssue(key, hasFail ? "In Progress" : "Done");
@@ -1020,14 +1020,14 @@ function stop() {
 // Standalone : node agent-jira-queue.js
 if (require.main === module) {
   console.log("══════════════════════════════════════════════════");
-  console.log("  QA Automation — Surveillance Jira");
+  console.log("  Surveillance Jira");
   console.log("══════════════════════════════════════════════════");
   console.log("  Projet  : " + CFG.jira.project);
   console.log("  Compte  : " + CFG.jira.email);
   console.log("  Polling To Do    : " + (POLL_MS / 1000) + "s");
   console.log("  Polling Backlog  : " + (POLL_BACKLOG_MS / 1000) + "s");
   console.log("  Validation gate  : " + (VALIDATION_TIMEOUT_MS / 60000) + "min (auto-approve)");
-  console.log("  LLM              : Claude API (Anthropic)");
+  console.log("  LLM              : API (Anthropic)");
   console.log("══════════════════════════════════════════════════\n");
   start();
 }

@@ -1,4 +1,4 @@
-// routes/chat.js — Routes Chat IA, LLM, Ollama, Claude Code, GitHub, WebSearch
+// routes/chat.js — Routes Chat IA, LLM, Ollama, Code, GitHub, WebSearch
 "use strict";
 
 var http = require("http");
@@ -87,7 +87,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
-  // ── API : Chat Claude (streaming SSE) ─────────────────────────────────────
+  // ── API : Chat IA (streaming SSE) ──────────────────────────────────────────
   if (method === "POST" && url === "/api/chat") {
     var chatChunks = [];
     req.on("data", function(c) { chatChunks.push(c); });
@@ -154,7 +154,7 @@ module.exports = function handle(method, url, req, res, ctx) {
             sendSSE(clientId, { type: 'chat-token', token: '\n\n\u23f3 _Rate limit atteint — nouvelle tentative dans ' + (wait/1000) + 's\u2026_\n\n' });
             setTimeout(tryChatStream, wait);
           } else if (err.status === 429) {
-            sendSSE(clientId, { type: 'chat-error', message: 'Rate limit Claude API atteint (429). Patiente 1 minute ou passe en mode Sonnet.' });
+            sendSSE(clientId, { type: 'chat-error', message: 'Rate limit LLM API atteint (429). Patiente 1 minute ou passe en mode Sonnet.' });
           } else {
             sendSSE(clientId, { type: 'chat-error', message: err.message });
           }
@@ -198,7 +198,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
-  // ── API : Analyse de fichier (Claude Vision / HTML / texte) ───────────────
+  // ── API : Analyse de fichier (Vision IA / HTML / texte) ───────────────────
   if (method === "POST" && url === "/api/analyze-file") {
     var afChunks = [];
     req.on("data", function(c) { afChunks.push(c); });
@@ -250,7 +250,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
-  // ── API : Analyser un screenshot CSS avec Claude Vision ───────────────────
+  // ── API : Analyser un screenshot CSS avec Vision IA ───────────────────────
   if (method === "POST" && url === "/api/analyze-screenshot") {
     var ssChunks = [];
     req.on("data", function(c) { ssChunks.push(c); });
@@ -350,7 +350,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
-  // ── API : Claude Code (spawn claude --print) ──────────────────────────────
+  // ── API : CLI IA (spawn claude --print) ─────────────────────────────────
   if (method === "POST" && url === "/api/claude-code") {
     var ccChunks = [];
     req.on("data", function(c) { ccChunks.push(c); });
@@ -368,7 +368,7 @@ module.exports = function handle(method, url, req, res, ctx) {
       ccProc.stderr.on("data", function(d) { ccStderr += d.toString(); });
       ccProc.on("close", function(code) {
         if (!ccHasOutput && ccStderr) {
-          sendSSE(ccClientId, { type: "chat-token", token: "Erreur Claude Code:\n" + ccStderr });
+          sendSSE(ccClientId, { type: "chat-token", token: "Erreur l'outil CLI:\n" + ccStderr });
         }
         sendSSE(ccClientId, { type: "chat-done" });
       });
@@ -386,7 +386,7 @@ module.exports = function handle(method, url, req, res, ctx) {
       rawGH = rawGH.replace("https://github.com/", "https://raw.githubusercontent.com/").replace("/blob/", "/");
     }
     if (!rawGH.startsWith("http")) rawGH = "https://raw.githubusercontent.com/" + rawGH;
-    var ghReq = httpsGH.get(rawGH, { headers: { "User-Agent": "AbyQA/2" } }, function(ghRes) {
+    var ghReq = httpsGH.get(rawGH, { headers: { "User-Agent": "QA-Agent/2" } }, function(ghRes) {
       var chunks = [];
       ghRes.on("data", function(c) { chunks.push(c); });
       ghRes.on("end", function() {
@@ -409,7 +409,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var qsWS    = (url.split("?")[1] || "");
     var qWS     = decodeURIComponent(qsWS.replace(/^.*q=([^&]*).*$/, "$1")).trim();
     var wsPath  = "/?q=" + encodeURIComponent(qWS) + "&format=json&no_html=1&skip_disambig=1&t=abyqa";
-    var wsReq   = httpsWS.get({ hostname: "api.duckduckgo.com", path: wsPath, headers: { "User-Agent": "AbyQA/2" } }, function(wsRes) {
+    var wsReq   = httpsWS.get({ hostname: "api.duckduckgo.com", path: wsPath, headers: { "User-Agent": "QA-Agent/2" } }, function(wsRes) {
       var data = "";
       wsRes.on("data", function(c) { data += c; });
       wsRes.on("end", function() {

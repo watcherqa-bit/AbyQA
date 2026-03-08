@@ -4185,6 +4185,10 @@ function handleSSE(data) {
     handlePollTickets(data);
   } else if (data.type === "poll-qa-ready") {
     handleQAReady(data);
+  } else if (data.type === "playwright-progress") {
+    handlePlaywrightProgress(data);
+  } else if (data.type === "cycle1-progress") {
+    handlePlaywrightProgress({ step: data.step, message: data.message, pct: data.step === "analyze" ? 2 : 5, key: data.key });
   } else if (data.type === "cycle1-ticket-done") {
     loadCycleState();
     handleTestDoneNotification(data);
@@ -13499,6 +13503,137 @@ function handleCycle2Progress(data) {
   loadCycleState();
 }
 
+// ── Progression Playwright en temps réel ─────────────────────────────────────
+var _pwProgressStart = null;
+function handlePlaywrightProgress(data) {
+  var overlay = document.getElementById("pw-progress-overlay");
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = "pw-progress-overlay";
+    overlay.style.cssText = "position:fixed;bottom:24px;right:24px;width:380px;background:var(--bg2,#1e1e2e);border:1px solid var(--border,#444);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.6);z-index:10000;padding:16px;font-size:13px;color:var(--text,#e0e0e0)";
+    overlay.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><b id="pw-progress-title">Test en cours...</b><span id="pw-progress-timer" style="font-size:11px;color:var(--text2,#888)">0:00</span></div>' +
+      '<div style="background:var(--bg3,#2a2a3e);border-radius:6px;height:8px;overflow:hidden;margin-bottom:8px"><div id="pw-progress-bar" style="height:100%;background:linear-gradient(90deg,#3b82f6,#60a5fa);border-radius:6px;transition:width .3s;width:0%"></div></div>' +
+      '<div id="pw-progress-msg" style="font-size:12px;color:var(--text2,#aaa);margin-bottom:6px"></div>' +
+      '<div id="pw-progress-steps" style="max-height:120px;overflow-y:auto;font-size:11px;font-family:monospace"></div>';
+    document.body.appendChild(overlay);
+    _pwProgressStart = Date.now();
+    // Timer
+    overlay._timer = setInterval(function() {
+      var el = document.getElementById("pw-progress-timer");
+      if (el && _pwProgressStart) {
+        var sec = Math.floor((Date.now() - _pwProgressStart) / 1000);
+        el.textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+      }
+    }, 1000);
+  }
+  var bar = document.getElementById("pw-progress-bar");
+  var msg = document.getElementById("pw-progress-msg");
+  var steps = document.getElementById("pw-progress-steps");
+  if (bar && data.pct != null) bar.style.width = data.pct + "%";
+  if (msg && data.message) msg.textContent = data.message;
+  if (data.step === "test-done" && steps) {
+    var icon = data.status === "PASS" ? "✅" : "❌";
+    steps.innerHTML = '<div>' + icon + ' ' + (data.label || "") + '</div>' + steps.innerHTML;
+  }
+  if (data.step === "done") {
+    if (bar) bar.style.width = "100%";
+    if (bar) bar.style.background = (data.fail > 0) ? "linear-gradient(90deg,#ef4444,#f87171)" : "linear-gradient(90deg,#10b981,#34d399)";
+    var title = document.getElementById("pw-progress-title");
+    if (title) title.textContent = (data.fail > 0 ? "❌ " : "✅ ") + (data.message || "Terminé");
+    // Fermer auto après 5s (sera remplacé par le result panel)
+    setTimeout(function() {
+      var o = document.getElementById("pw-progress-overlay");
+      if (o) { clearInterval(o._timer); o.remove(); }
+    }, 5000);
+  }
+}
+
+// ── Panel résultat avec preview PDF et bouton Attacher ──────────────────────
+function showTestResultPanel(data) {
+  // Fermer le progress overlay
+  var oldOverlay = document.getElementById("pw-progress-overlay");
+  if (oldOverlay) { clearInterval(oldOverlay._timer); oldOverlay.remove(); }
+  // Fermer un panel résultat existant
+  var old = document.getElementById("pw-result-panel");
+  if (old) old.remove();
+
+  var key = data.key || "?";
+  var r = data.result || {};
+  var ok = data.ok;
+  var pdfFile = data.pdfFile || null;
+  var reportFile = data.reportFile || null;
+  var mode = data.mode || "ui";
+  var pass = r.pass || 0, fail = r.fail || 0, total = r.total || 0;
+
+  var panel = document.createElement("div");
+  panel.id = "pw-result-panel";
+  panel.style.cssText = "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;max-height:80vh;background:var(--bg2,#1e1e2e);border:1px solid var(--border,#444);border-radius:14px;box-shadow:0 12px 48px rgba(0,0,0,.7);z-index:10001;display:flex;flex-direction:column;overflow:hidden";
+
+  var statusColor = ok ? "#10b981" : "#ef4444";
+  var statusText = ok ? "PASS" : "FAIL";
+
+  var html = '<div style="padding:20px;border-bottom:1px solid var(--border,#333)">';
+  html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+  html += '<div><span style="font-size:28px;margin-right:8px">' + (ok ? "✅" : "❌") + '</span><b style="font-size:18px;color:var(--text)">' + key + '</b></div>';
+  html += '<span style="background:' + statusColor + ';color:#fff;padding:4px 14px;border-radius:20px;font-weight:700;font-size:14px">' + statusText + '</span>';
+  html += '</div>';
+  html += '<div style="margin-top:10px;font-size:13px;color:var(--text2,#aaa)">';
+  html += '<span style="margin-right:16px">Mode : <b>' + mode.toUpperCase() + '</b></span>';
+  html += '<span style="margin-right:16px">Pass : <b style="color:#10b981">' + pass + '</b></span>';
+  html += '<span style="margin-right:16px">Fail : <b style="color:#ef4444">' + fail + '</b></span>';
+  html += '<span>Total : <b>' + total + '</b></span>';
+  html += '</div></div>';
+
+  // PDF preview
+  if (pdfFile) {
+    html += '<div style="flex:1;min-height:300px;padding:8px">';
+    html += '<iframe src="' + SERVER + '/reports/' + pdfFile + '" style="width:100%;height:100%;min-height:300px;border:none;border-radius:8px;background:#fff"></iframe>';
+    html += '</div>';
+  } else if (reportFile) {
+    html += '<div style="flex:1;min-height:300px;padding:8px">';
+    html += '<iframe src="' + SERVER + '/reports/' + reportFile + '" style="width:100%;height:100%;min-height:300px;border:none;border-radius:8px;background:#fff"></iframe>';
+    html += '</div>';
+  }
+
+  // Boutons d'action
+  html += '<div style="padding:14px 20px;border-top:1px solid var(--border,#333);display:flex;gap:10px;justify-content:flex-end">';
+  // Relancer
+  html += '<button onclick="document.getElementById(\'pw-result-panel\').remove();launchTestPlanTicket(\'' + key + '\')" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3,#2a2a3e);color:var(--text);cursor:pointer;font-size:13px">🔄 Relancer</button>';
+  // Attacher à Jira (si PDF ou HTML disponible)
+  var attachFile = pdfFile || reportFile;
+  if (attachFile) {
+    html += '<button id="pw-attach-btn" onclick="attachReportToJira(\'' + key + '\',\'' + attachFile + '\')" style="padding:8px 16px;border-radius:8px;border:none;background:#f59e0b;color:#000;cursor:pointer;font-weight:700;font-size:13px">📎 Attacher à Jira</button>';
+  }
+  // Fermer
+  html += '<button onclick="document.getElementById(\'pw-result-panel\').remove()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;font-size:13px">Fermer</button>';
+  html += '</div>';
+
+  panel.innerHTML = html;
+  document.body.appendChild(panel);
+}
+
+function attachReportToJira(key, file) {
+  if (!confirm("Attacher le rapport « " + file + " » au ticket " + key + " dans Jira ?")) return;
+  var btn = document.getElementById("pw-attach-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
+  fetch(SERVER + "/api/attach-report/" + key, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file: file })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      showToast("Rapport attaché à " + key, "✅");
+      if (btn) { btn.textContent = "✅ Attaché"; btn.style.background = "#10b981"; }
+    } else {
+      showToast("Erreur : " + (d.error || "?"), "⚠️");
+      if (btn) { btn.disabled = false; btn.textContent = "📎 Attacher à Jira"; }
+    }
+  }).catch(function(e) {
+    showToast("Erreur : " + e.message, "⚠️");
+    if (btn) { btn.disabled = false; btn.textContent = "📎 Attacher à Jira"; }
+  });
+}
+
 function handleTestDoneNotification(data) {
   var key = data.key || "?";
   var r = data.result || {};
@@ -13513,8 +13648,13 @@ function handleTestDoneNotification(data) {
   // Toast immédiat
   showToast(key + " — " + status + " (" + pass + "/" + total + ")", emoji);
 
+  // Afficher le panel résultat avec preview PDF et bouton Attacher
+  if (data.pdfFile || data.reportFile) {
+    showTestResultPanel(data);
+  }
+
   // Notification persistante
-  var notif = { key: key, status: status, ok: ok, pass: pass, fail: fail, total: total, reportFile: reportFile, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) };
+  var notif = { key: key, status: status, ok: ok, pass: pass, fail: fail, total: total, reportFile: reportFile, pdfFile: data.pdfFile || null, at: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) };
   _testNotifications.unshift(notif);
   if (_testNotifications.length > 20) _testNotifications.pop();
   renderTestNotifBadge();
@@ -13592,8 +13732,12 @@ function toggleTestNotifPanel() {
       html += '<span style="font-size:10px;color:var(--text2)">' + n.at + '</span>';
       html += '</div>';
       html += '<div style="font-size:11px;color:var(--text2);margin-top:4px">' + n.pass + ' PASS / ' + n.fail + ' FAIL — ' + n.total + ' tests</div>';
-      if (n.reportFile) {
-        html += '<a href="' + SERVER + '/reports/' + n.reportFile + '" target="_blank" style="font-size:11px;color:var(--blue,#3b82f6);text-decoration:none;margin-top:4px;display:inline-block">📄 Rapport</a>';
+      var nFile = n.pdfFile || n.reportFile;
+      if (nFile) {
+        html += '<div style="margin-top:4px;display:flex;gap:8px;align-items:center">';
+        html += '<a href="' + SERVER + '/reports/' + nFile + '" target="_blank" style="font-size:11px;color:var(--blue,#3b82f6);text-decoration:none">📄 Rapport</a>';
+        html += '<button onclick="event.stopPropagation();attachReportToJira(\'' + n.key + '\',\'' + nFile + '\')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid #f59e0b;background:transparent;color:#f59e0b;cursor:pointer">📎 Jira</button>';
+        html += '</div>';
       }
       html += '</div>';
     });

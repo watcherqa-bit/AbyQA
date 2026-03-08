@@ -1,4 +1,4 @@
-// agent-inspector.js — Inspecteur DOM Playwright pour AbyQA
+// agent-inspector.js — Inspecteur DOM Playwright
 // Navigue sur un environnement, capture DOM + screenshot, met en cache 1h
 // Usage : node agent-inspector.js --env=sophie --url=/fr [--force=true]
 "use strict";

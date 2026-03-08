@@ -328,7 +328,7 @@ function generateReport(allResults) {
   var envList = Object.keys(allResults);
 
   var report = "# Audit CSS - Safran (" + envList.join(", ") + ")\n";
-  report += "> Genere par Aby QA V2 le " + date + "\n\n---\n\n";
+  report += "> Genere automatiquement le " + date + "\n\n---\n\n";
 
   // Calculer le statut global — pages HTTP 200 uniquement (Correction 2)
   var allScores  = [];

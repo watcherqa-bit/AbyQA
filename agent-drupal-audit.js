@@ -325,7 +325,7 @@ function generateReport(env, contentResults, mediaResults, menuItems) {
   const limited  = contentResults.filter(r => r.automatable === "❌ LIMITÉ" || r.automatable === "❌ ERREUR").length;
 
   let report = `# Audit BO Drupal - ${env.name.toUpperCase()}
-> Généré par Aby QA V2 le ${date}
+> Généré automatiquement le ${date}
 
 ---
 

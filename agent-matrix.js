@@ -213,7 +213,7 @@ ws1.row_dimensions[1].height = 30
 
 # Sous-titre
 ws1.merge_cells("A2:J2")
-ws1["A2"] = "Genere automatiquement par Aby QA V2 - " + __import__("datetime").datetime.now().strftime("%d/%m/%Y %H:%M")
+ws1["A2"] = "Genere automatiquement - " + __import__("datetime").datetime.now().strftime("%d/%m/%Y %H:%M")
 ws1["A2"].font      = Font(italic=True, color="666666", name="Arial", size=8)
 ws1["A2"].alignment = Alignment(horizontal="center")
 

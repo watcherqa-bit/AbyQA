@@ -336,7 +336,7 @@ function generateAnalysisReport(ticket, csvPath, testTicketPath) {
   var date = new Date().toLocaleString("fr-FR");
   var md   = "";
 
-  md += "# Analyse ticket " + ticket.key + " - Aby QA V2\n\n";
+  md += "# Analyse ticket " + ticket.key + "\n\n";
   md += "> Genere le " + date + "\n\n---\n\n";
 
   md += "## Ticket\n\n";

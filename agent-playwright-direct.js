@@ -33,7 +33,8 @@ function flag(name) { return args.includes("--" + name); }
 var MODE     = arg("mode")    || "ui";
 var SOURCE   = arg("source")  || "url";
 var ENV_NAME = arg("env")     || "sophie";
-var DRY_RUN  = flag("dry-run");
+var DRY_RUN       = flag("dry-run");
+var NO_JIRA_PUSH  = flag("no-jira-push");
 
 // Multi-env support (--envs=sophie,prod)
 var ENV_NAMES_RAW = arg("envs");
@@ -199,7 +200,7 @@ function uploadAttachment(issueKey, filePath) {
     var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var fileData = fs.readFileSync(filePath);
     var fileName = path.basename(filePath);
-    var boundary = "----AbyQABoundary" + Date.now();
+    var boundary = "----QABoundary" + Date.now();
     var header = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + fileName + "\"\r\nContent-Type: " + mimeFromExt(filePath) + "\r\n\r\n";
     var footer = "\r\n--" + boundary + "--\r\n";
     var bodyBuf = Buffer.concat([Buffer.from(header), fileData, Buffer.from(footer)]);
@@ -766,8 +767,8 @@ async function runScenarios(targets, envName) {
     return [];
   }
 
-  // 1. Générer les scénarios exécutables via Claude
-  console.log("\n[SCENARIOS] Génération des scénarios exécutables via Claude...");
+  // 1. Générer les scénarios exécutables via IA
+  console.log("\n[SCENARIOS] Génération des scénarios exécutables via IA...");
   var scenarios = [];
   try {
     scenarios = await leadQA.generateExecutableScenarios({
@@ -1692,11 +1693,14 @@ async function main() {
   }
 
   // ── MODE SINGLE ENV (comportement existant) ───────────────────────────────
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "resolve", message: "Résolution des cibles...", pct: 5 }));
   var targets = MODE === "tnr" ? getTNRPages() : await resolveTargets();
   console.log("[CIBLES] " + targets.length + " URL(s)");
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "targets", message: targets.length + " URL(s) à tester", pct: 10, targets: targets.map(function(t) { return t.label || t.url; }) }));
 
   // ── EXÉCUTION DES SCÉNARIOS (si ticket Jira) ──────────────────────────────
   if (KEY && SOURCE === "jira-key" && MODE !== "tnr") {
+    console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios", message: "Chargement des scénarios...", pct: 15 }));
     try {
       SCENARIO_RESULTS = await runScenarios(targets, ENV_NAME);
       if (SCENARIO_RESULTS.length > 0) {
@@ -1704,6 +1708,7 @@ async function main() {
         var autoP = autoR.filter(function(s) { return s.pass === true; }).length;
         var manR = SCENARIO_RESULTS.filter(function(s) { return s.type === "MANUEL"; });
         console.log("[SCENARIOS] " + autoP + "/" + autoR.length + " AUTO PASS" + (manR.length > 0 ? " + " + manR.length + " MANUEL" : ""));
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "scenarios-done", message: autoP + "/" + autoR.length + " scénarios PASS", pct: 25 }));
       }
     } catch(e) {
       console.log("[SCENARIOS] Erreur : " + e.message.substring(0, 80));
@@ -1711,6 +1716,8 @@ async function main() {
   }
 
   var allResults = [];
+  var totalTests = BROWSERS.length * DEVICES.length * targets.length;
+  var testIdx = 0;
   for (var bi = 0; bi < BROWSERS.length; bi++) {
     for (var di = 0; di < DEVICES.length; di++) {
       var bn = BROWSERS[bi]; var dev = DEVICES[di];
@@ -1718,9 +1725,13 @@ async function main() {
       console.log("\n[" + bn + " | " + dev.name + "] — " + targets.length + " cible(s)");
       for (var ti = 0; ti < targets.length; ti++) {
         var tgt = targets[ti];
+        testIdx++;
+        var testPct = Math.round(25 + (testIdx / totalTests) * 60);
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "test", current: testIdx, total: totalTests, pct: testPct, label: (tgt.label||tgt.url).substring(0,60), browser: bn, device: dev.name }));
         process.stdout.write("  [" + (ti+1) + "/" + targets.length + "] " + (tgt.label||tgt.url).substring(0,40) + "... ");
         var r = await runTest(tgt, BT, dev, bn, MODE);
         console.log(r.status + (r.issues.length ? " — " + r.issues[0].substring(0,50) : ""));
+        console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "test-done", current: testIdx, total: totalTests, pct: testPct, status: r.status, label: (tgt.label||tgt.url).substring(0,60) }));
         allResults.push(r);
       }
     }
@@ -1731,16 +1742,21 @@ async function main() {
   var total=allResults.length;
   var pct=total>0?Math.round(pass/total*100):0;
 
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "report", message: "Génération du rapport...", pct: 90 }));
   var sourceLabel = SOURCE==="jira-key"&&KEY?KEY : SOURCE==="xml"?(XML_FILE||"xml") : SOURCE==="text"?"texte libre" : (URLS_RAW||"url");
   var reportPath = generateHTMLReport(allResults, MODE, sourceLabel);
   console.log("\n[RAPPORT HTML] " + path.basename(reportPath));
 
-  // Conversion HTML → PDF pour Jira
+  // Conversion HTML → PDF
   var pdfPath = await convertHtmlToPdf(reportPath);
+  console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "done", message: pass + "/" + total + " PASS (" + pct + "%)", pct: 100, pass: pass, fail: fail, total: total, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null }));
 
   var bugKeys = [];
   var fails = allResults.filter(function(r){return r.status==="FAIL";});
-  if (fails.length > 0) {
+  if (fails.length > 0 && NO_JIRA_PUSH) {
+    console.log("\n[INFO] " + fails.length + " FAIL(s) — pas de création de bugs Jira (--no-jira-push)");
+  }
+  if (fails.length > 0 && !NO_JIRA_PUSH) {
     console.log("\n[BUGS] " + fails.length + " FAIL(s)...");
     for (var i = 0; i < fails.length; i++) {
       var k = await createBugJira(fails[i], MODE);

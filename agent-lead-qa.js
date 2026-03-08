@@ -1,5 +1,5 @@
-// agent-lead-qa.js — Cerveau IA d'AbyQA V3
-// Propulsé par Claude API (Anthropic)
+// agent-lead-qa.js — Cerveau IA V3
+// Propulsé par Anthropic API
 // Remplace Ollama pour toutes les décisions et générations QA
 // Usage : const leadQA = require("./agent-lead-qa");
 
@@ -29,7 +29,7 @@ const ANTI_HALLU =
   "7. Ne complète JAMAIS un contenu manquant par supposition ou invention.\n\n";
 
 // ── SYSTEM PROMPT — RÈGLES QA SAFRAN ─────────────────────────────────────────
-const SYSTEM_QA = `Tu es Aby QA — Lead QA Senior et expert en automatisation pour Safran Group.
+const SYSTEM_QA = `Tu es un QA Senior et expert en automatisation pour Safran Group.
 
 Projet Jira : SAFWBST (Safran - Website)
 Environnements : Sophie (staging), Paulo (staging2), Prod (www.safran-group.com)
@@ -201,11 +201,11 @@ TYPES D'AUTOMATISATION PLAYWRIGHT
 // ── HELPER : pause async ─────────────────────────────────────────────────────
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
-// ── HELPER : appel Claude (avec retry backoff sur 429, fallback Ollama) ───────
+// ── HELPER : appel LLM API (avec retry backoff sur 429, fallback Ollama) ─────
 async function ask(userPrompt, model, systemOverride) {
   var hasCredits = !!CFG.anthropic.apiKey;
 
-  // Tenter Claude API en premier (3 essais max sur rate-limit)
+  // Tenter Anthropic API en premier (3 essais max sur rate-limit)
   if (hasCredits) {
     var MAX_RETRY = 3;
     for (var attempt = 1; attempt <= MAX_RETRY; attempt++) {
@@ -227,7 +227,7 @@ async function ask(userPrompt, model, systemOverride) {
           break;
         }
         if (e.status === 400 || e.status === 402) {
-          console.warn("[LeadQA] Claude API indisponible (" + e.status + ") → fallback Ollama");
+          console.warn("[LeadQA] Anthropic API indisponible (" + e.status + ") → fallback Ollama");
           break;
         }
         throw e;
@@ -480,7 +480,7 @@ async function decideStrategy(ticket) {
   var desc    = extractText((ticket.fields && ticket.fields.description) || ticket.description);
 
   var prompt =
-    "En tant que Lead QA Senior, décide la stratégie de test optimale pour ce ticket.\n\n" +
+    "En tant que QA Senior, décide la stratégie de test optimale pour ce ticket.\n\n" +
     "Ticket  : " + (ticket.key || "") + "\n" +
     "Résumé  : " + summary + "\n" +
     "Description : " + desc.substring(0, 600) + "\n\n" +
@@ -559,7 +559,7 @@ async function generateTestCasesCSV(us, count) {
   return csv;
 }
 
-// ── 6b. ANALYSE + REVUE + STRATEGIE FUSIONNEES (1 seul appel Claude) ────────
+// ── 6b. ANALYSE + REVUE + STRATEGIE FUSIONNEES (1 seul appel IA) ────────────
 // Fusionne reviewUS + analyzeUS + decideStrategy en un seul prompt
 async function analyzeAndReviewUS(ticket) {
   var key     = ticket.key || "?";
@@ -736,7 +736,7 @@ function extractEpic(ticket) {
   // Champs Jira courants pour l'epic
   var epic = f.customfield_10014 || f.customfield_10008 || f["Epic Name"] || "";
   if (!epic && f.labels && f.labels.length) {
-    // Chercher un label qui ressemble à un nom d'epic (pas une version, pas un tag AbyQA)
+    // Chercher un label qui ressemble à un nom d'epic (pas une version, pas un tag auto)
     epic = f.labels.find(function(l) {
       return l && !l.match(/^v\d/) && !l.match(/aby-qa|auto-generated/i);
     }) || "";
@@ -784,7 +784,7 @@ function saveCSV(content, name) {
 if (require.main === module) {
   (async function() {
     console.log("══════════════════════════════════════════════");
-    console.log("  ABY QA — Lead QA Agent (Claude API)");
+    console.log("  QA Agent");
     console.log("══════════════════════════════════════════════");
 
     // Test rapide avec un ticket fictif
@@ -823,11 +823,11 @@ if (require.main === module) {
   })();
 }
 
-// ── ANALYSE IMAGE (Claude Vision) ─────────────────────────────────────────────
+// ── ANALYSE IMAGE (Vision API) ───────────────────────────────────────────────
 // Analyse un screenshot ou toute image pour en extraire un contexte QA
 async function analyzeImage(base64Data, mimeType) {
   var mediaType = (mimeType || "image/png").replace("image/jpg", "image/jpeg");
-  // Valider que c'est un type supporté par Claude Vision
+  // Valider que c'est un type supporté par Vision API
   var supported = ["image/jpeg","image/png","image/gif","image/webp"];
   if (!supported.includes(mediaType)) mediaType = "image/png";
 
@@ -914,7 +914,7 @@ async function analyzeAgentError(ctx) {
     : "fichier inconnu";
 
   var prompt =
-    "Tu es un expert Node.js et développeur senior. Un agent AbyQA a planté avec une erreur.\n\n" +
+    "Tu es un expert Node.js et développeur senior. Un agent QA a planté avec une erreur.\n\n" +
     "Agent : " + ctx.agentId + "\n" +
     "Fichier : " + fileRef + "\n\n" +
     "ERREURS :\n" + ctx.errorLines + "\n\n" +
@@ -951,7 +951,7 @@ async function analyzePlaywrightFail(logs, resultData) {
   }).slice(0, 20).join("\n");
   var bugList = (resultData.bugs || []).map(function(b) { return "- " + (b.title || b); }).join("\n");
 
-  var prompt = "Tu es Lead QA expert Playwright et développeur web senior.\n" +
+  var prompt = "Tu es QA expert Playwright et développeur web senior.\n" +
     "Un run Playwright a échoué. Analyse les logs et fournis un diagnostic structuré.\n\n" +
     "Ticket: " + (resultData.ticketKey || "?") + " | Mode: " + (resultData.mode || "?") +
     " | Env: " + (resultData.env || "?") +
@@ -981,7 +981,7 @@ async function analyzePlaywrightFail(logs, resultData) {
     "RÈGLES pour actionSuggérée.type :\n" +
     "- OPEN_JIRA : ouvrir le ticket Jira pour corriger manuellement\n" +
     "- AUTO_FIX : correction automatique applicable par le code (fournir le snippet dans 'code')\n" +
-    "- OPEN_CONFIG : rediriger vers les paramètres AbyQA\n" +
+    "- OPEN_CONFIG : rediriger vers les paramètres de l'outil QA\n" +
     "- CLAUDE_CODE : erreur complexe nécessitant une analyse approfondie";
 
   var fallback = {
@@ -1020,15 +1020,15 @@ async function analyzePlaywrightFail(logs, resultData) {
         affectedPages:   parsed.pages || parsed.affectedPages || []
       };
       // Post-correction : si le LLM accuse le ticket Jira mais que l'erreur contient
-      // des caractères Jira parasites dans les URLs → c'est un problème de parsing AbyQA
+      // des caractères Jira parasites dans les URLs → c'est un problème de parsing interne
       if (result.typeErreur === "SYNTAX_JIRA") {
         var allText = (result.diagnostic + " " + result.causeProbable + " " + result.correction).toLowerCase();
         var hasJiraChars = /[\)\(\]\[\|\_\{\}]/.test(allText) || /url.*malform|caract.*parasit|pars/i.test(allText);
         if (hasJiraChars) {
           result.typeErreur = "PARSING";
-          result.diagnostic = "Caractères Jira détectés dans l'URL extraite — correction automatique appliquée par AbyQA. " + result.diagnostic;
+          result.diagnostic = "Caractères Jira détectés dans l'URL extraite — correction automatique appliquée par l'outil QA. " + result.diagnostic;
           result.diagnosis = result.diagnostic;
-          result.causeProbable = "Le parser d'URLs AbyQA n'éliminait pas les caractères de syntaxe Jira ( ) [ ] | _ en fin d'URL.";
+          result.causeProbable = "Le parser d'URLs n'éliminait pas les caractères de syntaxe Jira ( ) [ ] | _ en fin d'URL.";
           result.cause = result.causeProbable;
           result["actionSuggérée"] = { type: "AUTO_FIX", valeur: "", code: "" };
         }

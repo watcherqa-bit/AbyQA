@@ -1,4 +1,4 @@
-﻿// agent-server.js v2 - Serveur local Aby QA V2
+﻿// agent-server.js v2 - Serveur local
 // Permet d'executer tous les agents depuis le dashboard sans terminal
 // Usage : node agent-server.js
 // Dashboard : http://localhost:3210
@@ -80,7 +80,7 @@ try {
   }
 } catch(e) { console.warn("[CHAT] SDK Anthropic non disponible :", e.message); }
 
-const CHAT_SYSTEM = `Tu es Aby — assistant IA polyvalent intégré à la plateforme AbyQA V3 pour Safran Group.
+const CHAT_SYSTEM = `Tu es l'assistant QA — assistant IA polyvalent intégré à la plateforme pour Safran Group.
 
 ## Domaines de compétence
 
@@ -104,13 +104,13 @@ const CHAT_SYSTEM = `Tu es Aby — assistant IA polyvalent intégré à la plate
 ## Comportement
 - Réponds en français sauf si l'utilisateur écrit dans une autre langue
 - Sois concis et orienté action — propose du code ou des étapes concrètes quand c'est utile
-- Si une question concerne directement l'app AbyQA ou Safran, contextualise ta réponse en conséquence`;
+- Si une question concerne directement l'app ou Safran, contextualise ta réponse en conséquence`;
 const PORT        = CFG.server.port;
 const BASE_DIR    = __dirname;
 const REPORTS_DIR = CFG.paths.reports;
 const UPLOADS_DIR = CFG.paths.uploads;
 
-// â"€â"€ ROUTER LLM (ajout V2 Lead QA IA) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+// â"€â"€ ROUTER LLM (ajout V2 IA) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const router          = require("./agent-router");
 const AVAILABLE_AGENTS = router.AVAILABLE_AGENTS;
 
@@ -209,6 +209,15 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   proc.stdout.on("data", function(data) {
     data.toString().split("\n").forEach(function(line) {
       if (line.trim()) {
+        // Intercepter les événements de progression Playwright
+        if (line.trim().startsWith("PLAYWRIGHT_PROGRESS:")) {
+          try {
+            var progressData = JSON.parse(line.trim().replace("PLAYWRIGHT_PROGRESS:", ""));
+            progressData.type = "playwright-progress";
+            progressData.agent = agentId;
+            sendSSE(clientId, progressData);
+          } catch(e) {}
+        }
         sendSSE(clientId, { type: "log", agent: agentId, line: dryPrefix + line.trim() });
         logBuf.push(line.trim());
       }
@@ -277,7 +286,7 @@ function triggerAutoDebug(agentId, logs, clientId) {
   sendSSE(clientId, { type: "log", agent: agentId,
     line: "ðŸ§ [AUTO-DEBUG] Erreur dÃ©tectÃ©e  —  analyse IA en cours..." });
 
-  // 5. Appeler Claude
+  // 5. Appeler IA
   leadQA.analyzeAgentError({
     agentId:     agentId,
     errorLines:  errorLines.slice(0, 15).join("\n"),
@@ -353,7 +362,7 @@ async function importXrayCSV(ticketKey, csvContent) {
   var xrayAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
 
   // Construire le multipart/form-data
-  var boundary = "----AbyQA" + Date.now();
+  var boundary = "----QABoundary" + Date.now();
   var body = "--" + boundary + "\r\n" +
     "Content-Disposition: form-data; name=\"file\"; filename=\"" + ticketKey + "-cas-test.csv\"\r\n" +
     "Content-Type: text/csv\r\n\r\n" +
@@ -1496,7 +1505,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // â"€â"€ API : LLM Router  —  Lead QA IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+  // â"€â"€ API : LLM Router  —  IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "POST" && url === "/api/route") {
     var routeChunks = [];
     req.on("data", function(c) { routeChunks.push(c); });
@@ -1605,7 +1614,7 @@ var server = http.createServer(function(req, res) {
                       webp:"image/webp", html:"text/html", txt:"text/plain", md:"text/plain",
                       pdf:"application/pdf", csv:"text/csv" };
       var fmime   = mimeMap[ext] || "application/octet-stream";
-      var boundary = "----AbyQABoundary" + Date.now();
+      var boundary = "----QABoundary" + Date.now();
       var CRLF = "\r\n";
 
       var headerPart = Buffer.from(
@@ -1918,7 +1927,7 @@ var server = http.createServer(function(req, res) {
           comment += "\n";
         }
 
-        comment += "_QA Automation — agent-playwright-direct.js_";
+        comment += "_QA_";
 
         // POST commentaire Jira
         var commentPayload = JSON.stringify({ body: comment });
@@ -2016,7 +2025,7 @@ var server = http.createServer(function(req, res) {
         var fdata2     = fs.readFileSync(arPath2);
         var arAuth2    = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
         var arHttps    = require("https");
-        var arBoundary = "----AbyQABound" + Date.now();
+        var arBoundary = "----QABoundary" + Date.now();
         var CRLF2      = "\r\n";
         var arMime     = /\.pdf$/i.test(arFname) ? "application/pdf" : /\.md$/i.test(arFname) ? "text/markdown" : "text/html";
         var hPart2     = Buffer.from("--" + arBoundary + CRLF2 + 'Content-Disposition: form-data; name="file"; filename="' + arFname + '"' + CRLF2 + "Content-Type: " + arMime + CRLF2 + CRLF2);
@@ -2242,74 +2251,144 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // POST /api/cycle/ticket/:key/run  —  lancer test Playwright sur un ticket validÃ©
+  // POST /api/cycle/ticket/:key/run  —  lancer test Playwright sur un ticket validé
   if (method === "POST" && url.startsWith("/api/cycle/ticket/") && url.endsWith("/run")) {
     var ticketKey = url.replace("/api/cycle/ticket/", "").replace("/run", "");
-    try {
-      cycle.markTicketRunning(ticketKey);
-      var c1Settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8"));
-      var c1Args = [
-        "agent-playwright-direct.js",
-        "--mode=ui",
-        "--source=jira-key",
-        "--key=" + ticketKey,
-        "--envs=" + (c1Settings.envs || ["sophie"]).join(","),
-        "--browsers=" + (c1Settings.browsers || ["chromium"]).join(",")
-      ];
-      runAgent("playwright-direct-c1-" + ticketKey, "node", c1Args, "default", false, {
-        onDone: function(exitCode, logs) {
-          var c1Result = { pass: 0, fail: 0, total: 0 };
-          var rLine = logs.find(function(l) { return l.startsWith("PLAYWRIGHT_DIRECT_RESULT:"); });
-          if (rLine) { try { c1Result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e){} }
-          cycle.markTicketDone(ticketKey, c1Result);
-          var allPass = c1Result.fail === 0 && c1Result.total > 0;
+    var c1Body = "";
+    req.on("data", function(c) { c1Body += c; });
+    req.on("end", function() {
+      try {
+        var c1Opts = {};
+        try { c1Opts = JSON.parse(c1Body); } catch(e) {}
+        cycle.markTicketRunning(ticketKey);
+        var c1Settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8"));
 
-          // Attacher le rapport au ticket Jira (PASS ou FAIL)
-          if (c1Result.reportPath) {
-            var rptFullPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
-            if (fs.existsSync(rptFullPath)) {
-              attachFileToJira(ticketKey, rptFullPath);
-            }
-          }
+        // Phase 2 — Auto-déduire le mode depuis le ticket Jira via leadQA.decideStrategy
+        var deduceMode = Promise.resolve(c1Opts.mode || null);
+        if (!c1Opts.mode) {
+          deduceMode = (function() {
+            var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+            return new Promise(function(resolve) {
+              var jr = require("https").request({
+                hostname: CFG.jira.host,
+                path: "/rest/api/3/issue/" + ticketKey + "?fields=summary,description,issuetype",
+                method: "GET",
+                headers: { "Authorization": "Basic " + auth, "Accept": "application/json" }
+              }, function(jRes) {
+                var d = "";
+                jRes.on("data", function(c) { d += c; });
+                jRes.on("end", function() {
+                  try {
+                    var issue = JSON.parse(d);
+                    if (!issue || !issue.fields) { resolve("ui"); return; }
+                    sendSSE("default", { type: "cycle1-progress", key: ticketKey, step: "analyze", message: "Analyse du ticket " + ticketKey + "..." });
+                    leadQA.decideStrategy(issue).then(function(strategy) {
+                      var mode = (strategy && strategy.playwrightMode) || "ui";
+                      // Modes valides pour playwright-direct : ui, api, fix, tnr
+                      var validModes = { ui:1, api:1, fix:1, tnr:1 };
+                      if (!validModes[mode]) mode = "ui";
+                      sendSSE("default", { type: "cycle1-progress", key: ticketKey, step: "strategy", message: "Stratégie : " + mode + " (" + (strategy.reasoning || "") + ")" });
+                      resolve(mode);
+                    }).catch(function(e) {
+                      sendSSE("default", { type: "cycle1-progress", key: ticketKey, step: "strategy", message: "Stratégie fallback ui (erreur analyse)" });
+                      resolve("ui");
+                    });
+                  } catch(e) { resolve("ui"); }
+                });
+              });
+              jr.on("error", function() { resolve("ui"); });
+              jr.end();
+            });
+          })();
+        }
 
-          // Si FAIL → lancer l'analyse IA en arrière-plan et envoyer le résultat via SSE
-          if (!allPass) {
-            var failLogs = logs.slice(-150).join("\n");
-            var reportContent = "";
-            if (c1Result.reportPath) {
-              var rpPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
-              try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) {}
-            }
-            leadQA.analyzePlaywrightFail(failLogs, {
-              ticketKey: ticketKey, mode: "ui", env: (c1Settings.envs || ["sophie"]).join(","),
-              pass: c1Result.pass, fail: c1Result.fail, total: c1Result.total
-            }).then(function(diag) {
+        deduceMode.then(function(mode) {
+          var c1Args = [
+            "agent-playwright-direct.js",
+            "--mode=" + (mode || "ui"),
+            "--source=jira-key",
+            "--key=" + ticketKey,
+            "--envs=" + (c1Settings.envs || ["sophie"]).join(","),
+            "--browsers=" + (c1Settings.browsers || ["chromium"]).join(","),
+            "--no-jira-push"
+          ];
+          runAgent("playwright-direct-c1-" + ticketKey, "node", c1Args, "default", false, {
+            onDone: function(exitCode, logs) {
+              var c1Result = { pass: 0, fail: 0, total: 0 };
+              var rLine = logs.find(function(l) { return l.startsWith("PLAYWRIGHT_DIRECT_RESULT:"); });
+              if (rLine) { try { c1Result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e){} }
+              cycle.markTicketDone(ticketKey, c1Result);
+              var allPass = c1Result.fail === 0 && c1Result.total > 0;
+
+              // Phase 1 — Plus d'attachement automatique. Le rapport reste local.
+              // L'utilisateur peut l'attacher manuellement via POST /api/attach-report/:key
+
+              // Si FAIL → lancer l'analyse IA en arrière-plan
+              if (!allPass) {
+                var failLogs = logs.slice(-150).join("\n");
+                var reportContent = "";
+                if (c1Result.reportPath) {
+                  var rpPath = path.join(BASE_DIR, "reports", c1Result.reportPath);
+                  try { reportContent = fs.readFileSync(rpPath, "utf8"); } catch(e) {}
+                }
+                leadQA.analyzePlaywrightFail(failLogs, {
+                  ticketKey: ticketKey, mode: mode || "ui", env: (c1Settings.envs || ["sophie"]).join(","),
+                  pass: c1Result.pass, fail: c1Result.fail, total: c1Result.total
+                }).then(function(diag) {
+                  sendSSE("default", {
+                    type: "cycle1-fail-analysis",
+                    key: ticketKey,
+                    result: c1Result,
+                    reportFile: c1Result.reportPath || null,
+                    pdfFile: c1Result.pdfPath || null,
+                    reportContent: reportContent.substring(0, 5000),
+                    diagnostic: diag
+                  });
+                }).catch(function() {});
+              }
+
               sendSSE("default", {
-                type: "cycle1-fail-analysis",
+                type: "cycle1-ticket-done",
                 key: ticketKey,
                 result: c1Result,
+                ok: allPass,
                 reportFile: c1Result.reportPath || null,
-                reportContent: reportContent.substring(0, 5000),
-                diagnostic: diag
+                pdfFile: c1Result.pdfPath || null,
+                mode: mode || "ui"
               });
-            }).catch(function() {});
-          }
-
-          sendSSE("default", {
-            type: "cycle1-ticket-done",
-            key: ticketKey,
-            result: c1Result,
-            ok: allPass,
-            reportFile: c1Result.reportPath || null
+            }
           });
-        }
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, key: ticketKey }));
-    } catch(e) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: ticketKey, mode: mode }));
+        });
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /api/attach-report/:key  —  attacher manuellement un rapport à un ticket Jira
+  if (method === "POST" && url.startsWith("/api/attach-report/")) {
+    var arKey = url.replace("/api/attach-report/", "").split("?")[0];
+    var arBody = "";
+    req.on("data", function(c) { arBody += c; });
+    req.on("end", function() {
+      try {
+        var arData = JSON.parse(arBody);
+        var arFile = arData.file; // nom du fichier dans reports/
+        if (!arFile) { res.writeHead(400); res.end(JSON.stringify({ error: "file requis" })); return; }
+        var arFullPath = path.join(BASE_DIR, "reports", arFile);
+        if (!fs.existsSync(arFullPath)) { res.writeHead(404); res.end(JSON.stringify({ error: "Fichier introuvable" })); return; }
+        attachFileToJira(arKey, arFullPath);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, key: arKey, file: arFile }));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
     return;
   }
 
@@ -2438,7 +2517,7 @@ var server = http.createServer(function(req, res) {
         var attached = [], errors = [];
 
         function attachFile(filename, buffer, mime, next) {
-          var boundary = "AbyQABoundary" + Date.now();
+          var boundary = "QABoundary" + Date.now();
           var CRLF     = "\r\n";
           var hdr = Buffer.from(
             "--" + boundary + CRLF +
@@ -2514,7 +2593,7 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // GET /reports/:filename  —  servir un rapport .md
+  // GET /reports/:filename  —  servir un rapport (PDF, HTML, MD)
   if (method === "GET" && url.startsWith("/reports/")) {
     var rptFile = url.replace("/reports/", "").split("?")[0];
     if (rptFile.includes("..") || rptFile.includes("/") || rptFile.includes("\\")) {
@@ -2523,10 +2602,17 @@ var server = http.createServer(function(req, res) {
     }
     var rptPath = path.join(BASE_DIR, "reports", rptFile);
     if (!fs.existsSync(rptPath)) { res.writeHead(404); res.end("Not found"); return; }
-    res.writeHead(200, {
-      "Content-Type": "text/markdown; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="' + rptFile + '"'
-    });
+    var rptMime = /\.pdf$/i.test(rptFile) ? "application/pdf"
+      : /\.html$/i.test(rptFile) ? "text/html; charset=utf-8"
+      : "text/markdown; charset=utf-8";
+    var rptHeaders = { "Content-Type": rptMime };
+    // PDF et HTML : inline (affichage dans le navigateur), MD : download
+    if (/\.(pdf|html)$/i.test(rptFile)) {
+      rptHeaders["Content-Disposition"] = 'inline; filename="' + rptFile + '"';
+    } else {
+      rptHeaders["Content-Disposition"] = 'attachment; filename="' + rptFile + '"';
+    }
+    res.writeHead(200, rptHeaders);
     fs.createReadStream(rptPath).pipe(res);
     return;
   }

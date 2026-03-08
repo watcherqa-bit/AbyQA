@@ -102,7 +102,7 @@ function uploadAttachment(issueKey, filePath) {
     var auth      = Buffer.from(CONFIG.jira.email + ":" + CONFIG.jira.token).toString("base64");
     var fileData  = fs.readFileSync(filePath);
     var fileName  = path.basename(filePath);
-    var boundary  = "----AbyQABoundary" + Date.now();
+    var boundary  = "----QABoundary" + Date.now();
     var CRLF      = "\r\n";
 
     var header = "--" + boundary + CRLF +

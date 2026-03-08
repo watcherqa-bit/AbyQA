@@ -108,7 +108,7 @@ module.exports = {
     port: parseInt(process.env.PORT || get("SERVER_PORT", "3210"))
   },
 
-  // Anthropic Claude API
+  // Anthropic API
   anthropic: {
     apiKey: get("ANTHROPIC_API_KEY", "")
   },
