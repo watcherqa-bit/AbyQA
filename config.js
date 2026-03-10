@@ -131,13 +131,15 @@ module.exports = {
     screenshots: path.join(__dirname, get("SCREENSHOTS_DIR", "screenshots")),
     uploads:     path.join(__dirname, get("UPLOADS_DIR",     "uploads")),
     assets:      path.join(__dirname, get("ASSETS_DIR",      "assets")),
+    collections: path.join(__dirname, get("COLLECTIONS_DIR", "collections")),
     // Cree les dossiers si absents
     init: function() {
       var dirs = [
         module.exports.paths.reports,
         module.exports.paths.screenshots,
         module.exports.paths.uploads,
-        module.exports.paths.assets
+        module.exports.paths.assets,
+        module.exports.paths.collections
       ];
       dirs.forEach(function(d) {
         if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
