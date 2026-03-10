@@ -22,6 +22,7 @@ const { chromium } = require("playwright");
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const CFG             = require("./config");
+const ISTQB           = require("./istqb-knowledge");
 CFG.paths.init();
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
 const REPORTS_DIR     = CFG.paths.reports;
@@ -313,7 +314,8 @@ function extractJSON(text) {
 }
 
 async function generateContent(typeConfig, topic, count) {
-  var prompt = "You are a copywriter for Safran, international aeronautics and defense group.\n" +
+  var prompt = ISTQB.forDrupal + "\n\n" +
+    "You are a copywriter for Safran, international aeronautics and defense group.\n" +
     "Generate " + count + " content item(s) about: \"" + topic + "\"\n" +
     "Content type: " + typeConfig.label + "\n" +
     "Respond ONLY in English (website language).\n\n" +
