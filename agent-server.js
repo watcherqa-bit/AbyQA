@@ -80,7 +80,7 @@ try {
   }
 } catch(e) { console.warn("[CHAT] SDK Anthropic non disponible :", e.message); }
 
-const CHAT_SYSTEM = `Tu es l'assistant QA — assistant IA polyvalent intégré à la plateforme pour Safran Group.
+const CHAT_SYSTEM = ISTQB.forChat + "\n\n" + `Tu es l'assistant QA — assistant IA polyvalent intégré à la plateforme pour Safran Group.
 
 ## Domaines de compétence
 
@@ -124,6 +124,7 @@ const cycle = require("./agent-cycle");
 const handleChatRoutes     = require("./routes/chat");
 const handleEnrichedRoutes = require("./routes/enriched");
 const handleBacklogRoutes  = require("./routes/backlog");
+const ISTQB = require("./istqb-knowledge");
 
 var sseClients   = {};
 
@@ -767,6 +768,7 @@ var server = http.createServer(function(req, res) {
         }
 
         var prompt =
+          ISTQB.forGeneration + "\n\n" +
           "Tu es Lead QA expert chez Safran Group, certifié ISTQB CTFL.\n\n" +
           "RÈGLES ABSOLUES — NE PAS VIOLER :\n" +
           "1. Tu ne génères QUE du contenu basé sur les données du ticket fourni. RIEN d'autre.\n" +
@@ -1983,6 +1985,16 @@ var server = http.createServer(function(req, res) {
             });
             break;
 
+          case "postman":
+            var postmanMode = params.mode || "generate";
+            var postmanSource = params.source || "text";
+            runAgent("postman", "node", ["agent-postman.js", postmanMode, postmanSource], clientId);
+            break;
+          case "appium":
+            var appiumMode = params.mode || "generate";
+            var appiumSource = params.source || "text";
+            runAgent("appium", "node", ["agent-appium.js", appiumMode, appiumSource], clientId);
+            break;
           default:
             sendSSE(clientId, { type: "err", agent: agent, line: "Agent inconnu : " + agent });
         }
@@ -3682,6 +3694,167 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // -- API : Postman ---------------------------------------------------------------
+  if (method === "POST" && url === "/api/postman/generate") {
+    var pmgChunks = [];
+    req.on("data", function(c) { pmgChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(pmgChunks).toString());
+        var result = await leadQA.generatePostmanCollection(body);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: result }));
+      } catch(e) {
+        console.error("[postman/generate] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (method === "POST" && url === "/api/postman/run") {
+    var pmrChunks = [];
+    req.on("data", function(c) { pmrChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(pmrChunks).toString());
+        var agentPostman = require("./agent-postman");
+        var result = await agentPostman.runCollection(body);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: result }));
+      } catch(e) {
+        console.error("[postman/run] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (method === "GET" && url === "/api/postman/collections") {
+    try {
+      var colDir = CFG.paths.collections || path.join(BASE_DIR, "collections");
+      var files = fs.existsSync(colDir) ? fs.readdirSync(colDir).filter(function(f) { return f.endsWith(".json"); }) : [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, collections: files }));
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (method === "GET" && /^\/api\/postman\/report\/[^/]+$/.test(url)) {
+    var pmReportId = url.split("/").pop();
+    try {
+      var pmReportPath = path.join(REPORTS_DIR, pmReportId);
+      if (!fs.existsSync(pmReportPath)) { res.writeHead(404); res.end("Not found"); return; }
+      var pmReportData = fs.readFileSync(pmReportPath, "utf8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(pmReportData);
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (method === "DELETE" && /^\/api\/postman\/collection\/[^/]+$/.test(url)) {
+    var pmDelId = url.split("/").pop();
+    try {
+      var colDir2 = CFG.paths.collections || path.join(BASE_DIR, "collections");
+      var pmDelPath = path.join(colDir2, pmDelId);
+      if (fs.existsSync(pmDelPath)) fs.unlinkSync(pmDelPath);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // -- API : Appium ---------------------------------------------------------------
+  if (method === "POST" && url === "/api/appium/generate") {
+    var apgChunks = [];
+    req.on("data", function(c) { apgChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(apgChunks).toString());
+        var result = await leadQA.generateAppiumScript(body);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: result }));
+      } catch(e) {
+        console.error("[appium/generate] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (method === "POST" && url === "/api/appium/run") {
+    var aprChunks = [];
+    req.on("data", function(c) { aprChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(aprChunks).toString());
+        var agentAppium = require("./agent-appium");
+        var result = await agentAppium.runScript(body);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: result }));
+      } catch(e) {
+        console.error("[appium/run] Erreur:", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (method === "GET" && url === "/api/appium/scripts") {
+    try {
+      var scriptDir = CFG.paths.appiumScripts || path.join(BASE_DIR, "appium-scripts");
+      var files = fs.existsSync(scriptDir) ? fs.readdirSync(scriptDir).filter(function(f) { return f.endsWith(".js"); }) : [];
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, scripts: files }));
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (method === "GET" && /^\/api\/appium\/report\/[^/]+$/.test(url)) {
+    var apReportId = url.split("/").pop();
+    try {
+      var apReportPath = path.join(REPORTS_DIR, apReportId);
+      if (!fs.existsSync(apReportPath)) { res.writeHead(404); res.end("Not found"); return; }
+      var apReportData = fs.readFileSync(apReportPath, "utf8");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(apReportData);
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  if (method === "DELETE" && /^\/api\/appium\/script\/[^/]+$/.test(url)) {
+    var apDelId = url.split("/").pop();
+    try {
+      var scriptDir2 = CFG.paths.appiumScripts || path.join(BASE_DIR, "appium-scripts");
+      var apDelPath = path.join(scriptDir2, apDelId);
+      if (fs.existsSync(apDelPath)) fs.unlinkSync(apDelPath);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch(e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
   res.writeHead(404); res.end("Not found");
 });
 

@@ -1,8 +1,9 @@
 // agent-router.js — Router rule-based pour agents QA
 // Decide quel(s) agent(s) lancer selon la demande utilisateur.
 "use strict";
+const ISTQB = require("./istqb-knowledge");
 
-const AVAILABLE_AGENTS = ["playwright", "css-audit", "jira-reader", "xray-full", "matrix"];
+const AVAILABLE_AGENTS = ["playwright", "css-audit", "jira-reader", "xray-full", "matrix", "postman", "appium"];
 
 // ── ROUTING PAR REGLES ──────────────────────────────────────────────────────
 function ruleBasedRoute(demand, context, env) {
@@ -17,7 +18,7 @@ function ruleBasedRoute(demand, context, env) {
     coverage.push("ui");
   }
   if (/api|rest|endpoint|json|xml|service|back/.test(d)) {
-    agents.push("playwright");
+    agents.push("postman");
     coverage.push("api");
   }
   if (/login|auth|connexion|mot de passe|password|sso/.test(d)) {
@@ -40,6 +41,11 @@ function ruleBasedRoute(demand, context, env) {
   if (/ticket|jira|us|user story|lecture|analyse/.test(d)) {
     if (!agents.includes("jira-reader")) agents.push("jira-reader");
     coverage.push("smoke");
+  }
+
+  if (/mobile|android|ios|iphone|ipad|appium|natif|app mobile|smartphone/.test(d)) {
+    if (!agents.includes("appium")) agents.push("appium");
+    coverage.push("mobile");
   }
 
   if (agents.length === 0) {

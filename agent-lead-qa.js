@@ -9,6 +9,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const CFG       = require("./config");
 const fs        = require("fs");
 const path      = require("path");
+const ISTQB     = require("./istqb-knowledge");
 
 // ── CLIENT ANTHROPIC ──────────────────────────────────────────────────────────
 const client = new Anthropic({ apiKey: CFG.anthropic.apiKey });
@@ -29,7 +30,7 @@ const ANTI_HALLU =
   "7. Ne complète JAMAIS un contenu manquant par supposition ou invention.\n\n";
 
 // ── SYSTEM PROMPT — RÈGLES QA SAFRAN ─────────────────────────────────────────
-const SYSTEM_QA = `Tu es un QA Senior et expert en automatisation pour Safran Group.
+const SYSTEM_QA = ISTQB.foundation + "\n\n" + `Tu es un QA Senior et expert en automatisation pour Safran Group.
 
 Projet Jira : SAFWBST (Safran - Website)
 Environnements : Sophie (staging), Paulo (staging2), Prod (www.safran-group.com)
@@ -1366,6 +1367,64 @@ async function generateExecutableScenarios(ticket) {
   }
 }
 
+// ── GENERATION COLLECTION POSTMAN ────────────────────────────────────────────
+async function generatePostmanCollection(opts) {
+  var text = opts.text || "";
+  var ticketData = opts.ticketData || null;
+  var envName = opts.envName || "sophie";
+
+  var prompt = "Génère une collection Postman v2.1.0 (JSON) pour tester les APIs décrites.\n\n";
+  if (ticketData) {
+    prompt += "Ticket source :\n" + JSON.stringify(ticketData, null, 2) + "\n\n";
+  }
+  prompt += "Description :\n" + text + "\n\n";
+  prompt += "Environnement cible : " + envName + "\n\n";
+  prompt += "IMPORTANT :\n";
+  prompt += "- Format Postman Collection v2.1.0 strict\n";
+  prompt += "- Utilise des variables d'environnement {{baseUrl}}, {{token}}, etc.\n";
+  prompt += "- Inclus des tests (pm.test) dans chaque requête\n";
+  prompt += "- Catégorise chaque test : Nominal, Alternatif, Erreur, Limite (ISTQB)\n";
+  prompt += "- Retourne UNIQUEMENT le JSON, pas de markdown\n";
+
+  var result = await askJSON(
+    ANTI_HALLU + prompt,
+    SYSTEM_QA,
+    MODEL_QUALITY
+  );
+  return result;
+}
+
+// ── GENERATION SCRIPT APPIUM/WEBDRIVERIO ─────────────────────────────────────
+async function generateAppiumScript(opts) {
+  var text = opts.text || "";
+  var ticketData = opts.ticketData || null;
+  var platform = opts.platform || "android-chrome";
+
+  var prompt = "Génère un script de test mobile WebDriverIO/Appium.\n\n";
+  if (ticketData) {
+    prompt += "Ticket source :\n" + JSON.stringify(ticketData, null, 2) + "\n\n";
+  }
+  prompt += "Description du test :\n" + text + "\n\n";
+  prompt += "Plateforme : " + platform + "\n\n";
+  prompt += "IMPORTANT :\n";
+  prompt += "- Le script doit exporter : module.exports = async function(driver, ctx) { ... }\n";
+  prompt += "- ctx fournit : ctx.assert(condition, msg), ctx.screenshot(name), ctx.log(msg)\n";
+  prompt += "- Adapte les sélecteurs selon la plateforme (Android/iOS)\n";
+  prompt += "- Inclus des assertions significatives\n";
+  prompt += "- Retourne UNIQUEMENT le code JavaScript, pas de markdown\n";
+
+  var result = await client.messages.create({
+    model: MODEL_QUALITY,
+    max_tokens: 4096,
+    system: SYSTEM_QA,
+    messages: [{ role: "user", content: ANTI_HALLU + prompt }]
+  });
+
+  var code = result.content[0].text;
+  code = code.replace(/^```(?:javascript|js)?\n?/, "").replace(/\n?```$/, "");
+  return code;
+}
+
 // ── EXPORT ────────────────────────────────────────────────────────────────────
 module.exports = {
   // Analyse & décision
@@ -1407,6 +1466,9 @@ module.exports = {
   extractText,
   extractEpic,
   safeTruncate,
+  // Postman & Appium
+  generatePostmanCollection,
+  generateAppiumScript,
   // Modèles
   MODEL_FAST,
   MODEL_QUALITY
