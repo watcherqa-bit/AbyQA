@@ -3553,7 +3553,7 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── GET /api/session/status — Statut de toutes les sessions ──────────────
-  if (method === "GET" && urlPath === "/api/session/status") {
+  if (method === "GET" && url === "/api/session/status") {
     var authDir = path.join(__dirname, "auth");
     var sessionEnvs = ["prod", "sophie", "paulo"];
     var statuses = {};
@@ -3591,7 +3591,7 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── POST /api/session/upload — Upload storageState JSON ────────────────────
-  if (method === "POST" && urlPath === "/api/session/upload") {
+  if (method === "POST" && url === "/api/session/upload") {
     var bodyChunks = [];
     req.on("data", function(c) { bodyChunks.push(c); });
     req.on("end", function() {
@@ -3641,8 +3641,8 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── GET /api/session/:env — Statut d'une session spécifique ────────────────
-  if (method === "GET" && urlPath.match(/^\/api\/session\/[a-z]+$/)) {
-    var sEnvName = urlPath.split("/").pop();
+  if (method === "GET" && url.match(/^\/api\/session\/[a-z]+$/)) {
+    var sEnvName = url.split("/").pop();
     var sAuthFile = path.join(__dirname, "auth", sEnvName + ".json");
     if (!fs.existsSync(sAuthFile)) {
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -3663,8 +3663,8 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── POST /api/session/:env — Upload session (ancien format, compat) ────────
-  if (method === "POST" && urlPath.match(/^\/api\/session\/[a-z]+$/)) {
-    var pEnvName = urlPath.split("/").pop();
+  if (method === "POST" && url.match(/^\/api\/session\/[a-z]+$/)) {
+    var pEnvName = url.split("/").pop();
     if (["prod", "sophie", "paulo"].indexOf(pEnvName) === -1) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: "Env invalide" }));
