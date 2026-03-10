@@ -4298,6 +4298,207 @@ function wfInfo(status) {
 var eventSource = null;
 var activeAgent = null;
 
+// ══════════════════════════════════════════════════════════════════════════════
+// ── FONDATIONS UI UNIFIÉES ──────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+
+// -- API WRAPPER -- remplace tous les fetch() bruts -------------------------
+// Usage : api("/jira-push", { method:"POST", body: payload }).then(...)
+//         api("/backlog").then(data => ...)   // GET par defaut
+function api(endpoint, opts) {
+  opts = opts || {};
+  var method  = opts.method || "GET";
+  var body    = opts.body || null;
+  var headers = { "Content-Type": "application/json" };
+  if (opts.headers) Object.keys(opts.headers).forEach(function(k) { headers[k] = opts.headers[k]; });
+  var fetchOpts = { method: method, headers: headers };
+  if (body && method !== "GET") fetchOpts.body = typeof body === "string" ? body : JSON.stringify(body);
+  var url = SERVER + (endpoint.startsWith("/api") ? endpoint : "/api" + endpoint);
+  return fetch(url, fetchOpts)
+    .then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      var ct = r.headers.get("content-type") || "";
+      return ct.includes("json") ? r.json() : r.text();
+    });
+}
+
+// Variantes raccourcies
+function apiPost(endpoint, body) { return api(endpoint, { method: "POST", body: body }); }
+function apiPut(endpoint, body)  { return api(endpoint, { method: "PUT",  body: body }); }
+function apiDel(endpoint)        { return api(endpoint, { method: "DELETE" }); }
+
+// -- SSE EVENT BUS -- remplace les hooks handleSSE fragiles ------------------
+// Usage : sseBus.on("playwright-report-ready", function(data) { ... });
+//         sseBus.on("log:css-audit", function(data) { ... });
+//         sseBus.off("my-handler-id");
+var sseBus = (function() {
+  var listeners = {};
+  var idCounter = 0;
+  return {
+    on: function(event, fn) {
+      if (!listeners[event]) listeners[event] = [];
+      var id = "sse-" + (++idCounter);
+      listeners[event].push({ id: id, fn: fn });
+      return id;
+    },
+    off: function(id) {
+      Object.keys(listeners).forEach(function(ev) {
+        listeners[ev] = listeners[ev].filter(function(h) { return h.id !== id; });
+      });
+    },
+    emit: function(event, data) {
+      (listeners[event] || []).forEach(function(h) {
+        try { h.fn(data); } catch(e) { console.error("[sseBus]", event, e); }
+      });
+      // Wildcard "*" recoit tout
+      (listeners["*"] || []).forEach(function(h) {
+        try { h.fn(event, data); } catch(e) { console.error("[sseBus] *", e); }
+      });
+    }
+  };
+})();
+
+// -- RENDER HELPERS -- composants reutilisables ------------------------------
+
+// Badge PASS/FAIL/SKIP unifie (remplace 5+ copies inline)
+function renderBadge(status, opts) {
+  opts = opts || {};
+  var size = opts.size || "sm";
+  var map = {
+    "PASS":    { bg:"rgba(0,232,122,.15)", color:"var(--green)", icon:"\u2705", label:"PASS" },
+    "FAIL":    { bg:"rgba(255,59,92,.15)", color:"var(--red)",   icon:"\u274C", label:"FAIL" },
+    "SKIP":    { bg:"rgba(255,149,0,.15)", color:"var(--orange)", icon:"\u23ED", label:"SKIP" },
+    "BLOCKED": { bg:"rgba(239,68,68,.15)", color:"var(--red)",   icon:"\u26D4", label:"BLOQU\u00c9" },
+    "RUNNING": { bg:"rgba(59,111,255,.15)", color:"var(--blue)", icon:"\u23F3", label:"EN COURS" },
+    "PENDING": { bg:"rgba(107,114,128,.15)", color:"var(--text3)", icon:"\u23F8", label:"EN ATTENTE" }
+  };
+  var s = map[status] || map["PENDING"];
+  var fs = size === "lg" ? "13px" : size === "md" ? "11px" : "10px";
+  var pad = size === "lg" ? "4px 12px" : size === "md" ? "3px 10px" : "2px 8px";
+  return "<span style=\"background:" + s.bg + ";color:" + s.color + ";font-family:var(--mono);font-size:" + fs + ";padding:" + pad + ";border-radius:4px;font-weight:700\">" + s.icon + " " + s.label + "</span>";
+}
+
+// Barre de resultat unifiee (pass/fail/total)
+function renderResultBar(result) {
+  if (!result || !result.total) return "";
+  var pct = Math.round((result.pass / result.total) * 100);
+  var failPct = 100 - pct;
+  return "<div style=\"display:flex;align-items:center;gap:12px;margin:8px 0\">" +
+    "<div style=\"flex:1;height:6px;border-radius:3px;background:var(--bg3);overflow:hidden\">" +
+    "<div style=\"display:flex;height:100%\">" +
+    "<div style=\"width:" + pct + "%;background:var(--green)\"></div>" +
+    "<div style=\"width:" + failPct + "%;background:var(--red)\"></div>" +
+    "</div></div>" +
+    "<span style=\"font-family:var(--mono);font-size:12px;color:" + (pct === 100 ? "var(--green)" : "var(--red)") + "\">" + pct + "%</span>" +
+    "<span style=\"font-family:var(--mono);font-size:11px;color:var(--text3)\">" + result.pass + "/" + result.total + "</span>" +
+  "</div>";
+}
+
+// Card de resultat unifiee (Web/API/Mobile/CSS)
+function renderResultCard(data) {
+  var type = data.type || "web";
+  var icons = { web: "\uD83C\uDF10", api: "\uD83D\uDCE1", mobile: "\uD83D\uDCF1", css: "\uD83C\uDFA8" };
+  var labels = { web: "Web", api: "API", mobile: "Mobile", css: "CSS" };
+  var icon = icons[type] || icons.web;
+  var label = labels[type] || "Web";
+  var status = (data.fail || 0) > 0 ? "FAIL" : "PASS";
+  return "<div style=\"background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:8px\">" +
+    "<div style=\"display:flex;align-items:center;gap:10px;margin-bottom:6px\">" +
+    "<span style=\"font-size:16px\">" + icon + "</span>" +
+    "<span style=\"font-family:var(--mono);font-size:10px;background:rgba(59,111,255,.12);color:var(--blue);padding:2px 8px;border-radius:4px\">" + label + "</span>" +
+    (data.name ? "<span style=\"font-size:13px;color:var(--text)\">" + data.name + "</span>" : "") +
+    "<span style=\"margin-left:auto\">" + renderBadge(status) + "</span>" +
+    "</div>" +
+    renderResultBar({ pass: data.pass || 0, fail: data.fail || 0, total: data.total || 0 }) +
+    (data.duration ? "<div style=\"font-family:var(--mono);font-size:10px;color:var(--text3)\">\u23F1 " + data.duration + "</div>" : "") +
+  "</div>";
+}
+
+// Terminal factory -- remplace les 7 blocs HTML dupliques
+function buildTerminal(id, opts) {
+  opts = opts || {};
+  var title = opts.title || "Terminal";
+  var height = opts.height || "220px";
+  return "<div class=\"terminal-wrap\" id=\"term-wrap-" + id + "\" style=\"margin-top:12px\">" +
+    "<div style=\"display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-radius:8px 8px 0 0;border:1px solid var(--border);border-bottom:none\">" +
+    "<span style=\"display:flex;gap:4px\"><span style=\"width:8px;height:8px;border-radius:50%;background:#ff5f57\"></span><span style=\"width:8px;height:8px;border-radius:50%;background:#febc2e\"></span><span style=\"width:8px;height:8px;border-radius:50%;background:#28c840\"></span></span>" +
+    "<span style=\"font-family:var(--mono);font-size:11px;color:var(--text3)\">" + title + "</span>" +
+    "<span style=\"margin-left:auto;display:flex;gap:6px\">" +
+    "<button class=\"btn\" onclick=\"clearLog(\x27" + id + "\x27)\" style=\"font-size:11px;padding:2px 8px\">\u2715 Vider</button>" +
+    "</span></div>" +
+    "<div class=\"terminal-body\" id=\"" + id + "\" style=\"height:" + height + ";overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:0 0 8px 8px;padding:10px;font-family:var(--mono);font-size:12px;line-height:1.6\"></div>" +
+  "</div>";
+}
+
+// Modal manager -- remplace les 32 open/close fonctions
+var modalMgr = {
+  open: function(id, opts) {
+    opts = opts || {};
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = "flex";
+    if (opts.onOpen) opts.onOpen(el);
+    el._escHandler = function(e) { if (e.key === "Escape") modalMgr.close(id); };
+    document.addEventListener("keydown", el._escHandler);
+    el._bgHandler = function(e) { if (e.target === el) modalMgr.close(id); };
+    el.addEventListener("click", el._bgHandler);
+  },
+  close: function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = "none";
+    if (el._escHandler) document.removeEventListener("keydown", el._escHandler);
+    if (el._bgHandler) el.removeEventListener("click", el._bgHandler);
+  }
+};
+
+// -- JIRA UNIFIE -- remplace les 10+ fonctions push/attach ------------------
+
+// Push ou update un ticket Jira
+function jiraPush(action, payload) {
+  if (action === "create") {
+    return apiPost("/jira-push", payload);
+  } else if (action === "update") {
+    return apiPut("/jira-update/" + payload.key, payload);
+  }
+  return Promise.reject(new Error("jiraPush: action inconnue " + action));
+}
+
+// Attacher un ou plusieurs fichiers/rapports a un ticket Jira
+function jiraAttach(ticketKey, files) {
+  if (!Array.isArray(files)) files = [files];
+  return Promise.all(files.map(function(f) {
+    return apiPost("/attach-report-jira", {
+      jiraKey: ticketKey,
+      filename: typeof f === "string" ? f : f.filename,
+      reportFile: typeof f === "object" ? f.reportFile : undefined
+    });
+  }));
+}
+
+// -- FILTER GENERIQUE -------------------------------------------------------
+var _filters = {};
+function setFilter(scope, key, value) {
+  if (!_filters[scope]) _filters[scope] = {};
+  _filters[scope][key] = value;
+  if (scope === "backlog") {
+    if (key === "phase")    _backlogFilter = value;
+    if (key === "type")     _backlogTypeFilter = value;
+    if (key === "prio")     _backlogPrioFilter = value;
+    if (key === "assignee") _backlogAssigneeFilter = value;
+    if (key === "release")  _backlogReleaseFilter = value;
+    if (key === "search")   _backlogSearchFilter = value;
+    renderBacklogPending();
+  }
+}
+function getFilter(scope, key) {
+  return (_filters[scope] && _filters[scope][key]) || "all";
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// -- FIN FONDATIONS ----------------------------------------------------------
+// ══════════════════════════════════════════════════════════════════════════════
+
 // ── CONNEXION SSE ─────────────────────────────────────────────────────────────
 function connectSSE() {
   if (eventSource) eventSource.close();
@@ -4318,224 +4519,235 @@ function connectSSE() {
   };
 }
 
-function handleSSE(data) {
-  // Si le panneau Opérations est actif, rediriger les logs vers ops-log
+// -- Resolve terminal ID pour un event SSE --
+var _sseTermMap = {
+  "css-audit":         "logCSS",
+  "playwright":        "logCSS",
+  "xray-pipeline":     "logPipeline",
+  "jira-reader":       "logPipeline",
+  "matrix":            "logMatrix",
+  "drupal":            "logDrupal",
+  "drupal-audit":      "logDrupal",
+  "generate-ticket":   "logTickets",
+  "playwright-direct": "logPWDirect"
+};
+function sseTermId(data) {
   var opsPanel = document.getElementById('panel-operations');
   var opsActive = opsPanel && opsPanel.classList.contains('active');
-
-  var termMap = {
-    "css-audit":         "logCSS",
-    "playwright":        "logCSS",
-    "xray-pipeline":     "logPipeline",
-    "jira-reader":       "logPipeline",
-    "matrix":            "logMatrix",
-    "drupal":            "logDrupal",
-    "drupal-audit":      "logDrupal",
-    "generate-ticket":   "logTickets",
-    "playwright-direct": "logPWDirect",
-  };
-  var termId = opsActive ? "ops-log" : (termMap[data.agent] || "logPipeline");
   if (opsActive) document.getElementById('ops-terminal-wrap').style.display = 'block';
-  var isLLM = false;
+  return opsActive ? "ops-log" : (_sseTermMap[data.agent] || "logPipeline");
+}
+function sseOpsActive() {
+  var p = document.getElementById('panel-operations');
+  return p && p.classList.contains('active');
+}
 
-  if (data.type === "start") {
-    var termEl = document.getElementById(termId);
-    if (termEl) {
-      // Ne pas vider ops-log si le panel Ops l'a déjà pré-rempli
-      if (!(opsActive && termId === 'ops-log')) termEl.innerHTML = "";
-      if (isLLM) {
-        // Create a stream span for token-by-token rendering
-        var spanId = termId + "-stream";
-        var s = document.createElement("span");
-        s.id = spanId;
-        s.style.whiteSpace = "pre-wrap";
-        s.style.fontFamily = "var(--mono)";
-        s.style.fontSize = "13px";
-        s.style.color = "var(--txt)";
-        termEl.appendChild(s);
-        var modelLabel = data.cmd || "";
-        var meta = document.createElement("div");
-        meta.className = "log-cmd";
-        meta.style.marginBottom = "8px";
-        meta.textContent = "$ " + modelLabel;
-        termEl.insertBefore(meta, s);
-      } else {
-        log(termId, "$ " + data.cmd, "log-cmd");
-        setAgentRunning(data.agent, true);
-        activeAgent = data.agent;
-      }
-    }
-  } else if (data.type === "token") {
-    var span = document.getElementById(termId + "-stream");
-    if (span) {
-      span.textContent += data.token;
-      // Auto-scroll terminal
-      var termBody = span.closest(".terminal-body") || span.parentElement;
-      if (termBody) termBody.scrollTop = termBody.scrollHeight;
-    }
-  } else if (data.type === "log") {
-    var cls = data.line.includes("[OK]") || data.line.includes("✅") ? "log-ok" :
-              data.line.includes("[!]")  || data.line.includes("WARN") ? "log-warn" :
-              data.line.includes("[->]") || data.line.includes("INFO") ? "log-info" : "";
-    log(termId, data.line, cls);
-    // Tracker la progression des tests Playwright dans le panel Ops
-    if (opsActive && data.agent === "playwright-direct") opsTrackProgress(data.line);
-  } else if (data.type === "err") {
-    log(termId, data.line, "log-error");
-    // Stocker les erreurs pour pré-remplir Claude Code
-    _opsLastFailLog += (data.line || '') + '\n';
+function handleSSE(data) {
+  // Emettre sur le bus SSE unifie — les handlers sseBus.on() font le travail
+  sseBus.emit(data.type, data);
+  if (data.agent) sseBus.emit(data.type + ":" + data.agent, data);
+}
+
+// ── SSE HANDLERS (via sseBus) ────────────────────────────────────────────────
+
+sseBus.on("start", function(data) {
+  var termId = sseTermId(data);
+  var termEl = document.getElementById(termId);
+  if (termEl) {
+    if (!(sseOpsActive() && termId === 'ops-log')) termEl.innerHTML = "";
+    log(termId, "$ " + data.cmd, "log-cmd");
+    setAgentRunning(data.agent, true);
+    activeAgent = data.agent;
+  }
+});
+
+sseBus.on("token", function(data) {
+  var termId = sseTermId(data);
+  var span = document.getElementById(termId + "-stream");
+  if (span) {
+    span.textContent += data.token;
+    var termBody = span.closest(".terminal-body") || span.parentElement;
+    if (termBody) termBody.scrollTop = termBody.scrollHeight;
+  }
+});
+
+sseBus.on("log", function(data) {
+  var termId = sseTermId(data);
+  var cls = (data.line||"").includes("[OK]") || (data.line||"").includes("\u2705") ? "log-ok" :
+            (data.line||"").includes("[!]")  || (data.line||"").includes("WARN") ? "log-warn" :
+            (data.line||"").includes("[->]") || (data.line||"").includes("INFO") ? "log-info" : "";
+  log(termId, data.line, cls);
+  if (sseOpsActive() && data.agent === "playwright-direct") opsTrackProgress(data.line);
+});
+
+sseBus.on("err", function(data) {
+  var termId = sseTermId(data);
+  log(termId, data.line, "log-error");
+  _opsLastFailLog += (data.line || '') + '\n';
+  if (_opsLastFailLog.length > 3000) _opsLastFailLog = _opsLastFailLog.slice(-3000);
+});
+
+sseBus.on("agent-error-diagnosis", function(data) {
+  showErrorDiagnosis(data);
+});
+
+sseBus.on("playwright-report-ready", function(data) {
+  if (valHandlePlaywrightReport(data)) { loadPlaywrightReports(); return; }
+  loadPlaywrightReports();
+  var rRes = data.result || {};
+  var rMsg = rRes.fail > 0 ? "\u274C " + rRes.fail + " FAIL \u2014 " + (rRes.pass||0) + "/" + (rRes.total||0) + " pass" : "\u2705 100% PASS \u2014 " + (rRes.total||0) + " test(s)";
+  if (rRes.fail > 0) {
+    _opsLastFailLog = 'Playwright Report FAIL \u2014 ' + rRes.fail + '/' + (rRes.total||0) + ' tests \u00e9chou\u00e9s\n' +
+      (rRes.errors || []).join('\n') + '\n' + _opsLastFailLog;
     if (_opsLastFailLog.length > 3000) _opsLastFailLog = _opsLastFailLog.slice(-3000);
-    if (isLLM) {
-      llmRunning = false;
-      var btn = document.getElementById("btnLLMSend");
-      if (btn) { btn.disabled = false; btn.textContent = "🚀 Envoyer"; }
-    }
-  } else if (data.type === "agent-error-diagnosis") {
-    showErrorDiagnosis(data);
-  } else if (data.type === "playwright-report-ready") {
-    if (valHandlePlaywrightReport(data)) { loadPlaywrightReports(); return; }
-    loadPlaywrightReports();
-    var rRes = data.result || {};
-    var rMsg = rRes.fail > 0 ? "❌ " + rRes.fail + " FAIL — " + (rRes.pass||0) + "/" + (rRes.total||0) + " pass" : "✅ 100% PASS — " + (rRes.total||0) + " test(s)";
-    if (rRes.fail > 0) {
-      _opsLastFailLog = 'Playwright Report FAIL — ' + rRes.fail + '/' + (rRes.total||0) + ' tests échoués\n' +
-        (rRes.errors || []).join('\n') + '\n' + _opsLastFailLog;
-      if (_opsLastFailLog.length > 3000) _opsLastFailLog = _opsLastFailLog.slice(-3000);
-    }
-    showToast("Rapport généré — " + rMsg, rRes.fail > 0 ? "❌" : "✅");
-    // Afficher le résultat dans le panel Ops si actif
-    opsShowTestResult(rRes, data.diagnostic || null);
-    var bRpt = document.getElementById("badge-reports");
-    if (bRpt) { bRpt.style.display = ""; bRpt.textContent = (parseInt(bRpt.textContent) || 0) + 1; }
-  } else if (data.type === "enriched-ready") {
-    // Un ticket vient d'être enrichi par le queue agent — rafraîchir la liste + badge
-    loadEnrichedList();
-    showToast("[" + (data.key || "?") + "] Ticket enrichi prêt à valider", "✏️");
-  } else if (data.type === "test-queue-update") {
-    // Un test vient d'être ajouté à la file Playwright Direct
-    loadTestQueue();
-  } else if (data.type === "queue-item") {
-    // Mise à jour d'un item de la file de traitement (log discret)
-    if (data.status === "error") showToast("[" + data.key + "] Erreur traitement queue", "❌");
-  } else if (data.type === "validation-request") {
-    loadEnrichedList();
-  } else if (data.type === "chat-token") {
-    chatAppendStreamText(data.token);
-  } else if (data.type === "chat-done") {
-    finishChatStream(true);
-  } else if (data.type === "chat-error") {
-    chatAppendStreamText("\n❌ " + (data.message || "Erreur"));
-    finishChatStream(false);
-  } else if (data.type === "test-log-new") {
-    var badge = document.getElementById('badge-logs');
-    if (badge) {
-      var cur = parseInt(badge.textContent||'0', 10) || 0;
-      badge.textContent = cur + 1;
-      badge.style.display = 'inline-flex';
-    }
-    showToast('Nouveau log : ' + (data.log && data.log.testLabel ? data.log.testLabel : 'test FAIL'), '🔬');
-    return;
-  } else if (data.type === "poll-ticket") {
-    handlePollTickets(data);
-  } else if (data.type === "poll-qa-ready") {
-    handleQAReady(data);
-  } else if (data.type === "playwright-progress") {
-    if (!valHandlePlaywrightProgress(data)) handlePlaywrightProgress(data);
-  } else if (data.type === "cycle1-progress") {
-    handlePlaywrightProgress({ step: data.step, message: data.message, pct: data.step === "analyze" ? 2 : 5, key: data.key });
-  } else if (data.type === "cycle1-ticket-done") {
+  }
+  showToast("Rapport g\u00e9n\u00e9r\u00e9 \u2014 " + rMsg, rRes.fail > 0 ? "\u274C" : "\u2705");
+  opsShowTestResult(rRes, data.diagnostic || null);
+  var bRpt = document.getElementById("badge-reports");
+  if (bRpt) { bRpt.style.display = ""; bRpt.textContent = (parseInt(bRpt.textContent) || 0) + 1; }
+});
+
+sseBus.on("enriched-ready", function(data) {
+  loadEnrichedList();
+  showToast("[" + (data.key || "?") + "] Ticket enrichi pr\u00eat \u00e0 valider", "\u270F\uFE0F");
+});
+
+sseBus.on("test-queue-update", function(data) {
+  loadTestQueue();
+});
+
+sseBus.on("queue-item", function(data) {
+  if (data.status === "error") showToast("[" + data.key + "] Erreur traitement queue", "\u274C");
+});
+
+sseBus.on("validation-request", function(data) {
+  loadEnrichedList();
+});
+
+sseBus.on("chat-token", function(data) {
+  chatAppendStreamText(data.token);
+});
+
+sseBus.on("chat-done", function(data) {
+  finishChatStream(true);
+});
+
+sseBus.on("chat-error", function(data) {
+  chatAppendStreamText("\n\u274C " + (data.message || "Erreur"));
+  finishChatStream(false);
+});
+
+sseBus.on("test-log-new", function(data) {
+  var badge = document.getElementById('badge-logs');
+  if (badge) {
+    var cur = parseInt(badge.textContent||'0', 10) || 0;
+    badge.textContent = cur + 1;
+    badge.style.display = 'inline-flex';
+  }
+  showToast('Nouveau log : ' + (data.log && data.log.testLabel ? data.log.testLabel : 'test FAIL'), '\uD83D\uDD2C');
+});
+
+sseBus.on("poll-ticket", function(data) {
+  handlePollTickets(data);
+});
+
+sseBus.on("poll-qa-ready", function(data) {
+  handleQAReady(data);
+});
+
+sseBus.on("playwright-progress", function(data) {
+  if (!valHandlePlaywrightProgress(data)) handlePlaywrightProgress(data);
+});
+
+sseBus.on("cycle1-progress", function(data) {
+  handlePlaywrightProgress({ step: data.step, message: data.message, pct: data.step === "analyze" ? 2 : 5, key: data.key });
+});
+
+sseBus.on("cycle1-ticket-done", function(data) {
+  loadCycleState();
+  handleTestDoneNotification(data);
+});
+
+sseBus.on("cycle1-fail-analysis", function(data) {
+  handleFailAnalysis(data);
+});
+
+sseBus.on("cycle2-progress", function(data) {
+  handleCycle2Progress(data);
+});
+
+// Cycle lifecycle events
+["cycle2-start","cycle2-done","cycle2-stopped","cycle3-start","cycle3-done","cycle3-stopped"].forEach(function(evt) {
+  sseBus.on(evt, function(data) {
     loadCycleState();
-    handleTestDoneNotification(data);
-  } else if (data.type === "cycle1-fail-analysis") {
-    handleFailAnalysis(data);
-  } else if (data.type === "cycle2-progress") {
-    handleCycle2Progress(data);
-  } else if (data.type === "cycle2-start" || data.type === "cycle2-done" ||
-             data.type === "cycle3-start" || data.type === "cycle3-done" ||
-             data.type === "cycle2-stopped" || data.type === "cycle3-stopped") {
-    loadCycleState();
-    if (data.type === "cycle3-start")   showToast("TNR Complet démarré", "🚀");
-    if (data.type === "cycle3-done") {
-      var c3msg = data.ok ? "TNR Complet — PASS" : "TNR Complet — FAIL";
+    if (evt === "cycle3-start") showToast("TNR Complet d\u00e9marr\u00e9", "\uD83D\uDE80");
+    if (evt === "cycle3-done") {
+      var c3msg = data.ok ? "TNR Complet \u2014 PASS" : "TNR Complet \u2014 FAIL";
       if (data.duration) c3msg += " (" + formatDuration(data.duration) + ")";
-      if (data.regression) c3msg += " — REGRESSION détectée";
-      showToast(c3msg, data.ok ? "✅" : "❌");
-      if (data.regression) showToast("Régression : " + (data.prevResult ? data.prevResult.fail + " FAIL avant → " + data.result.fail + " FAIL maintenant" : "nouveaux échecs"), "⚠️");
+      if (data.regression) c3msg += " \u2014 REGRESSION d\u00e9tect\u00e9e";
+      showToast(c3msg, data.ok ? "\u2705" : "\u274C");
+      if (data.regression) showToast("R\u00e9gression : " + (data.prevResult ? data.prevResult.fail + " FAIL avant \u2192 " + data.result.fail + " FAIL maintenant" : "nouveaux \u00e9checs"), "\u26A0\uFE0F");
       handleTestDoneNotification({ key: "TNR-Complet", result: data.result, ok: data.ok, reportFile: data.reportFile });
     }
-    if (data.type === "cycle2-done") {
+    if (evt === "cycle2-done") {
       var c2msg = "TNR Release " + (data.release || "");
-      c2msg += data.ok ? " — PASS" : " — FAIL";
+      c2msg += data.ok ? " \u2014 PASS" : " \u2014 FAIL";
       if (data.duration) c2msg += " (" + formatDuration(data.duration) + ")";
-      if (data.empty) c2msg = "Release " + (data.release || "") + " — aucun ticket";
-      showToast(c2msg, data.ok ? "✅" : (data.empty ? "📭" : "❌"));
+      if (data.empty) c2msg = "Release " + (data.release || "") + " \u2014 aucun ticket";
+      showToast(c2msg, data.ok ? "\u2705" : (data.empty ? "\uD83D\uDCED" : "\u274C"));
       if (!data.empty) handleTestDoneNotification({ key: "Release-" + (data.release || ""), result: data.result, ok: data.ok });
     }
-    if (data.type === "cycle2-stopped") showToast("TNR Release — arrêté", "⏹");
-    if (data.type === "cycle3-stopped") showToast("TNR Complet — arrêté", "⏹");
-  } else if (data.type === "daily-job-started") {
-    updateDailyJobCard({ running: true, logReset: true, logLine: data.message || "Demarrage…" });
-    showToast("Check journalier démarré", "🔄");
-  } else if (data.type === "daily-job-progress") {
-    var djIcon = data.step === "us" ? "📋" : data.step === "bug" ? "🐛" : data.step === "test" ? "🧪" : data.step === "fetch" ? "🔍" : data.step === "sort" ? "📊" : "⏳";
-    updateDailyJobCard({ running: true, logLine: djIcon + " " + (data.message || data.step) });
-  } else if (data.type === "daily-job-completed") {
-    updateDailyJobCard({ running: false, report: data.report, logLine: "✅ Termine" });
-    var r = data.report || {};
-    var hasErr = r.erreurs && r.erreurs.length > 0;
-    showToast("Check journalier termine — " + (r.usTraitees||0) + " US, " + (r.bugsTraites||0) + " Bug, " + (r.testsCascade||0) + " tests cascade", hasErr ? "⚠️" : "✅");
-  } else if (data.type === "done") {
-    var ok = data.code === 0;
-    if (isLLM) {
-      if (data.stats) {
-        var s2 = data.stats;
-        var statsLine = "\n\n─── " + s2.model + " · " + s2.elapsed + "s · " +
-          s2.tokens + " tokens · " + s2.tps + " tok/s ───";
-        var span2 = document.getElementById(termId + "-stream");
-        if (span2) {
-          var statsEl = document.createElement("div");
-          statsEl.className = "log-dim";
-          statsEl.style.marginTop = "8px";
-          statsEl.style.borderTop = "1px solid var(--border2)";
-          statsEl.style.paddingTop = "6px";
-          statsEl.textContent = statsLine;
-          span2.parentElement.appendChild(statsEl);
-        }
-      }
-      // Only reset button when both models are done (compare mode) or single model
-      llmRunning = false;
-      var btn2 = document.getElementById("btnLLMSend");
-      if (btn2) { btn2.disabled = false; btn2.textContent = "🚀 Envoyer"; }
-    } else {
-      log(termId, ok ? "✅ Terminé (code 0)" : "❌ Erreur (code " + data.code + ")", ok ? "log-ok" : "log-error");
-      setAgentRunning(data.agent, false);
-      activeAgent = null;
-      if (termId === "logPipeline") updateLastXMLImportStatus(ok ? "envoyé" : "erreur");
+    if (evt === "cycle2-stopped") showToast("TNR Release \u2014 arr\u00eat\u00e9", "\u23F9");
+    if (evt === "cycle3-stopped") showToast("TNR Complet \u2014 arr\u00eat\u00e9", "\u23F9");
+  });
+});
 
-      // ── Banner TEST OK / TEST KO pour playwright-direct ────────────────────
-      if (data.agent === "playwright-direct") {
-        var termEl = document.getElementById(termId);
-        if (termEl) {
-          var bannerDiv = document.createElement("div");
-          bannerDiv.style.cssText = "margin:14px 0 4px;padding:14px 20px;border-radius:10px;font-family:var(--mono);font-size:18px;font-weight:900;letter-spacing:.08em;text-align:center;cursor:default;" +
-            (ok ? "background:rgba(0,232,122,.13);border:2px solid rgba(0,232,122,.45);color:var(--green)"
-                : "background:rgba(255,59,92,.13);border:2px solid rgba(255,59,92,.45);color:var(--red)");
-          bannerDiv.textContent = ok ? "✅  TEST OK" : "❌  TEST KO";
-          termEl.appendChild(bannerDiv);
-          termEl.scrollTop = termEl.scrollHeight;
-        }
-        // Compléter la jauge à 100% et afficher la notification
-        opsProgressComplete(ok);
-        showToast(ok ? "TEST OK — tous les tests passent" : "TEST KO — des tests ont échoué", ok ? "✅" : "❌");
-      } else if (ok) {
-        loadReports();
-        showToast("Agent terminé avec succès", "✅");
-      } else {
-        showToast("Erreur — voir les logs", "❌");
-      }
+sseBus.on("daily-job-started", function(data) {
+  updateDailyJobCard({ running: true, logReset: true, logLine: data.message || "Demarrage\u2026" });
+  showToast("Check journalier d\u00e9marr\u00e9", "\uD83D\uDD04");
+});
+
+sseBus.on("daily-job-progress", function(data) {
+  var djIcon = data.step === "us" ? "\uD83D\uDCCB" : data.step === "bug" ? "\uD83D\uDC1B" : data.step === "test" ? "\uD83E\uDDEA" : data.step === "fetch" ? "\uD83D\uDD0D" : data.step === "sort" ? "\uD83D\uDCCA" : "\u23F3";
+  updateDailyJobCard({ running: true, logLine: djIcon + " " + (data.message || data.step) });
+});
+
+sseBus.on("daily-job-completed", function(data) {
+  updateDailyJobCard({ running: false, report: data.report, logLine: "\u2705 Termine" });
+  var r = data.report || {};
+  var hasErr = r.erreurs && r.erreurs.length > 0;
+  showToast("Check journalier termine \u2014 " + (r.usTraitees||0) + " US, " + (r.bugsTraites||0) + " Bug, " + (r.testsCascade||0) + " tests cascade", hasErr ? "\u26A0\uFE0F" : "\u2705");
+});
+
+sseBus.on("done", function(data) {
+  var termId = sseTermId(data);
+  var ok = data.code === 0;
+  log(termId, ok ? "\u2705 Termin\u00e9 (code 0)" : "\u274C Erreur (code " + data.code + ")", ok ? "log-ok" : "log-error");
+  setAgentRunning(data.agent, false);
+  activeAgent = null;
+  if (termId === "logPipeline") updateLastXMLImportStatus(ok ? "envoy\u00e9" : "erreur");
+
+  // Banner TEST OK / TEST KO pour playwright-direct
+  if (data.agent === "playwright-direct") {
+    var termEl = document.getElementById(termId);
+    if (termEl) {
+      var bannerDiv = document.createElement("div");
+      bannerDiv.style.cssText = "margin:14px 0 4px;padding:14px 20px;border-radius:10px;font-family:var(--mono);font-size:18px;font-weight:900;letter-spacing:.08em;text-align:center;cursor:default;" +
+        (ok ? "background:rgba(0,232,122,.13);border:2px solid rgba(0,232,122,.45);color:var(--green)"
+            : "background:rgba(255,59,92,.13);border:2px solid rgba(255,59,92,.45);color:var(--red)");
+      bannerDiv.textContent = ok ? "\u2705  TEST OK" : "\u274C  TEST KO";
+      termEl.appendChild(bannerDiv);
+      termEl.scrollTop = termEl.scrollHeight;
     }
+    opsProgressComplete(ok);
+    showToast(ok ? "TEST OK \u2014 tous les tests passent" : "TEST KO \u2014 des tests ont \u00e9chou\u00e9", ok ? "\u2705" : "\u274C");
+  } else if (ok) {
+    loadReports();
+    showToast("Agent termin\u00e9 avec succ\u00e8s", "\u2705");
+  } else {
+    showToast("Erreur \u2014 voir les logs", "\u274C");
   }
-}
+});
 
 function setAgentRunning(agent, running) {
   var btn = document.getElementById("btn-" + agent);
@@ -4555,28 +4767,20 @@ function callAgent(params, formData) {
     fetch(url, { method: "POST", body: formData })
       .catch(function(e) { showToast("Serveur inaccessible — lance node agent-server.js", "🔴"); });
   } else {
-    fetch(url, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(params)
-    }).catch(function(e) { showToast("Serveur inaccessible — lance node agent-server.js", "🔴"); });
+    apiPost("/api/run", params)
+      .catch(function(e) { showToast("Serveur inaccessible — lance node agent-server.js", "🔴"); });
   }
 }
 
 function stopAgent() {
   if (!activeAgent) return;
-  fetch(SERVER + "/api/stop", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agent: activeAgent })
-  });
+  apiPost("/api/stop", { agent: activeAgent });
   showToast("Agent stoppé", "⏹️");
 }
 
 // ── RAPPORTS ──────────────────────────────────────────────────────────────────
 function loadReports() {
-  fetch(SERVER + "/api/reports")
-    .then(function(r) { return r.json(); })
+  api("/api/reports")
     .then(function(files) {
       var el = document.getElementById("reportsList");
       if (!el) return;
@@ -4934,8 +5138,7 @@ function handleSpec(input) {
 function loadBugTicket() {
   var key = document.getElementById("bug-key").value.trim().toUpperCase();
   if (!key) { showToast("Saisis une clé Jira", "⚠️"); return; }
-  fetch(SERVER + "/api/jira-ticket/" + key)
-    .then(function(r) { return r.json(); })
+  api("/api/jira-ticket/" + key)
     .then(function(data) {
       if (data.error) { showToast("Ticket introuvable", "❌"); return; }
       loadedBugKey = key;
@@ -5323,10 +5526,8 @@ function renderPreviewModal(tickets, src, release) {
   renderTicketPreview(tickets[0]);
 
   // Ouvrir modale
-  var modal = document.getElementById("previewModal");
-  modal.style.display = "flex";
+  modalMgr.open("previewModal");
   document.body.style.overflow = "hidden";
-  trapFocus(modal);
 }
 
 // ── RENDU UN TICKET DANS LA PRÉVISUALISATION ──────────────────────────────────
@@ -5517,8 +5718,7 @@ function escHtml(str) {
 
 // ── FERMER / CONFIRMER ────────────────────────────────────────────────────────
 function closePreview() {
-  var modal = document.getElementById("previewModal");
-  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
+  modalMgr.close("previewModal");
   document.body.style.overflow = "";
 }
 
@@ -5587,8 +5787,7 @@ function buildOllamaPrompt(ticket, payload) {
 var releaseTracker = {};
 
 function loadReleaseTracker() {
-  fetch(SERVER + "/api/release-tracker")
-    .then(function(r) { return r.json(); })
+  api("/api/release-tracker")
     .then(function(data) {
       releaseTracker = data;
       var releases = Object.keys(data).sort().reverse();
@@ -5602,12 +5801,11 @@ function loadReleaseTracker() {
     })
     .catch(function() {
       // Fallback : essayer de lire depuis reports/
-      fetch(SERVER + "/api/reports")
-        .then(function(r) { return r.json(); })
+      api("/api/reports")
         .then(function(files) {
           var tracker = files.find(function(f) { return f.name === "release-tracker.json"; });
           if (tracker) {
-            return fetch(SERVER + "/api/download/" + tracker.name).then(function(r) { return r.json(); });
+            return api("/api/download/" + tracker.name);
           }
           return {};
         })
@@ -5714,11 +5912,7 @@ function showRelease(release) {
     document.getElementById("releaseTicketsTable").innerHTML = "<div style='padding:24px;text-align:center;color:var(--text3)'>Aucun ticket dans cette release</div>";
   } else {
     var rows = tickets.map(function(t) {
-      var statusBadge = t.status==="PASS"
-        ? "<span style='background:rgba(0,232,122,.15);color:var(--green);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700'>✅ PASS</span>"
-        : t.status==="FAIL"
-        ? "<span style='background:rgba(255,59,92,.15);color:var(--red);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700'>❌ FAIL</span>"
-        : "<span style='background:var(--bg3);color:var(--text3);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px'>⏳ TODO</span>";
+      var statusBadge = renderBadge(t.status === "PASS" ? "PASS" : t.status === "FAIL" ? "FAIL" : "PENDING");
       var tPct = t.total>0?Math.round(t.pass/t.total*100):0;
       var csvBtn = t.csvPath
         ? '<button data-dl="' + t.csvPath + '" style="background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer">📊 CSV</button>'
@@ -5815,11 +6009,7 @@ function loadTestPlan(release) {
     '<th style="padding:8px 14px;font-family:var(--mono);font-size:10px;color:var(--text3);font-weight:700;text-align:center">ACTION</th>' +
     '</tr></thead><tbody>' +
     tickets.map(function(t) {
-      var statusBadge = t.status === "PASS"
-        ? '<span style="background:rgba(0,232,122,.15);color:var(--green);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">✅ PASS</span>'
-        : t.status === "FAIL"
-        ? '<span style="background:rgba(255,59,92,.15);color:var(--red);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700">❌ FAIL</span>'
-        : '<span style="background:var(--bg3);color:var(--text3);font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:4px">⏳ Non exécuté</span>';
+      var statusBadge = renderBadge(t.status === "PASS" ? "PASS" : t.status === "FAIL" ? "FAIL" : "PENDING");
       var actionBtn = (t.status !== "PASS" && t.status !== "FAIL")
         ? '<button onclick="launchTestPlanTicket(\'' + t.key + '\')" style="background:var(--green);border:none;color:#000;border-radius:4px;padding:3px 10px;font-size:10px;font-weight:700;cursor:pointer;font-family:var(--mono)">▶</button>'
         : '';
@@ -5836,8 +6026,7 @@ function loadTestPlan(release) {
 function launchTestPlanTicket(key) {
   showToast("Lancement " + key + "...", "▶");
   handlePlaywrightProgress({ step: "init", message: "Démarrage du test " + key + "...", pct: 0 });
-  fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/cycle/ticket/" + key + "/run")
     .then(function(d) {
       if (d.ok) showToast(key + " lancé" + (d.mode ? " (mode " + d.mode + ")" : ""), "🧪");
       else {
@@ -5853,12 +6042,7 @@ function launchTestPlanAll() {
   var release = sel ? sel.value : "";
   if (!release) { showToast("Sélectionne une release", "⚠️"); return; }
   showToast("Lancement séquence release " + release + "...", "▶");
-  fetch(SERVER + "/api/cycle/tnr-release", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ release: release })
-  })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/cycle/tnr-release", { release: release })
     .then(function(d) {
       if (d.ok) showToast("Séquence lancée pour " + release, "🧪");
       else showToast("Erreur : " + (d.error || "?"), "⚠️");
@@ -5908,11 +6092,7 @@ function loadTestExecution(release) {
       runs.map(function(run, idx) {
         var isLatest = idx === 0;
         var opacity = isLatest ? "1" : "0.6";
-        var badge = run.status === "PASS"
-          ? '<span style="color:var(--green);font-weight:700">✅ PASS</span>'
-          : run.status === "FAIL"
-          ? '<span style="color:var(--red);font-weight:700">❌ FAIL</span>'
-          : '<span style="color:var(--text3)">⏳ TODO</span>';
+        var badge = renderBadge(run.status === "PASS" ? "PASS" : run.status === "FAIL" ? "FAIL" : "PENDING");
         var latestTag = isLatest ? ' <span style="background:var(--cyan);color:#000;font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700">DERNIER RUN</span>' : '';
         var reportBtn = run.reportPath ? ' <button data-dl="' + run.reportPath + '" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:3px;padding:1px 6px;font-size:9px;cursor:pointer">📄</button>' : '';
 
@@ -5944,8 +6124,7 @@ function exportTestExecution() {
 var _testLibFilter = "all";
 
 function loadTestLibrary(release) {
-  fetch(SERVER + "/api/backlog/done")
-    .then(function(r) { return r.json(); })
+  api("/api/backlog/done")
     .then(function(done) {
       var list = document.getElementById("test-library-list");
       if (!list) return;
@@ -6067,8 +6246,7 @@ function initJiraAutocomplete(inputId, onSelectFn) {
     var minLen      = isNumeric ? 1 : 2;
     if (raw.length < minLen) { _jiraACHide(inputId); return; }
     st.timer = setTimeout(function() {
-      fetch((typeof SERVER !== "undefined" ? SERVER : "") + "/api/jira-search?q=" + encodeURIComponent(searchQuery))
-        .then(function(r) { return r.json(); })
+      api("/api/jira-search?q=" + encodeURIComponent(searchQuery))
         .then(function(d) { _jiraACShow(inputId, d.issues || d || []); })
         .catch(function() {});
     }, 300);
@@ -6242,7 +6420,7 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 
-// Fermer modale au clic sur le fond
+// Fermer modale previewModal au clic sur le fond (appelle closePreview pour reset overflow)
 document.addEventListener("DOMContentLoaded", function() {
   var modal = document.getElementById("previewModal");
   if (modal) {
@@ -6368,8 +6546,7 @@ function opsLoadTicket() {
   if (!key) { showToast('Saisis une clé ou une URL Jira', '⚠️'); return; }
   var preview = document.getElementById('ops-ticket-preview');
   if (preview) preview.innerHTML = '<span style="color:var(--text3)">⏳ Chargement ' + key + '…</span>';
-  fetch(SERVER + '/api/jira-ticket/' + encodeURIComponent(key))
-    .then(function(r) { return r.json(); })
+  api('/api/jira-ticket/' + encodeURIComponent(key))
     .then(function(d) {
       if (d.error) { if (preview) preview.textContent = '❌ ' + d.error; return; }
       // Sauvegarder TOUTES les données pour la génération
@@ -6400,7 +6577,7 @@ function opsLoadTicket() {
       opsSetStep(2);
       switchOpsTab('commande');
       // Charger le ticket enrichi pour détecter les tests existants avant analyse
-      fetch(SERVER + '/api/enriched/' + ticket.key).then(function(r2){return r2.json();}).then(function(enr) {
+      api('/api/enriched/' + ticket.key).then(function(enr) {
         if (enr && enr.key && enr.proposedTests && enr.proposedTests.length) {
           window._opsAutoTests = enr.proposedTests.filter(function(p){return p.type!=='manual';});
           window._opsManualTests = enr.proposedTests.filter(function(p){return p.type==='manual';});
@@ -6519,12 +6696,7 @@ function opsAnalyze() {
   if (opsContext.length) routingText += ' Fichiers: ' + opsContext.map(function(c){return c.name;}).join(', ');
   if (cfg.mode !== 'auto') routingText += ' Mode: ' + cfg.mode;
 
-  fetch(SERVER + '/api/route', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: routingText })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost('/api/route', { text: routingText })
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = '🔍 Analyser'; }
     opsShowConfirm(d.ok ? d : opsLocalRoute(routingText), cfg, text);
@@ -6760,12 +6932,7 @@ function opsExecute() {
     log('ops-log', '🧠 Génération ' + (route.label || 'ticket') + '…', 'log-info');
     if (opsTickets.length) log('ops-log', '  Source: ' + opsTickets.map(function(t){return t.key + ' (' + t.type + ')';}).join(', '), 'log-dim');
     log('ops-log', '  Sous-type: ' + (route.subtype || 'AUTO'), 'log-dim');
-    fetch(SERVER + '/api/ops-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: text, tickets: opsTickets, subtype: route.subtype || 'AUTO' })
-    })
-    .then(function(r) { return r.json(); })
+    apiPost('/api/ops-generate', { text: text, tickets: opsTickets, subtype: route.subtype || 'AUTO' })
     .then(function(d) {
       if (d.ok && d.result) {
         log('ops-log', '✅ ' + (d.result.ticketType || 'Ticket') + ' généré — ' + (d.result.title || '').substring(0,60), 'log-ok');
@@ -7288,12 +7455,7 @@ function opsPushJira() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Push…'; }
   if (st)  st.textContent = '';
 
-  fetch(SERVER + '/api/jira-push', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-  .then(function(r) { return r.json(); })
+  apiPost('/api/jira-push', payload)
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = '📤 Push Jira'; }
     if (d.ok) {
@@ -7342,12 +7504,7 @@ function opsIntegrateJira(key) {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Intégration…'; }
   if (st)  st.textContent = '';
 
-  fetch(SERVER + '/api/jira-update/' + encodeURIComponent(key), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
-  .then(function(r) { return r.json(); })
+  apiPut('/api/jira-update/' + encodeURIComponent(key), payload)
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = '⬆️ Intégrer dans ' + key; }
     if (d.ok) {
@@ -7363,11 +7520,8 @@ function opsIntegrateJira(key) {
           ? window._opsGenData.proposedTests.filter(function(p){return p.type==='manual';})
           : []));
       if (allTests.length) {
-        fetch(SERVER + '/api/enriched/' + encodeURIComponent(key), {
-          method: 'PUT',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ proposedTests: allTests })
-        }).catch(function(){});
+        apiPut('/api/enriched/' + encodeURIComponent(key), { proposedTests: allTests })
+          .catch(function(){});
       }
       showToast('Contenu intégré dans ' + key, '✅');
     } else {
@@ -9336,12 +9490,11 @@ function openCycleErrModal(cycleId) {
   if (relaunchBtn) relaunchBtn.style.display = cycleId === 1 ? "none" : "inline-block";
 
   _cycleErrModalId = cycleId;
-  if (modal) { modal.style.display = "flex"; trapFocus(modal); }
+  modalMgr.open("cycle-err-modal");
 }
 
 function closeCycleErrModal() {
-  var modal = document.getElementById("cycle-err-modal");
-  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
+  modalMgr.close("cycle-err-modal");
 }
 
 function relaunchCycleFromModal() {
@@ -9618,8 +9771,7 @@ function djSectionTitle(text) {
 }
 
 function closeDJReportModal() {
-  var m = document.getElementById("dj-report-modal");
-  if (m) m.style.display = "none";
+  modalMgr.close("dj-report-modal");
 }
 
 function exportDJReportPDF() {
@@ -10006,67 +10158,47 @@ function launchPWDTest() {
   pwdTestResults = [];
 }
 
-// ── TRAITEMENT DES RÉSULTATS SSE (hook dans handleSSE) ───────────────────────
-var _origHandleSSE_pwd = handleSSE;
-handleSSE = function(data) {
-  _origHandleSSE_pwd(data);
-
-  if (data.agent !== "playwright-direct") return;
-
-  // Mapper les logs vers le terminal du panneau
-  if (data.type === "log" || data.type === "err") {
-    var cls = data.line.includes("[DRY_RUN]") ? "log-warn" :
-              data.line.includes("FAIL")       ? "log-error" :
-              data.line.includes("[OK]") || data.line.includes("✅") || data.line.includes("PASS") ? "log-ok" :
-              data.line.includes("[->]") || data.line.includes("INFO") ? "log-info" : "";
-    log("logPWDirect", data.line, cls);
-  }
-
-  if (data.type === "done") {
-    // Réactiver le bouton
-    var btn = document.getElementById("btnPWDLaunch");
-    if (btn) { btn.disabled = false; btn.style.opacity = "1"; updatePWDSummary(); }
-
-    if (data.code === 0 || data.code === 1) {
-      var isCompar = pwdTestResults && pwdTestResults.comparison;
-      if (isCompar) {
-        log("logPWDirect", "🔄 Comparaison terminée — ouverture du rapport comparatif", "log-ok");
-        showToast("Comparaison terminée", "🔄");
-      } else {
-        log("logPWDirect", "✅ Test terminé — ouverture de la validation par étape", "log-ok");
-        showToast("Test terminé — validation des résultats", "✅");
-      }
-      openPWDResultModal();
+// ── HOOKS SSE Playwright Direct (résultats + modale) ─────────────────────────
+sseBus.on("done:playwright-direct", function(data) {
+  var btn = document.getElementById("btnPWDLaunch");
+  if (btn) { btn.disabled = false; btn.style.opacity = "1"; updatePWDSummary(); }
+  if (data.code === 0 || data.code === 1) {
+    var isCompar = pwdTestResults && pwdTestResults.comparison;
+    if (isCompar) {
+      log("logPWDirect", "\uD83D\uDD04 Comparaison terminee \u2014 ouverture du rapport comparatif", "log-ok");
+      showToast("Comparaison terminee", "\uD83D\uDD04");
     } else {
-      log("logPWDirect", "❌ Erreur (code " + data.code + ")", "log-error");
+      log("logPWDirect", "\u2705 Test termine \u2014 ouverture de la validation par etape", "log-ok");
+      showToast("Test termine \u2014 validation des resultats", "\u2705");
     }
+    openPWDResultModal();
+  } else {
+    log("logPWDirect", "\u274C Erreur (code " + data.code + ")", "log-error");
   }
-
-  // Capturer les stats
-  if (data.type === "log" && data.line && data.line.startsWith("PLAYWRIGHT_DIRECT_RESULT:")) {
+});
+sseBus.on("log:playwright-direct", function(data) {
+  if (data.line && data.line.startsWith("PLAYWRIGHT_DIRECT_RESULT:")) {
     try { pwdTestResults = JSON.parse(data.line.replace("PLAYWRIGHT_DIRECT_RESULT:","")); } catch(e) {}
   }
-  // Capturer les résultats détaillés
-  if (data.type === "log" && data.line && data.line.startsWith("PLAYWRIGHT_DIRECT_FULL:")) {
+  if (data.line && data.line.startsWith("PLAYWRIGHT_DIRECT_FULL:")) {
     try { pwdFullResults = JSON.parse(data.line.replace("PLAYWRIGHT_DIRECT_FULL:","")); } catch(e) {}
   }
-};
+});
 
 // ── MODALE DE VALIDATION PAR ÉTAPE ────────────────────────────────────────────
 var pwdValidatedFails = {}; // ticketIndex → true/false
 
 function openPWDResultModal() {
   // Lire le dernier rapport depuis /api/reports et construire la modale
-  fetch(SERVER + "/api/reports")
-    .then(function(r) { return r.json(); })
+  api("/api/reports")
     .then(function(files) {
       var reportFile = files.find(function(f) {
         return f.name.startsWith("RAPPORT-") && f.name.includes("PW-DIRECT");
       });
 
-      var modal = document.getElementById("pwdResultModal");
+      var pwdModal = document.getElementById("pwdResultModal");
       var content = document.getElementById("pwdResultContent");
-      if (!modal || !content) return;
+      if (!pwdModal || !content) return;
 
       // Afficher les infos disponibles
       var resultData = pwdTestResults || {};
@@ -10120,9 +10252,8 @@ function openPWDResultModal() {
       pwdValidatedFails = {};
       for (var j = 0; j < totalFail; j++) pwdValidatedFails[j] = true;
 
-      modal.style.display = "block";
+      modalMgr.open("pwdResultModal");
       document.body.style.overflow = "hidden";
-      trapFocus(modal);
     })
     .catch(function() {
       showToast("Impossible de charger les résultats", "⚠️");
@@ -10174,7 +10305,7 @@ function buildPWDFailCard(index, checked, result) {
       "</div>" +
       "<div style='flex:1'>" +
         "<div style='display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap'>" +
-          "<span style='font-family:var(--mono);font-size:10px;padding:3px 8px;border-radius:20px;background:rgba(255,59,92,.15);color:var(--red);font-weight:700'>❌ FAIL #"+(index+1)+"</span>" +
+          renderBadge("FAIL") + " <span style='font-family:var(--mono);font-size:10px;color:var(--red);font-weight:700'>#"+(index+1)+"</span>" +
           "<span style='font-size:13px;font-weight:600;color:var(--text)'>"+label+"</span>" +
         "</div>" +
         "<div style='font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:4px'>"+url.substring(0,60)+" — "+device+" / "+browser+"</div>" +
@@ -10207,17 +10338,13 @@ function sendValidatedBugs() {
 }
 
 function closePWDResult() {
-  var modal = document.getElementById("pwdResultModal");
-  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
+  modalMgr.close("pwdResultModal");
   document.body.style.overflow = "";
 }
 
 // Init au chargement
 document.addEventListener("DOMContentLoaded", function() {
   updatePWDSummary();
-  // Fermer la modale résultats au clic sur le fond
-  var modal = document.getElementById("pwdResultModal");
-  if (modal) modal.addEventListener("click", function(e) { if (e.target === modal) closePWDResult(); });
 });
 
 // ── LLM PLAYGROUND ────────────────────────────────────────────────────────────
@@ -10231,8 +10358,7 @@ var llmRunning = false;
 var llmRouterPlan = null;
 
 function loadLLMModels() {
-  fetch(SERVER + "/api/ollama-models")
-    .then(function(r) { return r.json(); })
+  api("/api/ollama-models")
     .then(function(data) {
       if (!data.ok || !data.models || !data.models.length) return;
       llmModels = data.models;
@@ -10291,12 +10417,7 @@ function sendLLMPrompt() {
   if (routerResult) routerResult.style.display = "none";
 
   if (llmMode === "router") {
-    fetch(SERVER + "/api/route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ demand: prompt, mode: "ASSISTED", clientId: clientId })
-    })
-    .then(function(r) { return r.json(); })
+    apiPost("/api/route", { demand: prompt, mode: "ASSISTED", clientId: clientId })
     .then(function(data) {
       llmRunning = false;
       if (btn) { btn.disabled = false; btn.textContent = "🚀 Envoyer"; }
@@ -10317,21 +10438,15 @@ function sendLLMPrompt() {
 
   clearLLMTerminals();
 
-  fetch(SERVER + "/api/llm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: prompt, model: modelA, system: system,
+  apiPost("/api/llm", { prompt: prompt, model: modelA, system: system,
       clientId: clientId, agentId: "llm-playground" })
-  }).catch(function(e) { log("logLLMLeft", "❌ " + e.message, "log-error"); });
+  .catch(function(e) { log("logLLMLeft", "❌ " + e.message, "log-error"); });
 
   if (llmMode === "compare") {
     var modelB = document.getElementById("llm-model-b").value;
-    fetch(SERVER + "/api/llm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: prompt, model: modelB, system: system,
+    apiPost("/api/llm", { prompt: prompt, model: modelB, system: system,
         clientId: clientId, agentId: "llm-playground-b" })
-    }).catch(function(e) { log("logLLMRight", "❌ " + e.message, "log-error"); });
+    .catch(function(e) { log("logLLMRight", "❌ " + e.message, "log-error"); });
   }
 }
 
@@ -10513,8 +10628,7 @@ function approveEnrichedBulk() {
       return;
     }
     var key = keys[idx];
-    fetch("/api/enriched/" + key + "/approve", { method: "POST" })
-      .then(function(r) { return r.json(); })
+    apiPost("/api/enriched/" + key + "/approve")
       .then(function(data) {
         if (data.ok) done++; else errors++;
         processNext(idx + 1);
@@ -10526,8 +10640,7 @@ function approveEnrichedBulk() {
 }
 
 function loadEnrichedList() {
-  fetch("/api/enriched")
-    .then(function(r) { return r.json(); })
+  api("/api/enriched")
     .then(function(list) {
       var pending = list.filter(function(u) { return u.status === "pending"; });
       var badge   = document.getElementById("badge-enriched");
@@ -10602,8 +10715,7 @@ function loadEnrichedList() {
 
 function selectEnriched(key) {
   currentEnrichedKey = key;
-  fetch("/api/enriched/" + key)
-    .then(function(r) { return r.json(); })
+  api("/api/enriched/" + key)
     .then(function(data) {
       var typeIcon = typeIconMap[data.type] || "📄";
       document.getElementById("editor-title").textContent = typeIcon + " " + (data.summary || key);
@@ -10676,12 +10788,7 @@ function importFromJira(keyOverride) {
   if (statusEl) statusEl.textContent = "⏳ Import en cours…";
   if (btn && !keyOverride) { btn.disabled = true; btn.textContent = "⏳…"; }
 
-  fetch(SERVER + "/api/jira-import", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: key })
-  })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/jira-import", { key: key })
     .then(function(data) {
       if (data.error) {
         if (statusEl) statusEl.textContent = "❌ " + data.error;
@@ -10708,12 +10815,7 @@ function importFromJira(keyOverride) {
 function saveEdits() {
   if (!currentEnrichedKey) return;
   var markdown = document.getElementById("editor-enriched").value;
-  fetch("/api/enriched/" + currentEnrichedKey, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ markdown: markdown })
-  })
-    .then(function(r) { return r.json(); })
+  apiPut("/api/enriched/" + currentEnrichedKey, { markdown: markdown })
     .then(function() {
       var s = document.getElementById("editor-status");
       if (s) { s.textContent = "✓ Sauvegardé"; setTimeout(function() { s.textContent = "⏳ En attente"; }, 2000); }
@@ -10727,8 +10829,7 @@ function approveEnriched() {
   saveEdits();
   var keyToApprove = currentEnrichedKey;
   setTimeout(function() {
-    fetch("/api/enriched/" + keyToApprove + "/approve", { method: "POST" })
-      .then(function(r) { return r.json(); })
+    apiPost("/api/enriched/" + keyToApprove + "/approve")
       .then(function(data) {
         var s = document.getElementById("editor-status");
         var attachInfo = data.attachedFiles > 0 ? " + " + data.attachedFiles + " fichier(s) attaché(s)" : "";
@@ -10754,7 +10855,7 @@ function approveEnriched() {
 function rejectEnriched() {
   if (!currentEnrichedKey) return;
   if (!confirm("Rejeter ce ticket ? Il ne sera pas envoyé dans Jira.")) return;
-  fetch("/api/enriched/" + currentEnrichedKey + "/reject", { method: "POST" })
+  apiPost("/api/enriched/" + currentEnrichedKey + "/reject")
     .then(function() {
       currentEnrichedKey = null;
       document.getElementById("editor-title").textContent    = "Sélectionne un ticket dans la liste";
@@ -10812,15 +10913,10 @@ function processEnrichedFiles(files) {
       if (drop) drop.classList.add("analyzing");
 
       // Envoyer au serveur pour analyse
-      fetch(SERVER + "/api/analyze-file", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      apiPost("/api/analyze-file", {
           data: base64, mimeType: mimeType, filename: file.name,
           context: "enriched", key: currentEnrichedKey || ""
         })
-      })
-        .then(function(r) { return r.json(); })
         .then(function(result) {
           if (drop) { drop.classList.remove("analyzing"); drop.classList.add("loaded"); setTimeout(function() { drop.classList.remove("loaded"); }, 2000); }
 
@@ -10928,12 +11024,7 @@ function handlePWDContextFile(file) {
       preview.innerHTML = '<img src="' + fullBase64 + '" style="max-width:100%;max-height:80px;border-radius:6px;object-fit:contain" alt="">';
     }
 
-    fetch(SERVER + "/api/analyze-file", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: base64, mimeType: mimeType, filename: file.name, context: "playwright" })
-    })
-      .then(function(r) { return r.json(); })
+    apiPost("/api/analyze-file", { data: base64, mimeType: mimeType, filename: file.name, context: "playwright" })
       .then(function(result) {
         if (drop) drop.classList.remove("analyzing");
 
@@ -10971,8 +11062,7 @@ function handlePWDContextFile(file) {
 // TODO LIST JIRA — Mes tickets assignés + funnel workflow SAF-v3
 // ══════════════════════════════════════════════════════
 function loadJiraTodo() {
-  fetch(SERVER + "/api/jira-activity")
-    .then(function(r) { return r.json(); })
+  api("/api/jira-activity")
     .then(function(items) {
       var container = document.getElementById("jira-todo-list");
       var funnelEl  = document.getElementById("jira-workflow-funnel");
@@ -11223,12 +11313,7 @@ function showErrorDiagnosis(data) {
 function applyFix(file, oldCode, newCode, btnEl) {
   btnEl.disabled    = true;
   btnEl.textContent = "Application…";
-  fetch(SERVER + "/api/apply-fix", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: file, oldCode: oldCode, newCode: newCode })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost("/api/apply-fix", { file: file, oldCode: oldCode, newCode: newCode })
   .then(function(d) {
     if (d.ok) {
       showToast("✅ Correction appliquée — " + d.file + " (.bak créé)", "✅");
@@ -11329,11 +11414,7 @@ function attachSelectedToJira() {
   var done = 0; var errors = [];
   showToast("Envoi de " + files.length + " rapport(s) vers Jira…", "🔗");
   files.forEach(function(filename) {
-    fetch(SERVER + "/api/attach-report-jira", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filename: filename, jiraKey: key.trim() })
-    }).then(function(r) { return r.json(); })
+    apiPost("/api/attach-report-jira", { filename: filename, jiraKey: key.trim() })
       .then(function(d) {
         done++;
         if (!d.ok) errors.push(filename);
@@ -11352,8 +11433,7 @@ function deleteSelectedReports() {
   var files = Array.from(selectedReports);
   var done = 0;
   files.forEach(function(filename) {
-    fetch(SERVER + "/api/delete-report/" + encodeURIComponent(filename), { method: "DELETE" })
-      .then(function(r) { return r.json(); })
+    apiDel("/api/delete-report/" + encodeURIComponent(filename))
       .finally(function() {
         done++;
         if (done === files.length) {
@@ -11366,8 +11446,7 @@ function deleteSelectedReports() {
 }
 
 function closeCompareModal() {
-  var m = document.getElementById("rpt-compare-modal");
-  if (m) m.style.display = "none";
+  modalMgr.close("rpt-compare-modal");
 }
 
 function compareSelectedReports() {
@@ -11480,7 +11559,7 @@ function compareSelectedReports() {
   }
 
   delta.innerHTML = deltaHtml;
-  modal.style.display = "flex";
+  modalMgr.open("rpt-compare-modal");
 }
 
 function loadPlaywrightReports() {
@@ -11495,8 +11574,7 @@ function loadPlaywrightReports() {
   if (selAll) { selAll.checked = false; selAll.indeterminate = false; }
   container.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:24px;text-align:center">Chargement…</div>';
 
-  fetch(SERVER + "/api/playwright-reports")
-    .then(function(r) { return r.json(); })
+  api("/api/playwright-reports")
     .then(function(items) {
       _reportsList = items; // cache pour la comparaison
       // Trier par date DESC (plus récent en premier)
@@ -11639,8 +11717,7 @@ function deleteReport(filename, btnEl) {
   if (!confirm("Supprimer ce rapport ? Cette action est irréversible.")) return;
   btnEl.disabled = true;
   btnEl.textContent = "…";
-  fetch(SERVER + "/api/delete-report/" + encodeURIComponent(filename), { method: "DELETE" })
-    .then(function(r) { return r.json(); })
+  apiDel("/api/delete-report/" + encodeURIComponent(filename))
     .then(function(d) {
       if (d.ok) { showToast("Rapport supprimé", "🗑️"); loadPlaywrightReports(); }
       else       { showToast("Erreur : " + d.error, "❌"); btnEl.disabled = false; btnEl.textContent = "🗑️"; }
@@ -11675,7 +11752,6 @@ function copyReportLink(filename) {
 
 // ── Prévisualisation rapport ──────────────────────────────────────────────────
 function previewReport(filename, ticketKey, status, mode) {
-  var modal  = document.getElementById('modal-report-preview');
   var iframe = document.getElementById('rpt-preview-iframe');
   var fnEl   = document.getElementById('rpt-preview-filename');
   var nameEl = document.getElementById('rpt-preview-name');
@@ -11704,7 +11780,7 @@ function previewReport(filename, ticketKey, status, mode) {
   // Charger l'iframe (inline, pas attachment)
   if (iframe) iframe.src = '/api/download/' + encodeURIComponent(filename);
 
-  modal.style.display = 'flex';
+  modalMgr.open('modal-report-preview');
   document.body.style.overflow = 'hidden';
   // Ajouter un état historique pour pouvoir fermer avec back
   history.pushState({ modal: 'report-preview' }, '', '#report-preview');
@@ -11718,10 +11794,10 @@ function openReportInNewTab() {
 }
 
 function closeReportPreview() {
-  var modal  = document.getElementById('modal-report-preview');
-  var iframe = document.getElementById('rpt-preview-iframe');
-  if (modal && modal.style.display !== 'none') {
-    modal.style.display = 'none';
+  var el = document.getElementById('modal-report-preview');
+  if (el && el.style.display !== 'none') {
+    modalMgr.close('modal-report-preview');
+    var iframe = document.getElementById('rpt-preview-iframe');
     if (iframe) iframe.src = '';
     document.body.style.overflow = '';
     // Si on est sur #report-preview, revenir en arrière
@@ -11744,12 +11820,7 @@ function previewAttachToJira() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi…'; }
   if (stEl) stEl.textContent = '';
 
-  fetch(SERVER + '/api/attach-report-jira', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filename: filename, jiraKey: key })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost('/api/attach-report-jira', { filename: filename, jiraKey: key })
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = '📎 Attacher'; }
     if (d.ok) {
@@ -11770,11 +11841,7 @@ function attachReportToJira(filename) {
   var key = prompt("Entrez la clé du ticket Jira (ex : SAFE-1234) :");
   if (!key || !key.trim()) return;
   showToast("Envoi vers Jira en cours…", "🔗");
-  fetch(SERVER + "/api/attach-report-jira", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ filename: filename, jiraKey: key.trim() })
-  }).then(function(r) { return r.json(); })
+  apiPost("/api/attach-report-jira", { filename: filename, jiraKey: key.trim() })
     .then(function(d) {
       if (d.ok) showToast("Rapport attaché à " + d.key + " avec succès", "✅");
       else      showToast("Erreur Jira : " + (d.error || "?"), "❌");
@@ -11798,13 +11865,11 @@ function addManualUrl() {
 function openTicketUrlPicker(targetId, mode) {
   _urlPickerTarget = targetId;
   _urlPickerMode   = mode || "full";
-  var modal = document.getElementById("modal-ticket-urls");
-  if (!modal) return;
-  modal.style.display = "flex";
+  if (!document.getElementById("modal-ticket-urls")) return;
+  modalMgr.open("modal-ticket-urls");
   document.getElementById("modal-url-search").value = "";
   document.getElementById("modal-url-list").innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Chargement…</div>';
-  fetch(SERVER + "/api/enriched")
-    .then(function(r) { return r.json(); })
+  api("/api/enriched")
     .then(function(items) {
       _urlPickerData = items.filter(function(t) { return t.testUrls && t.testUrls.length > 0; });
       renderTicketUrlList(_urlPickerData);
@@ -11815,8 +11880,7 @@ function openTicketUrlPicker(targetId, mode) {
 }
 
 function closeTicketUrlPicker() {
-  var modal = document.getElementById("modal-ticket-urls");
-  if (modal) modal.style.display = "none";
+  modalMgr.close("modal-ticket-urls");
 }
 
 function filterTicketUrlList(q) {
@@ -11993,11 +12057,7 @@ function analyzeCSSScreenshots(imageFiles) {
     var reader = new FileReader();
     reader.onload = function(e) {
       var b64 = e.target.result.split(",")[1];
-      fetch(SERVER + "/api/analyze-screenshot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename: file.name, imageBase64: b64, mimeType: file.type })
-      }).then(function(r) { return r.json(); })
+      apiPost("/api/analyze-screenshot", { filename: file.name, imageBase64: b64, mimeType: file.type })
         .then(function(d) {
           if (d.analysis) {
             log("logCSS", "━━━ Analyse : " + file.name + " ━━━", "log-info");
@@ -12070,12 +12130,7 @@ async function drupalAnalyze() {
       payload.imageMediaType = _drupalAIContext.imageMime;
     }
 
-    var r = await fetch(SERVER + "/api/drupal-suggest", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    var suggestion = await r.json();
+    var suggestion = await apiPost("/api/drupal-suggest", payload);
     if (suggestion.error) { showToast("Erreur : " + suggestion.error, "❌"); return; }
 
     _drupalSuggestion = suggestion;
@@ -12302,8 +12357,7 @@ function printCSSReport() {
 }
 
 function loadCSSReport() {
-  fetch(SERVER + "/api/css-report")
-    .then(function(r) { return r.json(); })
+  api("/api/css-report")
     .then(function(d) {
       if (d.error) { showToast(d.error, "⚠️"); return; }
       renderCSSReport(d);
@@ -12565,8 +12619,7 @@ function toggleAttachPanel() {
 
 function loadAttachSuggestions() {
   _attachSuggestLoaded = true;
-  fetch(SERVER + "/api/jira-activity")
-    .then(function(r) { return r.json(); })
+  api("/api/jira-activity")
     .then(function(data) {
       var list    = document.getElementById("css-attach-suggest-list");
       var wrap    = document.getElementById("css-attach-suggestions");
@@ -12597,8 +12650,7 @@ function onAttachSearch(val) {
     return;
   }
   _attachSearchTimer = setTimeout(function() {
-    fetch(SERVER + "/api/jira-search?q=" + encodeURIComponent(val))
-      .then(function(r) { return r.json(); })
+    api("/api/jira-search?q=" + encodeURIComponent(val))
       .then(function(d) { _renderAttachDropdown(d.issues || d || []); })
       .catch(function() {});
   }, 400);
@@ -12700,12 +12752,7 @@ function attachCSSReport() {
     res.style.color      = "var(--text2)";
     res.textContent      = "Envoi du rapport vers " + _attachSelected.key + "…";
   }
-  fetch(SERVER + "/api/css-report/attach", {
-    method:  "POST",
-    headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ key: _attachSelected.key })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost("/api/css-report/attach", { key: _attachSelected.key })
   .then(function(d) {
     if (btn) { btn.disabled = false; btn.textContent = "📎 Confirmer"; btn.style.opacity = "1"; btn.style.cursor = "pointer"; }
     if (d.ok) {
@@ -12816,13 +12863,11 @@ function generateMatrix() {
 
 // ── MODAL MISE À JOUR TICKET ──────────────────────────────────────────────────
 function openUpdateTicket() {
-  var modal = document.getElementById("updateModal");
-  if (modal) { modal.style.display = "flex"; trapFocus(modal); }
+  modalMgr.open("updateModal");
 }
 
 function closeUpdateModal() {
-  var modal = document.getElementById("updateModal");
-  if (modal) { releaseFocus(modal); modal.style.display = "none"; }
+  modalMgr.close("updateModal");
 }
 
 function searchTicket() {
@@ -12830,8 +12875,7 @@ function searchTicket() {
   if (!key) { showToast("Saisir une clé ticket", "⚠️"); return; }
   var result = document.getElementById("searchResult");
   if (result) { result.style.display = "block"; result.innerHTML = '<span style="color:var(--text3);font-size:12px">Recherche…</span>'; }
-  fetch(SERVER + "/api/jira-ticket/" + key)
-    .then(function(r) { return r.json(); })
+  api("/api/jira-ticket/" + key)
     .then(function(d) {
       if (d.error) {
         if (result) result.innerHTML = '<span style="color:var(--red);font-size:12px">Ticket introuvable : ' + key + '</span>';
@@ -13084,12 +13128,7 @@ function sendChatMessage() {
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
 
   var model = (document.getElementById("chat-model") || {}).value || "haiku";
-  fetch(SERVER + "/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: chatHistory, model: model, clientId: clientId })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost("/api/chat", { messages: chatHistory, model: model, clientId: clientId })
   .then(function(d) { if (!d.ok) { chatAppendStreamText("❌ " + (d.error || "Erreur")); finishChatStream(false); } })
   .catch(function(err) { chatAppendStreamText("❌ Erreur réseau : " + err.message); finishChatStream(false); });
 }
@@ -13188,13 +13227,12 @@ function downloadChatBubble(text) {
 
 // ── Projets ───────────────────────────────────────────────────────────────────
 function openChatProjects() {
-  document.getElementById("modal-chat-projects").style.display = "flex";
-  fetch(SERVER + "/api/chat-projects")
-    .then(function(r) { return r.json(); })
+  modalMgr.open("modal-chat-projects");
+  api("/api/chat-projects")
     .then(function(d) { renderChatProjectsList(d.projects || []); })
     .catch(function() { renderChatProjectsList([]); });
 }
-function closeChatProjects() { document.getElementById("modal-chat-projects").style.display = "none"; }
+function closeChatProjects() { modalMgr.close("modal-chat-projects"); }
 
 function renderChatProjectsList(projects) {
   var el = document.getElementById("chat-projects-list");
@@ -13218,8 +13256,7 @@ function createChatProject() {
   var name = (document.getElementById("chat-project-new-name") || {}).value || "";
   name = name.trim();
   if (!name) { showToast("Saisissez un nom", "⚠️"); return; }
-  fetch(SERVER + "/api/chat-projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name }) })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/chat-projects", { name: name })
     .then(function(d) {
       if (d.ok) { showToast("Projet \"" + name + "\" créé", "📁"); document.getElementById("chat-project-new-name").value = ""; openChatProjects(); }
     });
@@ -13227,15 +13264,12 @@ function createChatProject() {
 
 function saveChatToProject(name) {
   if (!chatHistory.length) { showToast("Conversation vide", "⚠️"); return; }
-  fetch(SERVER + "/api/chat-projects/" + encodeURIComponent(name), {
-    method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: chatHistory })
-  }).then(function(r) { return r.json(); })
+  apiPut("/api/chat-projects/" + encodeURIComponent(name), { messages: chatHistory })
     .then(function() { showToast("Sauvegardé dans \"" + name + "\"", "📁"); closeChatProjects(); });
 }
 
 function loadChatProject(name) {
-  fetch(SERVER + "/api/chat-projects/" + encodeURIComponent(name))
-    .then(function(r) { return r.json(); })
+  api("/api/chat-projects/" + encodeURIComponent(name))
     .then(function(d) {
       chatHistory = d.messages || [];
       var msgs = document.getElementById("chat-messages");
@@ -13252,17 +13286,18 @@ function loadChatProject(name) {
 
 function deleteChatProject(name) {
   if (!confirm("Supprimer le projet \"" + name + "\" ?")) return;
-  fetch(SERVER + "/api/chat-projects/" + encodeURIComponent(name), { method: "DELETE" })
+  apiDel("/api/chat-projects/" + encodeURIComponent(name))
     .then(function() { openChatProjects(); showToast("Projet supprimé", "🗑"); });
 }
 
 // ── GitHub ────────────────────────────────────────────────────────────────────
 function openGithubPicker() {
-  document.getElementById("modal-chat-github").style.display = "flex";
-  document.getElementById("github-import-status").textContent = "";
-  setTimeout(function() { var el = document.getElementById("github-url-input"); if (el) el.focus(); }, 50);
+  modalMgr.open("modal-chat-github", { onOpen: function() {
+    document.getElementById("github-import-status").textContent = "";
+    setTimeout(function() { var el = document.getElementById("github-url-input"); if (el) el.focus(); }, 50);
+  }});
 }
-function closeGithubPicker() { document.getElementById("modal-chat-github").style.display = "none"; }
+function closeGithubPicker() { modalMgr.close("modal-chat-github"); }
 
 function importFromGithub() {
   var url  = (document.getElementById("github-url-input") || {}).value || "";
@@ -13270,8 +13305,7 @@ function importFromGithub() {
   url = url.trim();
   if (!url) return;
   if (stat) stat.textContent = "⏳ Récupération…";
-  fetch(SERVER + "/api/github-file?url=" + encodeURIComponent(url))
-    .then(function(r) { return r.json(); })
+  api("/api/github-file?url=" + encodeURIComponent(url))
     .then(function(d) {
       if (!d.ok || d.error) { if (stat) stat.textContent = "❌ " + (d.error || "Erreur"); return; }
       chatPendingItems.push({ kind: "file", name: "🐙 " + d.name, content: d.content });
@@ -13285,11 +13319,12 @@ function importFromGithub() {
 
 // ── Jira search ───────────────────────────────────────────────────────────────
 function openJiraChatSearch() {
-  document.getElementById("modal-chat-jira").style.display = "flex";
-  setTimeout(function() { var el = document.getElementById("chat-jira-q"); if (el) { el.value = ""; el.focus(); } }, 50);
-  document.getElementById("chat-jira-results").innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Saisissez un terme de recherche</div>';
+  modalMgr.open("modal-chat-jira", { onOpen: function() {
+    setTimeout(function() { var el = document.getElementById("chat-jira-q"); if (el) { el.value = ""; el.focus(); } }, 50);
+    document.getElementById("chat-jira-results").innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Saisissez un terme de recherche</div>';
+  }});
 }
-function closeJiraChatSearch() { document.getElementById("modal-chat-jira").style.display = "none"; }
+function closeJiraChatSearch() { modalMgr.close("modal-chat-jira"); }
 
 var _jiraSearchTimer = null;
 function chatJiraSearch(q) {
@@ -13298,8 +13333,7 @@ function chatJiraSearch(q) {
   if (!q || q.length < 2) { if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Saisissez un terme de recherche</div>'; return; }
   _jiraSearchTimer = setTimeout(function() {
     if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">⏳ Recherche…</div>';
-    fetch(SERVER + "/api/jira-search?q=" + encodeURIComponent(q))
-      .then(function(r) { return r.json(); })
+    api("/api/jira-search?q=" + encodeURIComponent(q))
       .then(function(d) {
         var results = Array.isArray(d) ? d : (d.results || []);
         if (!el) return;
@@ -13322,8 +13356,7 @@ function chatJiraSearch(q) {
 }
 
 function chatJiraAttachTicket(key, summary) {
-  fetch(SERVER + "/api/jira-ticket/" + key)
-    .then(function(r) { return r.json(); })
+  api("/api/jira-ticket/" + key)
     .then(function(d) {
       var content = "[Ticket Jira : " + key + "]\nTitre : " + (d.summary || summary) +
         "\nType : " + (d.type || "?") + " | Statut : " + (d.status || "?") + " | Assigné : " + (d.assignee || "—");
@@ -13338,13 +13371,14 @@ function chatJiraAttachTicket(key, summary) {
 
 // ── Recherche web ─────────────────────────────────────────────────────────────
 function openWebSearch() {
-  document.getElementById("modal-chat-websearch").style.display = "flex";
-  document.getElementById("websearch-results").innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Saisissez une recherche</div>';
-  document.getElementById("ws-inject-btn").style.display = "none";
-  _wsResults = [];
-  setTimeout(function() { var el = document.getElementById("websearch-q"); if (el) { el.value = ""; el.focus(); } }, 50);
+  modalMgr.open("modal-chat-websearch", { onOpen: function() {
+    document.getElementById("websearch-results").innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">Saisissez une recherche</div>';
+    document.getElementById("ws-inject-btn").style.display = "none";
+    _wsResults = [];
+    setTimeout(function() { var el = document.getElementById("websearch-q"); if (el) { el.value = ""; el.focus(); } }, 50);
+  }});
 }
-function closeWebSearch() { document.getElementById("modal-chat-websearch").style.display = "none"; }
+function closeWebSearch() { modalMgr.close("modal-chat-websearch"); }
 
 function doWebSearch() {
   var q  = (document.getElementById("websearch-q") || {}).value || "";
@@ -13352,8 +13386,7 @@ function doWebSearch() {
   q = q.trim();
   if (!q) return;
   if (el) el.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:16px">⏳ Recherche en cours…</div>';
-  fetch(SERVER + "/api/websearch?q=" + encodeURIComponent(q))
-    .then(function(r) { return r.json(); })
+  api("/api/websearch?q=" + encodeURIComponent(q))
     .then(function(d) {
       _wsResults = d.results || [];
       if (!el) return;
@@ -13392,18 +13425,16 @@ function injectWebResults() {
 
 // ── Claude Code CLI ───────────────────────────────────────────────────────────
 function openClaudeCodeDialog() {
-  var modal = document.getElementById("modal-claude-code");
-  if (!modal) return;
-  modal.style.display = "flex";
-  var inp = document.getElementById("claude-code-prompt");
-  // Pré-remplir avec le message du chat, sinon le dernier log d'erreur
-  var cur = (document.getElementById("chat-input") || {}).value || "";
-  if (!cur && _opsLastFailLog) {
-    cur = "Voici les logs d'erreur d'un test Playwright FAIL. Analyse et propose un correctif :\n\n" + _opsLastFailLog.trim();
-  }
-  if (inp) { inp.value = cur; setTimeout(function() { inp.focus(); inp.select(); }, 50); }
+  modalMgr.open("modal-claude-code", { onOpen: function() {
+    var inp = document.getElementById("claude-code-prompt");
+    var cur = (document.getElementById("chat-input") || {}).value || "";
+    if (!cur && _opsLastFailLog) {
+      cur = "Voici les logs d'erreur d'un test Playwright FAIL. Analyse et propose un correctif :\n\n" + _opsLastFailLog.trim();
+    }
+    if (inp) { inp.value = cur; setTimeout(function() { inp.focus(); inp.select(); }, 50); }
+  }});
 }
-function closeClaudeCodeDialog() { document.getElementById("modal-claude-code").style.display = "none"; }
+function closeClaudeCodeDialog() { modalMgr.close("modal-claude-code"); }
 
 function sendToClaudeCode() {
   var prompt = (document.getElementById("claude-code-prompt") || {}).value || "";
@@ -13417,12 +13448,7 @@ function sendToClaudeCode() {
   var btn = document.getElementById("chat-send-btn");
   if (btn) { btn.disabled = true; btn.textContent = "…"; }
 
-  fetch(SERVER + "/api/claude-code", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt: prompt, clientId: clientId })
-  })
-  .then(function(r) { return r.json(); })
+  apiPost("/api/claude-code", { prompt: prompt, clientId: clientId })
   .then(function(d) { if (!d.ok) { chatAppendStreamText("❌ " + (d.error || "Erreur")); finishChatStream(false); } })
   .catch(function(err) { chatAppendStreamText("❌ " + err.message); finishChatStream(false); });
 }
@@ -13457,15 +13483,14 @@ function setBacklogView(view) {
 
 function loadBacklog(skipSync, view) {
   if (view) _backlogView = view;
-  var syncUrl = _backlogView === "mine"
-    ? SERVER + "/api/backlog/sync-jira?mine=true"
-    : SERVER + "/api/backlog/sync-jira";
+  var syncEndpoint = _backlogView === "mine"
+    ? "/api/backlog/sync-jira?mine=true"
+    : "/api/backlog/sync-jira";
 
   // Sync Jira d'abord (sauf si skipSync), puis charger les fichiers locaux
   var syncPromise = skipSync
     ? Promise.resolve()
-    : fetch(syncUrl, { method: "POST" })
-        .then(function(r) { return r.json(); })
+    : apiPost(syncEndpoint)
         .then(function(d) {
           _backlogSyncTime = Date.now();
           blUpdateSyncStamp();
@@ -13475,8 +13500,8 @@ function loadBacklog(skipSync, view) {
 
   syncPromise.then(function() {
     return Promise.all([
-      fetch(SERVER + "/api/backlog/pending").then(function(r) { return r.json(); }),
-      fetch(SERVER + "/api/backlog/done").then(function(r)    { return r.json(); })
+      api("/api/backlog/pending"),
+      api("/api/backlog/done")
     ]);
   }).then(function(results) {
     _backlogPending = Array.isArray(results[0]) ? results[0] : [];
@@ -13795,8 +13820,7 @@ function blToggleLinks(key) {
   }
   panel.style.display = "block";
   panel.innerHTML = '<div style="padding:8px 16px 10px;border-top:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text3)">⏳ Chargement des dépendances…</div>';
-  fetch(SERVER + "/api/jira-ticket/" + encodeURIComponent(key))
-    .then(function(r) { return r.json(); })
+  api("/api/jira-ticket/" + encodeURIComponent(key))
     .then(function(d) {
       _blLinksCache[key] = d.links || [];
       blRenderLinksPanel(key, _blLinksCache[key]);
@@ -13936,8 +13960,7 @@ var _sophieTickets = [];
 var _sophieRunning = false;
 
 function loadSophieColumn() {
-  fetch(SERVER + "/api/sophie-column")
-    .then(function(r) { return r.json(); })
+  api("/api/sophie-column")
     .then(function(tickets) {
       _sophieTickets = Array.isArray(tickets) ? tickets : [];
       renderSophieColumn();
@@ -14027,8 +14050,7 @@ function renderSophieColumn() {
 
 function sophieTriggerEnrich(key) {
   showToast("Préparation " + key + " — lancement du pipeline...", "⚡");
-  fetch(SERVER + "/api/daily-job/run", { method: "POST" })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/daily-job/run")
     .then(function(d) {
       if (d.ok) showToast("Pipeline lancé — " + key + " sera enrichi automatiquement", "🔄");
       else showToast("Erreur : " + (d.error || d.reason || "?"), "⚠️");
@@ -14038,8 +14060,7 @@ function sophieTriggerEnrich(key) {
 
 function sophieOpenChecklist(key) {
   showToast("Chargement checklist " + key + "...", "📋");
-  fetch(SERVER + "/api/jira-ticket/" + key)
-    .then(function(r) { return r.json(); })
+  api("/api/jira-ticket/" + key)
     .then(function(ticket) {
       var desc = "";
       if (ticket.fields && ticket.fields.description) {
@@ -14122,11 +14143,8 @@ function sophieMarkManualResult(key, pass) {
   showToast(key + " — " + status, pass ? "✅" : "❌");
 
   // Poster le résultat + rapport + attachment via l'API
-  fetch(SERVER + "/api/sophie-manual-result", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key: key, result: status })
-  }).then(function() {
+  apiPost("/api/sophie-manual-result", { key: key, result: status })
+  .then(function() {
     setTimeout(loadSophieColumn, 2000);
   }).catch(function() {});
 }
@@ -14151,8 +14169,7 @@ function sophieLaunchOne(key) {
   // Forcer l'affichage du progress overlay immédiatement
   handlePlaywrightProgress({ step: "init", message: "Démarrage du test " + key + "...", pct: 0, key: key });
 
-  fetch(SERVER + "/api/cycle/ticket/" + key + "/run", { method: "POST" })
-    .then(function(r) { return r.json(); })
+  apiPost("/api/cycle/ticket/" + key + "/run")
     .then(function(d) {
       if (d.ok) {
         var modeMsg = d.mode ? " (mode " + d.mode + ")" : "";
@@ -14214,8 +14231,7 @@ function sophieLaunchAll() {
     if (fill) fill.style.width = Math.round((done / total) * 100) + "%";
     if (txt) txt.textContent = (done + 1) + " / " + total + " — " + ticket.key;
 
-    fetch(SERVER + "/api/cycle/ticket/" + ticket.key + "/run", { method: "POST" })
-      .then(function(r) { return r.json(); })
+    apiPost("/api/cycle/ticket/" + ticket.key + "/run")
       .then(function(d) {
         if (d.result === "FAIL") results.fail++;
         else results.pass++;
@@ -14372,11 +14388,8 @@ function attachReportToJira(key, file) {
   if (!confirm("Attacher le rapport « " + file + " » au ticket " + key + " dans Jira ?")) return;
   var btn = document.getElementById("pw-attach-btn");
   if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
-  fetch(SERVER + "/api/attach-report/" + key, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file: file })
-  }).then(function(r) { return r.json(); }).then(function(d) {
+  apiPost("/api/attach-report/" + key, { file: file })
+  .then(function(d) {
     if (d.ok) {
       showToast("Rapport attaché à " + key, "✅");
       if (btn) { btn.textContent = "✅ Attaché"; btn.style.background = "#10b981"; }
@@ -14792,8 +14805,7 @@ var _cascadeSuggestions = [];
 function openCascadeModal(key, summary) {
   _cascadeKey         = key;
   _cascadeSuggestions = [];
-  var modal = document.getElementById("cascade-modal");
-  if (modal) modal.style.display = "flex";
+  modalMgr.open("cascade-modal");
   var info = document.getElementById("cascade-parent-info");
   if (info) info.textContent = key + " — " + summary;
   var loading = document.getElementById("cascade-loading");
@@ -14846,8 +14858,7 @@ function renderCascadeSuggestions() {
 }
 
 function closeCascadeModal() {
-  var modal = document.getElementById("cascade-modal");
-  if (modal) modal.style.display = "none";
+  modalMgr.close("cascade-modal");
 }
 
 function confirmCascadeCreate() {
@@ -14877,8 +14888,7 @@ var _xraySteps = [];
 function openXrayModal(key, summary) {
   _xrayKey   = key;
   _xraySteps = [];
-  var modal = document.getElementById("xray-modal");
-  if (modal) modal.style.display = "flex";
+  modalMgr.open("xray-modal");
   var info = document.getElementById("xray-ticket-info");
   if (info) info.textContent = key + " — " + summary;
   var loading   = document.getElementById("xray-loading");
@@ -14937,8 +14947,7 @@ function addXrayStep() {
 }
 
 function closeXrayModal() {
-  var modal = document.getElementById("xray-modal");
-  if (modal) modal.style.display = "none";
+  modalMgr.close("xray-modal");
 }
 
 function pushXraySteps() {
@@ -15013,7 +15022,7 @@ function renderLogCard(log) {
   return '<div id="log-card-' + id + '" style="background:var(--bg2);border:1px solid ' + (isPushed ? 'rgba(0,232,122,.25)' : 'rgba(255,59,92,.25)') + ';border-radius:12px;overflow:hidden">' +
     // Header card
     '<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer" onclick="toggleLogCard(\'' + id + '\')">' +
-      '<span style="font-family:var(--mono);font-size:10px;font-weight:700;padding:3px 8px;border-radius:4px;background:' + (isPushed ? 'rgba(0,232,122,.15)' : 'rgba(255,59,92,.12)') + ';color:' + (isPushed ? 'var(--green)' : 'var(--red)') + ';flex-shrink:0">' + (isPushed ? '✅ INTÉGRÉ' : '❌ FAIL') + '</span>' +
+      '<span style="flex-shrink:0">' + renderBadge(isPushed ? "PASS" : "FAIL") + '</span>' +
       (log.ticketKey ? '<a href="https://' + (window.CFG_JIRA_HOST||'eurelis.atlassian.net') + '/browse/' + escHtml(log.ticketKey) + '" target="_blank" onclick="event.stopPropagation()" style="font-family:var(--mono);font-size:11px;font-weight:700;padding:2px 8px;background:rgba(59,111,255,.12);border:1px solid rgba(59,111,255,.3);border-radius:4px;color:var(--blue);text-decoration:none;flex-shrink:0">🎫 ' + escHtml(log.ticketKey) + '</a>' : '') +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(log.testLabel || '—') + '</div>' +
@@ -15210,8 +15219,7 @@ function openValidationModal(sourceKey, opts) {
   _valPwActive = false;
   if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
 
-  var modal = document.getElementById("validation-modal");
-  modal.style.display = "";
+  modalMgr.open("validation-modal");
   document.getElementById("val-source-badge").textContent = sourceKey;
   document.getElementById("val-btn-push").disabled = false;
   document.getElementById("val-btn-push").textContent = "Valider et envoyer";
@@ -15345,7 +15353,7 @@ function openValidationModal(sourceKey, opts) {
 }
 
 function closeValidationModal() {
-  document.getElementById("validation-modal").style.display = "none";
+  modalMgr.close("validation-modal");
   _valState.pushing = false;
   _valPwActive = false;
   if (_valPwCountdown) { clearInterval(_valPwCountdown); _valPwCountdown = null; }
@@ -16051,13 +16059,10 @@ function valSelectResult(type, key, summary) {
 }
 
 // Hook SSE pour progression en temps reel
-var _origHandleSSE_val = handleSSE;
-handleSSE = function(data) {
-  _origHandleSSE_val(data);
-  if (data.type === "validation-progress") {
-    updateValProgressStep(data.step, data.status, data.detail);
-  }
-};
+// -- Hook SSE Validation (migre vers sseBus) --
+sseBus.on("validation-progress", function(data) {
+  updateValProgressStep(data.step, data.status, data.detail);
+});
 </script>
 </body>
 </html>
