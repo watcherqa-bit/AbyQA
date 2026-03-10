@@ -80,6 +80,7 @@ try {
   }
 } catch(e) { console.warn("[CHAT] SDK Anthropic non disponible :", e.message); }
 
+const ISTQB = require("./istqb-knowledge");
 const CHAT_SYSTEM = ISTQB.forChat + "\n\n" + `Tu es l'assistant QA — assistant IA polyvalent intégré à la plateforme pour Safran Group.
 
 ## Domaines de compétence
@@ -124,7 +125,6 @@ const cycle = require("./agent-cycle");
 const handleChatRoutes     = require("./routes/chat");
 const handleEnrichedRoutes = require("./routes/enriched");
 const handleBacklogRoutes  = require("./routes/backlog");
-const ISTQB = require("./istqb-knowledge");
 
 var sseClients   = {};
 
