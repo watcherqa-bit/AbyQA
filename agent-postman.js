@@ -135,6 +135,9 @@ function runCollection(collectionPath, envName, options) {
       console.log("[POSTMAN] Durée totale : " + report.duration + "ms");
       console.log("[POSTMAN] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
+      // Émettre sur le bus inter-agents
+      console.log("BUS_EVENT:" + JSON.stringify({ event: "test:api-completed", key: (options && options.key) || null, env: envName, collectionName: collectionName, pass: report.stats.assertions.total - report.stats.assertions.failed, fail: report.stats.assertions.failed, total: report.stats.assertions.total, reportPath: report.reportPath || null }));
+
       resolve(report);
     });
   });

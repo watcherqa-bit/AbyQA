@@ -228,6 +228,9 @@ async function runScript(scriptPath, platform, opts) {
     console.log("[APPIUM] Duree : " + report.duration + "ms");
     console.log("[APPIUM] ====================================================");
 
+    // Émettre sur le bus inter-agents
+    console.log("BUS_EVENT:" + JSON.stringify({ event: "test:mobile-completed", key: opts.key || null, env: opts.env || null, device: opts.deviceName || platform, pass: report.stats.assertions.passed, fail: report.stats.assertions.failed, total: report.stats.assertions.total, scriptPath: scriptPath }));
+
     return report;
 
   } catch (e) {

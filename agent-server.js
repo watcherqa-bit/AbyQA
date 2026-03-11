@@ -81,6 +81,7 @@ try {
 } catch(e) { console.warn("[CHAT] SDK Anthropic non disponible :", e.message); }
 
 const ISTQB = require("./istqb-knowledge");
+const bus   = require("./agent-bus");
 const CHAT_SYSTEM = ISTQB.forChat + "\n\n" + `Tu es l'assistant QA — assistant IA polyvalent intégré à la plateforme pour Safran Group.
 
 ## Domaines de compétence
@@ -191,6 +192,17 @@ function jiraApiCall(method, apiPath, body) {
     r.on("error", reject);
     if (payload) r.write(payload);
     r.end();
+  });
+}
+
+// Helper : poster un commentaire ADF sur un ticket Jira
+function jiraComment(issueKey, text) {
+  return jiraApiCall("POST", "/rest/api/3/issue/" + issueKey + "/comment", {
+    body: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: text }] }] }
+  }).then(function(r) {
+    if (r.status >= 400) console.error("[JIRA] Commentaire échoué sur " + issueKey + " (HTTP " + r.status + ")");
+  }).catch(function(e) {
+    console.error("[JIRA] Erreur commentaire " + issueKey + " :", e.message);
   });
 }
 
@@ -313,6 +325,16 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
             progressData.agent = agentId;
             sendSSE(clientId, progressData);
           } catch(e) { console.error("[SERVER] Erreur parse PLAYWRIGHT_PROGRESS :", e.message); }
+        }
+        // Intercepter les événements bus inter-agents
+        if (line.trim().startsWith("BUS_EVENT:")) {
+          try {
+            var busData = JSON.parse(line.trim().replace("BUS_EVENT:", ""));
+            var busEvt = busData.event;
+            delete busData.event;
+            busData.agent = agentId;
+            bus.publish(busEvt, busData);
+          } catch(e) { console.error("[SERVER] Erreur parse BUS_EVENT :", e.message); }
         }
         sendSSE(clientId, { type: "log", agent: agentId, line: dryPrefix + line.trim() });
         logBuf.push(line.trim());
@@ -3552,6 +3574,14 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/bus/history — Derniers événements du bus inter-agents ────────
+  if (method === "GET" && url.startsWith("/api/bus/history")) {
+    var busN = parseInt((url.split("?n=")[1]) || "50", 10);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(bus.getHistory(busN)));
+    return;
+  }
+
   // ── GET /api/session/status — Statut de toutes les sessions ──────────────
   if (method === "GET" && url === "/api/session/status") {
     var authDir = path.join(__dirname, "auth");
@@ -3950,6 +3980,117 @@ server.listen(PORT, "0.0.0.0", function() {
   } catch(e) {
     console.log("  [CYCLE] Erreur dÃ©marrage cron : " + e.message);
   }
+
+  // ── EVENT BUS — Bridge SSE + câblage réactif inter-agents ──────────────────
+  bus.on("error", function(err) {
+    console.error("[BUS] Erreur non gérée :", err.message || err);
+  });
+
+  // Bridge : tous les événements bus → SSE dashboard
+  bus.on("*", function(event) {
+    try {
+      var ssePayload = Object.assign({}, event, { type: "bus-event" });
+      Object.keys(sseClients).forEach(function(cid) {
+        sendSSE(cid, ssePayload);
+      });
+    } catch(e) { /* SSE best-effort */ }
+  });
+
+  // ticket:detected → auto-trigger workflow selon le type
+  bus.on("ticket:detected", function(evt) {
+    try {
+      var qaStatuses = ["To Test", "IN TEST", "Reopened", "TO TEST UAT", "To Test UAT"];
+      if (qaStatuses.indexOf(evt.status) === -1) return;
+      console.log("[BUS] ticket:detected → " + evt.key + " (" + evt.type + " / " + evt.status + ")");
+      if (typeof jiraQueue.poll === "function") {
+        jiraQueue.poll();
+      }
+    } catch(e) { console.error("[BUS] Erreur ticket:detected :", e.message); }
+  });
+
+  // test:generated → auto-ajouter à la file Playwright
+  bus.on("test:generated", function(evt) {
+    try {
+      var testsDir = path.join(BASE_DIR, "inbox", "tests");
+      if (!fs.existsSync(testsDir)) fs.mkdirSync(testsDir, { recursive: true });
+      var testData = {
+        key: evt.testKey || evt.key,
+        sourceKey: evt.key,
+        summary: evt.summary || "",
+        strategy: evt.strategy || "auto",
+        csvPath: evt.csvPath || null,
+        status: "queued",
+        queuedAt: new Date().toISOString()
+      };
+      fs.writeFileSync(path.join(testsDir, testData.key + ".json"), JSON.stringify(testData, null, 2));
+      console.log("[BUS] test:generated → " + testData.key + " ajouté à la file");
+      bus.publish("test:queued", testData);
+    } catch(e) { console.error("[BUS] Erreur test:generated :", e.message); }
+  });
+
+  // test:completed PASS → commenter le ticket Jira
+  bus.on("test:completed", function(evt) {
+    try {
+      if (!evt.key || !evt.status) return;
+      if (evt.status === "PASS") {
+        console.log("[BUS] test:completed PASS → commentaire Jira " + evt.key);
+        var comment = "Test Playwright " + (evt.mode || "ui") + " : " + evt.pass + " PASS / " + evt.fail + " FAIL — env " + (evt.env || "?");
+        jiraComment(evt.key, comment);
+      }
+      if (evt.status === "FAIL" && evt.key) {
+        console.log("[BUS] test:completed FAIL → " + evt.key + " (failType: " + (evt.failType || "?") + ")");
+        var failComment = "Test Playwright FAIL : " + evt.fail + " échec(s) — " + (evt.failType || "unknown") + " — env " + (evt.env || "?");
+        jiraComment(evt.key, failComment);
+      }
+      if (evt.status === "BLOCKED" && evt.failType === "CLOUDFLARE_BLOCKED") {
+        bus.publish("session:expired", {
+          env: evt.env || "sophie",
+          reason: "Cloudflare block durant test " + evt.key
+        });
+      }
+    } catch(e) { console.error("[BUS] Erreur test:completed :", e.message); }
+  });
+
+  // test:api-completed → commenter le ticket Jira
+  bus.on("test:api-completed", function(evt) {
+    try {
+      if (!evt.key) return;
+      var comment = "Test API (" + (evt.collectionName || "?") + ") : " + (evt.pass || 0) + " PASS / " + (evt.fail || 0) + " FAIL — env " + (evt.env || "?");
+      console.log("[BUS] test:api-completed → commentaire Jira " + evt.key);
+      jiraComment(evt.key, comment);
+    } catch(e) { console.error("[BUS] Erreur test:api-completed :", e.message); }
+  });
+
+  // test:mobile-completed → commenter le ticket Jira
+  bus.on("test:mobile-completed", function(evt) {
+    try {
+      if (!evt.key) return;
+      var comment = "Test Mobile (" + (evt.device || "?") + ") : " + (evt.pass || 0) + " PASS / " + (evt.fail || 0) + " FAIL — env " + (evt.env || "?");
+      console.log("[BUS] test:mobile-completed → commentaire Jira " + evt.key);
+      jiraComment(evt.key, comment);
+    } catch(e) { console.error("[BUS] Erreur test:mobile-completed :", e.message); }
+  });
+
+  // css:completed avec issues → log
+  bus.on("css:completed", function(evt) {
+    try {
+      if (evt.issues && evt.issues.length > 0) {
+        console.log("[BUS] css:completed → " + evt.issues.length + " issue(s) sur " + (evt.env || "?") + "/" + (evt.browser || "?"));
+      }
+    } catch(e) { console.error("[BUS] Erreur css:completed :", e.message); }
+  });
+
+  // session:expired → log alerte
+  bus.on("session:expired", function(evt) {
+    console.log("[BUS] ⚠️ session:expired → " + (evt.env || "?") + " : " + (evt.reason || ""));
+  });
+
+  // agent:error → log
+  bus.on("agent:error", function(evt) {
+    console.error("[BUS] ❌ agent:error → " + (evt.agent || "?") + " : " + (evt.error || ""));
+  });
+
+  console.log("  🔌 Event Bus : actif — " + bus.eventNames().length + " événements câblés");
   console.log("==================================================");
 });
 

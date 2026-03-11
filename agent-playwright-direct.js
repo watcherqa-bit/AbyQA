@@ -2344,6 +2344,8 @@ async function main() {
       pass: cPass, fail: cFail, total: cTotal, pct: cPct,
       mode: MODE, reportPath: path.basename(cmpReportPath), bugs: [], dryRun: DRY_RUN
     }));
+    var cmpGlobalStatus = cFail > 0 ? "FAIL" : "PASS";
+    console.log("BUS_EVENT:" + JSON.stringify({ event: "test:completed", key: KEY || null, mode: MODE, env: ENV_NAMES.join(","), status: cmpGlobalStatus, pass: cPass, fail: cFail, blocked: 0, total: cTotal, reportPath: path.basename(cmpReportPath), failType: null }));
     var cmpFull = allEnvResults.map(function(e) {
       return { envName: e.envName, results: e.results.map(function(r) {
         return { label:r.label, url:r.url, status:r.status, env:r.env, device:r.device, browser:r.browser, issues:r.issues, steps:r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
@@ -2460,6 +2462,8 @@ async function main() {
     };
 
     console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass: csvPass, fail: csvFail, blocked: csvBlocked, total: csvTotal, pct: csvPct, mode: MODE, env: ENV_NAME, reportPath: path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs: [], dryRun: DRY_RUN, ticketKey: KEY, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
+    var csvGlobalStatus = csvFail > 0 ? "FAIL" : (csvBlocked > 0 ? "BLOCKED" : "PASS");
+    console.log("BUS_EVENT:" + JSON.stringify({ event: "test:completed", key: KEY || null, mode: MODE, env: ENV_NAME, status: csvGlobalStatus, pass: csvPass, fail: csvFail, blocked: csvBlocked, total: csvTotal, reportPath: path.basename(reportPath), failType: null }));
 
     var fullForDashboard = allResults.map(function(r) {
       return { label: r.label, url: r.url, status: r.status, device: r.device, browser: r.browser, issues: r.issues, steps: r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
@@ -2564,6 +2568,9 @@ async function main() {
     };
   }
   console.log("PLAYWRIGHT_DIRECT_RESULT:" + JSON.stringify({ pass:pass, fail:fail, total:total, pct:pct, mode:MODE, env:ENV_NAME, reportPath:path.basename(reportPath), pdfPath: pdfPath ? path.basename(pdfPath) : null, bugs:bugKeys, dryRun:DRY_RUN, ticketKey: KEY || null, ticketType: (TICKET_INFO && TICKET_INFO.type) || null, scenarios: scenarioSummary }));
+  var globalStatus = fail > 0 ? "FAIL" : (blocked > 0 ? "BLOCKED" : "PASS");
+  var firstFailType = allResults.filter(function(r){return r.failType;}).map(function(r){return r.failType;})[0] || null;
+  console.log("BUS_EVENT:" + JSON.stringify({ event: "test:completed", key: KEY || null, mode: MODE, env: ENV_NAME, status: globalStatus, pass: pass, fail: fail, blocked: blocked || 0, total: total, reportPath: path.basename(reportPath), failType: firstFailType }));
   var fullForDashboard = allResults.map(function(r) {
     return { label:r.label, url:r.url, status:r.status, device:r.device, browser:r.browser, issues:r.issues, steps:r.steps, screenshot: r.screenshot ? path.basename(r.screenshot) : null };
   });

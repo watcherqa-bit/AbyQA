@@ -493,6 +493,12 @@ async function workflowBacklog(ticket) {
       issues:    review.issues
     });
 
+    // Émettre sur le bus inter-agents
+    try {
+      var bus = require("./agent-bus");
+      bus.publish("ticket:enriched", { key: key, summary: summary, type: "Story", enrichedPath: filepath, analysis: { score: review.score } });
+    } catch(e) { /* bus optionnel */ }
+
     // 4. Attendre validation via le dashboard (polling fichier)
     var validation = await requestValidation(
       "us-enrichment", key,
@@ -660,6 +666,12 @@ async function workflowUS(ticket) {
       createdAt: new Date().toISOString()
     });
     pushSSE({ type: "test-queue-update", key: key });
+
+    // Émettre sur le bus inter-agents
+    try {
+      var bus = require("./agent-bus");
+      bus.publish("test:generated", { key: key, testKey: testKey || key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision });
+    } catch(e) { /* bus optionnel */ }
 
     // 7. Si automatisable → lancer Playwright
     var pwResult = null;

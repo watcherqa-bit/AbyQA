@@ -257,6 +257,18 @@ function runPoll() {
           at:      timeLabel
         });
       }
+
+      // Émettre sur le bus inter-agents
+      try {
+        var bus = require("./agent-bus");
+        newItems.forEach(function(t) {
+          bus.publish("ticket:detected", {
+            key: t.key, summary: t.summary, type: t.type,
+            status: t.status, priority: t.priority,
+            labels: t.labels, updated: t.updated
+          });
+        });
+      } catch(e) { console.error("[POLLER] Erreur bus :", e.message); }
     } else {
       console.log("[POLLER] Aucun nouveau ticket à " + _status.lastCheck.slice(0, 16).replace("T", " "));
     }
