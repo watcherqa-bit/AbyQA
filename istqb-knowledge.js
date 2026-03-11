@@ -404,5 +404,6 @@ module.exports = {
   forRouter: FOR_ROUTER,           // agent-router.js
   forGeneration: FOR_GENERATION,   // agent.js + /api/ops-generate
   forReporter: FOR_REPORTER,       // agent-reporter.js
-  forDrupal: FOR_DRUPAL            // agent-drupal.js
+  forDrupal: FOR_DRUPAL,           // agent-drupal.js
+  forChat: FOUNDATION_FULL          // agent-server.js chat Aby
 };

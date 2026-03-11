@@ -1391,6 +1391,12 @@
       <div class="mega-tab" onclick="showSubTab('outils','operations')" data-subtab="operations">
         <span class="tab-icon">⚡</span> Opérations
       </div>
+      <div class="mega-tab" onclick="showSubTab('outils','postman')" data-subtab="postman">
+        <span class="tab-icon">📮</span> Postman
+      </div>
+      <div class="mega-tab" onclick="showSubTab('outils','appium')" data-subtab="appium">
+        <span class="tab-icon">📱</span> Appium
+      </div>
     </div>
 
     <!-- ── DASHBOARD ── -->
@@ -4252,6 +4258,96 @@
       </div>
     </div>
 
+    <!-- ── POSTMAN (Tests API) ── -->
+    <div class="panel" id="panel-postman">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Postman <span>API</span></div>
+          <div class="panel-desc">Tests API via Postman/Newman — generer, executer, consulter les rapports</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="postmanGenerate()">🤖 Generer collection</button>
+          <button class="btn" onclick="postmanLoadCollections()" style="color:var(--text2)">↻ Rafraichir</button>
+        </div>
+      </div>
+
+      <!-- Generer -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UNE COLLECTION</div>
+        <textarea id="postman-prompt" rows="3" placeholder="Decris les endpoints a tester (ex: tester l'API /api/settings GET et PUT, verifier les codes retour 200/400/401...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
+          <select id="postman-env" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;font-family:var(--mono)">
+            <option value="sophie">Sophie</option>
+            <option value="paulo">Paulo</option>
+            <option value="prod">Prod</option>
+          </select>
+          <span id="postman-gen-status" style="font-size:11px;color:var(--text3);font-family:var(--mono)"></span>
+        </div>
+      </div>
+
+      <!-- Collections existantes -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">COLLECTIONS DISPONIBLES</div>
+        <div id="postman-collections" style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;color:var(--text3)">Cliquer "Rafraichir" pour charger</div>
+        </div>
+      </div>
+
+      <!-- Rapport -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">DERNIER RAPPORT</div>
+        <div id="postman-report" style="font-size:12px;color:var(--text3)">Aucun rapport</div>
+      </div>
+    </div>
+
+    <!-- ── APPIUM (Tests Mobile) ── -->
+    <div class="panel" id="panel-appium">
+      <div class="panel-header">
+        <div>
+          <div class="panel-title">Appium <span>Mobile</span></div>
+          <div class="panel-desc">Tests mobile via Appium/WebDriverIO — Android, iOS</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="appiumGenerate()">🤖 Generer script</button>
+          <button class="btn" onclick="appiumLoadScripts()" style="color:var(--text2)">↻ Rafraichir</button>
+        </div>
+      </div>
+
+      <!-- Generer -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UN SCRIPT</div>
+        <textarea id="appium-prompt" rows="3" placeholder="Decris le test mobile (ex: ouvrir la page d'accueil sur Chrome Android, verifier le menu hamburger, tester le scroll...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
+          <select id="appium-platform" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;font-family:var(--mono)">
+            <option value="android-chrome">Android Chrome</option>
+            <option value="android">Android natif</option>
+            <option value="ios-safari">iOS Safari</option>
+            <option value="ios">iOS natif</option>
+          </select>
+          <select id="appium-env" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;font-family:var(--mono)">
+            <option value="sophie">Sophie</option>
+            <option value="paulo">Paulo</option>
+            <option value="prod">Prod</option>
+          </select>
+          <span id="appium-gen-status" style="font-size:11px;color:var(--text3);font-family:var(--mono)"></span>
+        </div>
+      </div>
+
+      <!-- Scripts existants -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">SCRIPTS DISPONIBLES</div>
+        <div id="appium-scripts" style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;color:var(--text3)">Cliquer "Rafraichir" pour charger</div>
+        </div>
+      </div>
+
+      <!-- Rapport -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">DERNIER RAPPORT</div>
+        <div id="appium-report" style="font-size:12px;color:var(--text3)">Aucun rapport</div>
+      </div>
+    </div>
+
 </div>
 
   </div>
@@ -4805,7 +4901,7 @@ var PANEL_GROUPS = {
     defaultTab: "backlog"
   },
   outils: {
-    tabs: ["matrix", "css", "drupal", "operations"],
+    tabs: ["matrix", "css", "drupal", "operations", "postman", "appium"],
     defaultTab: "matrix"
   }
 };
@@ -4922,6 +5018,8 @@ function _triggerRefresh(id) {
   if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
   if (id === "matrix")            renderMatrixInline();
   if (id === "releases" && typeof loadReleases === "function") loadReleases();
+  if (id === "postman")           postmanLoadCollections();
+  if (id === "appium")            appiumLoadScripts();
 }
 
 // Navigation back/forward navigateur
@@ -8602,6 +8700,196 @@ function handleSessionFilePick(input) {
     });
   };
   reader.readAsText(file);
+}
+
+// ── POSTMAN — fonctions panel ─────────────────────────────────────────────────
+function postmanGenerate() {
+  var text = (document.getElementById('postman-prompt') || {}).value || '';
+  if (!text.trim()) { showToast('Decris les endpoints a tester', 'error'); return; }
+  var st = document.getElementById('postman-gen-status');
+  if (st) st.textContent = 'Generation en cours...';
+  fetch(SERVER + '/api/postman/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      if (st) st.textContent = 'Collection generee';
+      showToast('Collection Postman generee', 'success');
+      postmanLoadCollections();
+    } else {
+      if (st) st.textContent = 'Erreur : ' + (d.error || '');
+      showToast('Erreur generation : ' + (d.error || ''), 'error');
+    }
+  }).catch(function(e) { if (st) st.textContent = 'Erreur : ' + e.message; });
+}
+
+function postmanLoadCollections() {
+  var container = document.getElementById('postman-collections');
+  if (!container) return;
+  container.innerHTML = '<div style="font-size:11px;color:var(--text3)">Chargement...</div>';
+  fetch(SERVER + '/api/postman/collections').then(function(r) { return r.json(); }).then(function(d) {
+    if (!d.ok || !d.collections || !d.collections.length) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text3)">Aucune collection</div>';
+      return;
+    }
+    var html = '';
+    d.collections.forEach(function(name) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border2)">';
+      html += '<span style="font-family:var(--mono);font-size:12px;color:var(--text)">' + name + '</span>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button onclick="postmanRun(\'' + name + '\')" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:600">▶ Lancer</button>';
+      html += '<button onclick="postmanDelete(\'' + name + '\')" style="background:none;border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px">✕</button>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  }).catch(function() {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text3)">Erreur de chargement</div>';
+  });
+}
+
+function postmanRun(collectionName) {
+  var env = (document.getElementById('postman-env') || {}).value || 'sophie';
+  showToast('Lancement ' + collectionName + ' sur ' + env + '...', 'info');
+  var report = document.getElementById('postman-report');
+  if (report) report.innerHTML = '<div style="color:var(--text3)">Execution en cours...</div>';
+  fetch(SERVER + '/api/postman/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ collection: collectionName, env: env })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok && d.result) {
+      var r = d.result;
+      var verdict = (r.verdict || 'UNKNOWN').toUpperCase();
+      var vColor = verdict === 'PASS' ? 'var(--green)' : 'var(--red)';
+      var html = '<div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">';
+      html += '<span style="font-size:20px;font-weight:700;color:' + vColor + '">' + verdict + '</span>';
+      html += '<span style="font-size:12px;color:var(--text2)">' + (r.stats ? r.stats.total + ' assertions — ' + r.stats.passed + ' pass / ' + r.stats.failed + ' fail' : '') + '</span>';
+      html += '</div>';
+      if (r.failures && r.failures.length) {
+        html += '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px">ECHECS</div>';
+        r.failures.forEach(function(f) {
+          html += '<div style="padding:6px 10px;background:rgba(239,68,68,.1);border-radius:6px;font-size:11px;color:#ef4444;margin-bottom:4px;font-family:var(--mono)">' + (f.name || f) + '</div>';
+        });
+      }
+      if (report) report.innerHTML = html;
+      showToast('Postman ' + verdict, verdict === 'PASS' ? 'success' : 'error');
+    } else {
+      if (report) report.innerHTML = '<div style="color:var(--red)">Erreur : ' + (d.error || 'inconnue') + '</div>';
+    }
+  }).catch(function(e) {
+    if (report) report.innerHTML = '<div style="color:var(--red)">Erreur : ' + e.message + '</div>';
+  });
+}
+
+function postmanDelete(name) {
+  if (!confirm('Supprimer la collection ' + name + ' ?')) return;
+  fetch(SERVER + '/api/postman/collection/' + encodeURIComponent(name), { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { showToast('Collection supprimee', 'success'); postmanLoadCollections(); }
+      else showToast('Erreur : ' + (d.error || ''), 'error');
+    });
+}
+
+// ── APPIUM — fonctions panel ──────────────────────────────────────────────────
+function appiumGenerate() {
+  var text = (document.getElementById('appium-prompt') || {}).value || '';
+  var platform = (document.getElementById('appium-platform') || {}).value || 'android-chrome';
+  if (!text.trim()) { showToast('Decris le test mobile a generer', 'error'); return; }
+  var st = document.getElementById('appium-gen-status');
+  if (st) st.textContent = 'Generation en cours...';
+  fetch(SERVER + '/api/appium/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text: text, platform: platform })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok) {
+      if (st) st.textContent = 'Script genere';
+      showToast('Script Appium genere', 'success');
+      appiumLoadScripts();
+    } else {
+      if (st) st.textContent = 'Erreur : ' + (d.error || '');
+      showToast('Erreur generation : ' + (d.error || ''), 'error');
+    }
+  }).catch(function(e) { if (st) st.textContent = 'Erreur : ' + e.message; });
+}
+
+function appiumLoadScripts() {
+  var container = document.getElementById('appium-scripts');
+  if (!container) return;
+  container.innerHTML = '<div style="font-size:11px;color:var(--text3)">Chargement...</div>';
+  fetch(SERVER + '/api/appium/scripts').then(function(r) { return r.json(); }).then(function(d) {
+    if (!d.ok || !d.scripts || !d.scripts.length) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text3)">Aucun script</div>';
+      return;
+    }
+    var html = '';
+    d.scripts.forEach(function(name) {
+      html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border2)">';
+      html += '<span style="font-family:var(--mono);font-size:12px;color:var(--text)">' + name + '</span>';
+      html += '<div style="display:flex;gap:6px">';
+      html += '<button onclick="appiumRun(\'' + name + '\')" style="background:var(--green);color:#fff;border:none;border-radius:5px;padding:4px 10px;cursor:pointer;font-size:11px;font-weight:600">▶ Lancer</button>';
+      html += '<button onclick="appiumDelete(\'' + name + '\')" style="background:none;border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:5px;padding:4px 8px;cursor:pointer;font-size:11px">✕</button>';
+      html += '</div></div>';
+    });
+    container.innerHTML = html;
+  }).catch(function() {
+    container.innerHTML = '<div style="font-size:12px;color:var(--text3)">Erreur de chargement</div>';
+  });
+}
+
+function appiumRun(scriptName) {
+  var platform = (document.getElementById('appium-platform') || {}).value || 'android-chrome';
+  var env = (document.getElementById('appium-env') || {}).value || 'sophie';
+  showToast('Lancement ' + scriptName + ' sur ' + platform + '...', 'info');
+  var report = document.getElementById('appium-report');
+  if (report) report.innerHTML = '<div style="color:var(--text3)">Execution en cours...</div>';
+  fetch(SERVER + '/api/appium/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: scriptName, platform: platform, env: env })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    if (d.ok && d.result) {
+      var r = d.result;
+      var verdict = (r.verdict || 'UNKNOWN').toUpperCase();
+      var vColor = verdict === 'PASS' ? 'var(--green)' : 'var(--red)';
+      var html = '<div style="display:flex;gap:16px;align-items:center;margin-bottom:12px">';
+      html += '<span style="font-size:20px;font-weight:700;color:' + vColor + '">' + verdict + '</span>';
+      html += '<span style="font-size:12px;color:var(--text2)">' + (r.platform || platform) + ' — ' + (r.assertions || 0) + ' assertions</span>';
+      html += '</div>';
+      if (r.failures && r.failures.length) {
+        html += '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-bottom:6px">ECHECS</div>';
+        r.failures.forEach(function(f) {
+          html += '<div style="padding:6px 10px;background:rgba(239,68,68,.1);border-radius:6px;font-size:11px;color:#ef4444;margin-bottom:4px;font-family:var(--mono)">' + (f.message || f) + '</div>';
+        });
+      }
+      if (r.screenshots && r.screenshots.length) {
+        html += '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);margin-top:10px;margin-bottom:6px">SCREENSHOTS</div>';
+        html += '<div style="display:flex;gap:8px;flex-wrap:wrap">';
+        r.screenshots.forEach(function(s) {
+          html += '<img src="' + SERVER + '/screenshots/' + s + '" style="width:120px;border-radius:6px;border:1px solid var(--border2)" onerror="this.style.display=\'none\'">';
+        });
+        html += '</div>';
+      }
+      if (report) report.innerHTML = html;
+      showToast('Appium ' + verdict, verdict === 'PASS' ? 'success' : 'error');
+    } else {
+      if (report) report.innerHTML = '<div style="color:var(--red)">Erreur : ' + (d.error || 'inconnue') + '</div>';
+    }
+  }).catch(function(e) {
+    if (report) report.innerHTML = '<div style="color:var(--red)">Erreur : ' + e.message + '</div>';
+  });
+}
+
+function appiumDelete(name) {
+  if (!confirm('Supprimer le script ' + name + ' ?')) return;
+  fetch(SERVER + '/api/appium/script/' + encodeURIComponent(name), { method: 'DELETE' })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.ok) { showToast('Script supprime', 'success'); appiumLoadScripts(); }
+      else showToast('Erreur : ' + (d.error || ''), 'error');
+    });
 }
 
 function runInspect(force) {

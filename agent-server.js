@@ -3801,7 +3801,7 @@ var server = http.createServer(function(req, res) {
       try {
         var body = JSON.parse(Buffer.concat(aprChunks).toString());
         var agentAppium = require("./agent-appium");
-        var result = await agentAppium.runScript(body);
+        var result = await agentAppium.runScript(body.script, body.platform, body);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, result: result }));
       } catch(e) {
