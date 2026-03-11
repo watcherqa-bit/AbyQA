@@ -1,33 +1,47 @@
-// agent-matrix.js - Matrice de traçabilité QA par release
-// Interroge l'API Jira, recupere tous les tickets de la release
-// et genere un fichier Excel avec la traçabilite complete
+// agent-matrix.js — Matrice de traçabilité QA par release (exceljs, pur Node.js)
+// Fusionne données Jira + enriched AbyQA (stratégie IA, score, risque)
 //
 // Usage :
 //   node agent-matrix.js v1.25.0
 //   node agent-matrix.js v1.25.0 --output=matrice-v1.25.0.xlsx
+//   Programmable : require("./agent-matrix").generate("v1.25.0")
 
 "use strict";
 
-
-const fs    = require("fs");
-const path  = require("path");
-const https = require("https");
-const { execSync } = require("child_process");
-
-// ── CONFIG (lue depuis .env via config.js) ────────────────────────────────────
-const CFG    = require("./config");
+var fs   = require("fs");
+var path = require("path");
+var https = require("https");
+var CFG  = require("./config");
 CFG.paths.init();
-const CONFIG = CFG;
 
-const REPORTS_DIR = CFG.paths.reports;
+var REPORTS_DIR  = CFG.paths.reports;
+var ENRICHED_DIR = path.join(__dirname, "inbox", "enriched");
 if (!fs.existsSync(REPORTS_DIR)) fs.mkdirSync(REPORTS_DIR, { recursive: true });
 
-// ── JIRA API ──────────────────────────────────────────────────────────────────
+// ── COULEURS ────────────────────────────────────────────────────────────────────
+var COLORS = {
+  safranBlue: "003580",
+  white:      "FFFFFF",
+  greyLight:  "F5F5F5",
+  greyHeader: "DEE2E6",
+  greenLight: "D4EDDA",
+  greenDark:  "198754",
+  redLight:   "F8D7DA",
+  redDark:    "DC3545",
+  orangeLight:"FFF3CD",
+  orangeDark: "FD7E14",
+  blueLight:  "EBF5FB",
+  purpleLight:"F3E8FF",
+  cyanLight:  "E0F7FA",
+  cyanDark:   "0891B2"
+};
+
+// ── JIRA API ────────────────────────────────────────────────────────────────────
 function jiraGet(apiPath) {
   return new Promise(function(resolve, reject) {
-    var auth    = Buffer.from(CONFIG.jira.email + ":" + CONFIG.jira.token).toString("base64");
+    var auth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var options = {
-      hostname: CONFIG.jira.host,
+      hostname: CFG.jira.host,
       path:     apiPath,
       method:   "GET",
       headers:  { "Authorization": "Basic " + auth, "Accept": "application/json" }
@@ -37,7 +51,7 @@ function jiraGet(apiPath) {
       res.on("data", function(c) { data += c; });
       res.on("end", function() {
         try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error("JSON parse error : " + data.substring(0, 100))); }
+        catch(e) { reject(new Error("JSON parse error : " + data.substring(0, 200))); }
       });
     });
     req.on("error", reject);
@@ -45,426 +59,593 @@ function jiraGet(apiPath) {
   });
 }
 
-// ── RECUPERER TICKETS DE LA RELEASE ──────────────────────────────────────────
+// ── RECUPERER TICKETS JIRA ──────────────────────────────────────────────────────
 async function fetchReleaseTickets(version) {
-  console.log("[JIRA] Recuperation des tickets " + version + "...");
-
+  console.log("[MATRIX] Récupération tickets Jira pour " + version + "...");
   var allIssues = [];
-  var startAt   = 0;
-  var maxResults = 50;
-  var total     = 999;
+  var startAt = 0, total = 999;
 
   while (startAt < total) {
     var jql = encodeURIComponent(
-      'project = ' + CONFIG.jira.project +
+      "project = " + CFG.jira.project +
       ' AND labels = "' + version + '"' +
-      ' ORDER BY issuetype ASC, status ASC'
+      " ORDER BY issuetype ASC, status ASC"
     );
     var url = "/rest/api/2/search?jql=" + jql +
-      "&startAt=" + startAt +
-      "&maxResults=" + maxResults +
+      "&startAt=" + startAt + "&maxResults=50" +
       "&fields=summary,issuetype,status,priority,assignee,labels,issuelinks,comment,customfield_10077";
 
     var result = await jiraGet(url);
-    total      = result.total || 0;
+    total = result.total || 0;
     var issues = result.issues || [];
-    allIssues  = allIssues.concat(issues);
-    startAt   += issues.length;
-
-    process.stdout.write("  " + allIssues.length + "/" + total + " tickets recuperes...\r");
+    allIssues = allIssues.concat(issues);
+    startAt += issues.length;
     if (issues.length === 0) break;
     await new Promise(function(r) { setTimeout(r, 200); });
   }
 
-  console.log("\n  Total : " + allIssues.length + " tickets");
+  console.log("[MATRIX] " + allIssues.length + " tickets Jira récupérés");
   return allIssues;
 }
 
-// ── EXTRAIRE LES INFOS D'UN TICKET ───────────────────────────────────────────
+// ── EXTRAIRE INFOS D'UN TICKET JIRA ─────────────────────────────────────────────
 function extractTicketInfo(issue) {
-  var fields  = issue.fields || {};
-  var links   = fields.issuelinks || [];
+  var fields = issue.fields || {};
+  var links  = fields.issuelinks || [];
 
-  // Tickets Test lies
   var testLinks = links.filter(function(l) {
     var linked = l.inwardIssue || l.outwardIssue;
     return linked && linked.fields && linked.fields.issuetype &&
-           linked.fields.issuetype.name === "Test";
-  }).map(function(l) {
-    var linked = l.inwardIssue || l.outwardIssue;
-    return linked.key;
-  });
+           (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case");
+  }).map(function(l) { return (l.inwardIssue || l.outwardIssue).key; });
 
-  // Bugs lies
   var bugLinks = links.filter(function(l) {
     var linked = l.inwardIssue || l.outwardIssue;
     return linked && linked.fields && linked.fields.issuetype &&
            linked.fields.issuetype.name === "Bug";
-  }).map(function(l) {
-    var linked = l.inwardIssue || l.outwardIssue;
-    return linked.key;
-  });
+  }).map(function(l) { return (l.inwardIssue || l.outwardIssue).key; });
 
-  // Extraire les cas de test depuis le champ Tests (customfield_10077)
   var testsField = fields.customfield_10077 || "";
-  var tcList     = [];
+  var tcList = [];
   if (testsField) {
     var tcMatches = testsField.match(/TC\d+[^:)}\n]*/g) || [];
     tcMatches.forEach(function(tc) {
-      var clean = tc.replace(/<[^>]+>/g," ").replace(/\s+/g," ").trim().substring(0,80);
+      var clean = tc.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().substring(0, 80);
       if (clean.length > 3) tcList.push(clean);
     });
   }
 
-  // Extraire statut global des tests (PASS/FAIL/KO depuis les commentaires)
-  var comments     = (fields.comment && fields.comment.comments) || [];
-  var lastComment  = comments.length > 0 ? comments[comments.length-1].body : "";
-  var testStatut   = "";
-  if (lastComment.toLowerCase().includes("ok sur sophie") || lastComment.toLowerCase().includes("ok\n")) {
-    testStatut = "PASS";
-  } else if (lastComment.toLowerCase().includes("ko") || lastComment.toLowerCase().includes("fail")) {
-    testStatut = "FAIL";
-  } else if (fields.status && fields.status.name === "To Test UAT") {
-    testStatut = "A TESTER";
-  } else if (fields.status && (fields.status.name === "Done" || fields.status.name === "Closed")) {
-    testStatut = "PASS";
-  }
+  var comments    = (fields.comment && fields.comment.comments) || [];
+  var lastComment = comments.length > 0 ? comments[comments.length - 1].body : "";
+  var testStatut  = "";
+  if (/ok sur sophie|ok\n/i.test(lastComment)) testStatut = "PASS";
+  else if (/ko|fail/i.test(lastComment)) testStatut = "FAIL";
+  else if (fields.status && fields.status.name === "To Test UAT") testStatut = "A TESTER";
+  else if (fields.status && /^(Done|Closed)$/.test(fields.status.name)) testStatut = "PASS";
 
   return {
-    key:       issue.key,
-    titre:     fields.summary || "",
-    type:      fields.issuetype ? fields.issuetype.name : "",
-    statut:    fields.status ? fields.status.name : "",
-    priorite:  fields.priority ? fields.priority.name : "",
-    assignee:  fields.assignee ? fields.assignee.displayName : "Non assigne",
-    labels:    (fields.labels || []).join(", "),
-    testsLies: testLinks.join(", "),
-    bugs:      bugLinks.join(", "),
-    tcList:    tcList,
+    key:        issue.key,
+    titre:      fields.summary || "",
+    type:       fields.issuetype ? fields.issuetype.name : "",
+    statut:     fields.status ? fields.status.name : "",
+    priorite:   fields.priority ? fields.priority.name : "",
+    assignee:   fields.assignee ? fields.assignee.displayName : "Non assigné",
+    labels:     (fields.labels || []).join(", "),
+    testsLies:  testLinks.join(", "),
+    bugs:       bugLinks.join(", "),
+    tcList:     tcList,
     testStatut: testStatut,
     nbComments: comments.length
   };
 }
 
-// ── GENERER LE FICHIER PYTHON POUR OPENPYXL ──────────────────────────────────
-function generatePythonScript(version, tickets, outputPath) {
-  // Serialiser les données pour le script Python
-  var ticketsJson = JSON.stringify(tickets, null, 2).replace(/'/g, "\\'");
-
-  var py = `import json
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side, GradientFill
-from openpyxl.utils import get_column_letter
-
-version  = "${version}"
-out_path = r"${outputPath.replace(/\\/g, "\\\\")}"
-
-tickets_raw = json.loads(r'''${JSON.stringify(tickets)}''')
-
-wb = Workbook()
-
-# ── COULEURS ───────────────────────────────────────────────────────────────────
-BLUE_DARK  = "003580"   # Safran bleu
-BLUE_LIGHT = "E8F0FB"
-GREEN      = "D4EDDA"
-RED        = "F8D7DA"
-ORANGE     = "FFF3CD"
-GREY_LIGHT = "F5F5F5"
-GREY_HEADER= "DEE2E6"
-WHITE      = "FFFFFF"
-
-def header_style(cell, bg=BLUE_DARK):
-    cell.font      = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-    cell.fill      = PatternFill("solid", start_color=bg)
-    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-def subheader_style(cell):
-    cell.font      = Font(bold=True, color="003580", name="Arial", size=9)
-    cell.fill      = PatternFill("solid", start_color=GREY_HEADER)
-    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-def cell_style(cell, bg=WHITE, bold=False, color="000000", wrap=True):
-    cell.font      = Font(bold=bold, color=color, name="Arial", size=9)
-    cell.fill      = PatternFill("solid", start_color=bg)
-    cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=wrap)
-
-def status_color(statut):
-    s = (statut or "").upper()
-    if "PASS" in s or s == "DONE" or s == "CLOSED":  return GREEN
-    if "FAIL" in s or "KO" in s:                      return RED
-    if "TESTER" in s or "UAT" in s or "TEST" in s:    return ORANGE
-    return GREY_LIGHT
-
-thin = Side(style="thin", color="CCCCCC")
-def add_border(cell):
-    cell.border = Border(left=thin, right=thin, top=thin, bottom=thin)
-
-# ── FEUILLE 1 : MATRICE TRACABILITE ───────────────────────────────────────────
-ws1 = wb.active
-ws1.title = "Matrice " + version
-
-# Titre
-ws1.merge_cells("A1:J1")
-ws1["A1"] = "MATRICE DE TRAÇABILITE QA - Release " + version + " - Projet SAFWBST"
-ws1["A1"].font      = Font(bold=True, color="FFFFFF", name="Arial", size=12)
-ws1["A1"].fill      = PatternFill("solid", start_color=BLUE_DARK)
-ws1["A1"].alignment = Alignment(horizontal="center", vertical="center")
-ws1.row_dimensions[1].height = 30
-
-# Sous-titre
-ws1.merge_cells("A2:J2")
-ws1["A2"] = "Genere automatiquement - " + __import__("datetime").datetime.now().strftime("%d/%m/%Y %H:%M")
-ws1["A2"].font      = Font(italic=True, color="666666", name="Arial", size=8)
-ws1["A2"].alignment = Alignment(horizontal="center")
-
-# En-tetes colonnes
-headers = [
-    ("Ticket", 14),
-    ("Titre", 45),
-    ("Type", 14),
-    ("Assignee", 20),
-    ("Statut Jira", 16),
-    ("Ticket Test", 14),
-    ("Cas de test", 35),
-    ("Statut QA", 12),
-    ("Bugs lies", 14),
-    ("Preuves", 30),
-]
-ws1.row_dimensions[3].height = 25
-for col, (h, w) in enumerate(headers, 1):
-    cell = ws1.cell(row=3, column=col, value=h)
-    header_style(cell)
-    add_border(cell)
-    ws1.column_dimensions[get_column_letter(col)].width = w
-
-# Données
-row = 4
-for t in tickets_raw:
-    # Couleur de fond selon type
-    if t["type"] in ("Story", "User Story"):  row_bg = "EBF5FB"
-    elif t["type"] == "Bug":                  row_bg = "FDFEFE"
-    else:                                      row_bg = WHITE
-
-    # Statut QA couleur
-    qa_bg = status_color(t["testStatut"])
-
-    # TC list formatte
-    tc_text = "\\n".join(t["tcList"][:5]) if t["tcList"] else "-"
-    if len(t["tcList"]) > 5: tc_text += "\\n... +" + str(len(t["tcList"]) - 5) + " autres"
-
-    values = [
-        t["key"],
-        t["titre"],
-        t["type"],
-        t["assignee"],
-        t["statut"],
-        t["testsLies"] or "-",
-        tc_text,
-        t["testStatut"] or "-",
-        t["bugs"] or "-",
-        ""   # Preuves - a renseigner manuellement ou par agent
-    ]
-
-    for col, val in enumerate(values, 1):
-        cell = ws1.cell(row=row, column=col, value=val)
-        bg = qa_bg if col == 8 else row_bg
-        cell_style(cell, bg=bg, color="BF2600" if t["type"] == "Bug" else "000000")
-        add_border(cell)
-        if col in (1, 6, 8, 9): cell.alignment = Alignment(horizontal="center", vertical="center")
-
-    # Hauteur de ligne selon nb de TC
-    nb_tc = max(1, min(len(t["tcList"]), 5))
-    ws1.row_dimensions[row].height = max(18, nb_tc * 15)
-    row += 1
-
-# Freeze header
-ws1.freeze_panes = "A4"
-
-# Filtre auto
-ws1.auto_filter.ref = "A3:J" + str(row - 1)
-
-# ── FEUILLE 2 : STATS ─────────────────────────────────────────────────────────
-ws2 = wb.create_sheet("Stats " + version)
-
-ws2.merge_cells("A1:D1")
-ws2["A1"] = "STATISTIQUES - Release " + version
-ws2["A1"].font      = Font(bold=True, color="FFFFFF", name="Arial", size=11)
-ws2["A1"].fill      = PatternFill("solid", start_color=BLUE_DARK)
-ws2["A1"].alignment = Alignment(horizontal="center", vertical="center")
-ws2.row_dimensions[1].height = 28
-
-# Compteurs par type
-types = {}
-statuts_qa = {"PASS": 0, "FAIL": 0, "A TESTER": 0, "": 0}
-for t in tickets_raw:
-    types[t["type"]] = types.get(t["type"], 0) + 1
-    k = t["testStatut"] if t["testStatut"] in statuts_qa else ""
-    statuts_qa[k] += 1
-
-total = len(tickets_raw)
-avec_test  = sum(1 for t in tickets_raw if t["testsLies"])
-avec_bug   = sum(1 for t in tickets_raw if t["bugs"])
-
-stats = [
-    ("REPARTITION PAR TYPE", None),
-]
-for typ, count in sorted(types.items(), key=lambda x: -x[1]):
-    stats.append(("  " + (typ or "Inconnu"), count))
-
-stats.append(("", None))
-stats.append(("STATUTS QA", None))
-stats.append(("  PASS", statuts_qa["PASS"]))
-stats.append(("  FAIL", statuts_qa["FAIL"]))
-stats.append(("  A TESTER", statuts_qa["A TESTER"]))
-stats.append(("  Non renseigne", statuts_qa[""]))
-
-stats.append(("", None))
-stats.append(("TRACABILITE", None))
-stats.append(("  Total tickets", total))
-stats.append(("  Avec ticket Test", avec_test))
-stats.append(("  Avec bug lie", avec_bug))
-stats.append(("  Taux couverture test", "=ROUND(B" + str(len(stats) + 1) + "/B" + str(len(stats)) + "*100,1)&\"%\""))
-
-for i, (label, val) in enumerate(stats, 2):
-    ws2.row_dimensions[i].height = 18
-    c1 = ws2.cell(row=i, column=1, value=label)
-    c2 = ws2.cell(row=i, column=2, value=val)
-
-    if val is None:
-        c1.font = Font(bold=True, color="FFFFFF", name="Arial", size=9)
-        c1.fill = PatternFill("solid", start_color="003580")
-        ws2.merge_cells(f"A{i}:D{i}")
-    else:
-        c1.font = Font(name="Arial", size=9)
-        c2.font = Font(bold=True, name="Arial", size=9)
-        if "PASS" in label:   c2.fill = PatternFill("solid", start_color="D4EDDA")
-        elif "FAIL" in label: c2.fill = PatternFill("solid", start_color="F8D7DA")
-        else:                 c2.fill = PatternFill("solid", start_color="F5F5F5")
-
-    add_border(c1)
-    if val is not None: add_border(c2)
-
-ws2.column_dimensions["A"].width = 30
-ws2.column_dimensions["B"].width = 15
-
-# ── FEUILLE 3 : DETAIL TC ─────────────────────────────────────────────────────
-ws3 = wb.create_sheet("Detail TC")
-
-ws3.merge_cells("A1:F1")
-ws3["A1"] = "DETAIL DES CAS DE TEST - Release " + version
-ws3["A1"].font      = Font(bold=True, color="FFFFFF", name="Arial", size=11)
-ws3["A1"].fill      = PatternFill("solid", start_color=BLUE_DARK)
-ws3["A1"].alignment = Alignment(horizontal="center", vertical="center")
-ws3.row_dimensions[1].height = 28
-
-tc_headers = [("Ticket", 14), ("Titre", 40), ("Type", 14), ("Cas de test", 60), ("Statut QA", 14), ("Bugs", 14)]
-for col, (h, w) in enumerate(tc_headers, 1):
-    cell = ws3.cell(row=2, column=col, value=h)
-    header_style(cell)
-    add_border(cell)
-    ws3.column_dimensions[get_column_letter(col)].width = w
-
-tc_row = 3
-for t in tickets_raw:
-    if not t["tcList"]:
-        continue
-    for tc in t["tcList"]:
-        vals = [t["key"], t["titre"], t["type"], tc, t["testStatut"] or "-", t["bugs"] or "-"]
-        for col, val in enumerate(vals, 1):
-            cell = ws3.cell(row=tc_row, column=col, value=val)
-            cell_style(cell, bg=status_color(t["testStatut"]) if col == 5 else WHITE)
-            add_border(cell)
-            if col in (1, 3, 5, 6): cell.alignment = Alignment(horizontal="center", vertical="center")
-        ws3.row_dimensions[tc_row].height = 18
-        tc_row += 1
-
-ws3.freeze_panes = "A3"
-ws3.auto_filter.ref = "A2:F" + str(tc_row - 1)
-
-wb.save(out_path)
-print("OK - Matrice generee : " + out_path)
-`;
-
-  return py;
+// ── CHARGER DONNÉES ENRICHIES AbyQA ─────────────────────────────────────────────
+function loadEnrichedData() {
+  var enriched = {};
+  if (!fs.existsSync(ENRICHED_DIR)) return enriched;
+  var files = fs.readdirSync(ENRICHED_DIR).filter(function(f) { return f.endsWith(".json"); });
+  files.forEach(function(f) {
+    try {
+      var data = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
+      if (data.key) enriched[data.key] = data;
+    } catch(e) { /* skip */ }
+  });
+  return enriched;
 }
 
-// ── MAIN ──────────────────────────────────────────────────────────────────────
-async function main() {
+// ── CHARGER RELEASE TRACKER ─────────────────────────────────────────────────────
+function loadReleaseTracker(version) {
+  var trackerPath = path.join(REPORTS_DIR, "release-tracker.json");
+  if (!fs.existsSync(trackerPath)) return null;
+  try {
+    var tracker = JSON.parse(fs.readFileSync(trackerPath, "utf8"));
+    return tracker[version] || null;
+  } catch(e) { return null; }
+}
+
+// ── FUSIONNER JIRA + ENRICHED + TRACKER ─────────────────────────────────────────
+function mergeData(jiraTickets, enrichedMap, tracker) {
+  var trackerMap = {};
+  if (tracker && tracker.tickets) {
+    tracker.tickets.forEach(function(t) { trackerMap[t.key] = t; });
+  }
+
+  return jiraTickets.map(function(t) {
+    var e = enrichedMap[t.key] || {};
+    var r = trackerMap[t.key] || {};
+
+    // Enrichir avec données AbyQA
+    t.strategy   = e.strategy || null;
+    t.confidence = (e.analysis && e.analysis.confidence) || null;
+    t.risk       = (e.analysis && e.analysis.risk) || null;
+    t.complexity = (e.analysis && e.analysis.complexity) || null;
+    t.score      = e.score || null;
+    t.reasoning  = (e.analysis && e.analysis.reasoning) || null;
+    t.enrichStatus = e.status || null;
+
+    // Enrichir avec données tracker (résultats Playwright)
+    if (r.status && !t.testStatut) t.testStatut = r.status;
+    if (r.pass)  t.pwPass  = r.pass;
+    if (r.fail)  t.pwFail  = r.fail;
+    if (r.total) t.pwTotal = r.total;
+    if (r.bugs)  t.pwBugs  = r.bugs;
+    if (r.pct !== undefined) t.pwQuality = r.pct;
+
+    return t;
+  });
+}
+
+// ── GENERER EXCEL AVEC EXCELJS ──────────────────────────────────────────────────
+async function generateExcel(version, tickets, outputPath) {
+  var ExcelJS = require("exceljs");
+  var wb = new ExcelJS.Workbook();
+  wb.creator = "AbyQA";
+  wb.created = new Date();
+
+  var now = new Date().toLocaleDateString("fr-FR") + " " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  // ── Helper styles ──
+  function headerFill(color) { return { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + (color || COLORS.safranBlue) } }; }
+  function lightFill(color) { return { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + color } }; }
+  var thinBorder = { top: { style: "thin", color: { argb: "FFCCCCCC" } }, bottom: { style: "thin", color: { argb: "FFCCCCCC" } }, left: { style: "thin", color: { argb: "FFCCCCCC" } }, right: { style: "thin", color: { argb: "FFCCCCCC" } } };
+  var headerFont = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 9 };
+  var bodyFont   = { name: "Arial", size: 9 };
+  var monoFont   = { name: "Consolas", size: 9 };
+
+  function statusFill(statut) {
+    var s = (statut || "").toUpperCase();
+    if (/PASS|DONE|CLOSED/.test(s)) return lightFill(COLORS.greenLight);
+    if (/FAIL|KO/.test(s))          return lightFill(COLORS.redLight);
+    if (/TESTER|UAT|TEST/.test(s))   return lightFill(COLORS.orangeLight);
+    if (/BLOCKED/.test(s))           return lightFill(COLORS.orangeLight);
+    return lightFill(COLORS.greyLight);
+  }
+
+  function strategyFill(strat) {
+    if (!strat) return lightFill(COLORS.greyLight);
+    var s = strat.toLowerCase();
+    if (s === "e2e")    return lightFill(COLORS.blueLight);
+    if (s === "api")    return lightFill(COLORS.orangeLight);
+    if (s === "css")    return lightFill(COLORS.purpleLight);
+    if (s === "drupal") return lightFill(COLORS.purpleLight);
+    if (s === "manual") return lightFill(COLORS.redLight);
+    if (s === "mix")    return lightFill(COLORS.cyanLight);
+    return lightFill(COLORS.greyLight);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FEUILLE 1 : MATRICE TRAÇABILITÉ
+  // ══════════════════════════════════════════════════════════════════════════════
+  var ws1 = wb.addWorksheet("Matrice " + version);
+
+  // Titre
+  ws1.mergeCells("A1:N1");
+  var titleCell = ws1.getCell("A1");
+  titleCell.value = "MATRICE DE TRAÇABILITÉ QA — Release " + version + " — " + CFG.jira.project;
+  titleCell.font  = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 12 };
+  titleCell.fill  = headerFill();
+  titleCell.alignment = { horizontal: "center", vertical: "middle" };
+  ws1.getRow(1).height = 30;
+
+  // Sous-titre
+  ws1.mergeCells("A2:N2");
+  var subCell = ws1.getCell("A2");
+  subCell.value = "Généré automatiquement par AbyQA — " + now;
+  subCell.font  = { italic: true, color: { argb: "FF666666" }, name: "Arial", size: 8 };
+  subCell.alignment = { horizontal: "center" };
+
+  // En-têtes (14 colonnes : +4 colonnes IA)
+  var headers = [
+    { name: "Ticket",       width: 15 },
+    { name: "Titre",        width: 40 },
+    { name: "Type",         width: 13 },
+    { name: "Assignee",     width: 18 },
+    { name: "Statut Jira",  width: 15 },
+    { name: "Ticket Test",  width: 14 },
+    { name: "Cas de test",  width: 30 },
+    { name: "Statut QA",    width: 12 },
+    { name: "Bugs liés",    width: 14 },
+    { name: "Preuves",      width: 20 },
+    // Colonnes AbyQA (internes)
+    { name: "Stratégie IA", width: 14 },
+    { name: "Score US",     width: 10 },
+    { name: "Risque",       width: 12 },
+    { name: "Confiance IA", width: 12 }
+  ];
+
+  var headerRow = ws1.getRow(3);
+  headerRow.height = 25;
+  headers.forEach(function(h, i) {
+    var cell = headerRow.getCell(i + 1);
+    cell.value  = h.name;
+    cell.font   = headerFont;
+    cell.fill   = i < 10 ? headerFill() : headerFill(COLORS.cyanDark);
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = thinBorder;
+    ws1.getColumn(i + 1).width = h.width;
+  });
+
+  // Données
+  tickets.forEach(function(t, idx) {
+    var row = ws1.getRow(idx + 4);
+    var rowBg = /Story|User Story/.test(t.type) ? COLORS.blueLight :
+                t.type === "Bug" ? COLORS.greyLight : COLORS.white;
+
+    var tcText = (t.tcList || []).slice(0, 5).join("\n");
+    if ((t.tcList || []).length > 5) tcText += "\n... +" + (t.tcList.length - 5) + " autres";
+
+    var values = [
+      t.key,
+      t.titre,
+      t.type,
+      t.assignee,
+      t.statut,
+      t.testsLies || "-",
+      tcText || "-",
+      t.testStatut || "-",
+      t.bugs || "-",
+      "",
+      t.strategy ? t.strategy.toUpperCase() : "-",
+      t.score ? t.score + "/100" : "-",
+      t.risk || "-",
+      t.confidence ? t.confidence + "%" : "-"
+    ];
+
+    values.forEach(function(val, ci) {
+      var cell = row.getCell(ci + 1);
+      cell.value  = val;
+      cell.font   = ci >= 10 ? monoFont : bodyFont;
+      cell.border = thinBorder;
+      cell.alignment = { vertical: "middle", wrapText: true };
+
+      if (ci === 7)       cell.fill = statusFill(t.testStatut);
+      else if (ci === 10) cell.fill = strategyFill(t.strategy);
+      else if (ci === 11) {
+        var sc = t.score || 0;
+        cell.fill = sc >= 70 ? lightFill(COLORS.greenLight) : sc >= 40 ? lightFill(COLORS.orangeLight) : sc > 0 ? lightFill(COLORS.redLight) : lightFill(COLORS.greyLight);
+      }
+      else cell.fill = lightFill(rowBg);
+
+      if ([0, 2, 5, 7, 8, 10, 11, 12, 13].indexOf(ci) >= 0) {
+        cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      }
+    });
+
+    row.height = Math.max(18, Math.min((t.tcList || []).length, 5) * 15);
+  });
+
+  ws1.views = [{ state: "frozen", ySplit: 3 }];
+  ws1.autoFilter = { from: "A3", to: "N" + (tickets.length + 3) };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FEUILLE 2 : STATISTIQUES + ANALYSE IA
+  // ══════════════════════════════════════════════════════════════════════════════
+  var ws2 = wb.addWorksheet("Stats " + version);
+  ws2.getColumn(1).width = 30;
+  ws2.getColumn(2).width = 15;
+  ws2.getColumn(3).width = 5;
+  ws2.getColumn(4).width = 30;
+  ws2.getColumn(5).width = 15;
+
+  // Titre
+  ws2.mergeCells("A1:E1");
+  var s2Title = ws2.getCell("A1");
+  s2Title.value = "STATISTIQUES & ANALYSE IA — Release " + version;
+  s2Title.font  = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 11 };
+  s2Title.fill  = headerFill();
+  s2Title.alignment = { horizontal: "center", vertical: "middle" };
+  ws2.getRow(1).height = 28;
+
+  // Compteurs
+  var types = {}, stratCounts = {}, riskCounts = {};
+  var qaStats = { PASS: 0, FAIL: 0, "A TESTER": 0, BLOCKED: 0, "": 0 };
+  var totalScore = 0, scoreCount = 0;
+
+  tickets.forEach(function(t) {
+    types[t.type] = (types[t.type] || 0) + 1;
+    if (t.strategy) stratCounts[t.strategy] = (stratCounts[t.strategy] || 0) + 1;
+    if (t.risk) riskCounts[t.risk] = (riskCounts[t.risk] || 0) + 1;
+    var k = t.testStatut in qaStats ? t.testStatut : "";
+    qaStats[k]++;
+    if (t.score) { totalScore += t.score; scoreCount++; }
+  });
+
+  var total = tickets.length;
+  var avecTest = tickets.filter(function(t) { return t.testsLies; }).length;
+  var avecBug  = tickets.filter(function(t) { return t.bugs; }).length;
+  var avgScore = scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0;
+
+  function writeStatsBlock(ws, startRow, col, title, items) {
+    var r = startRow;
+    var titleCell = ws.getCell(r, col);
+    titleCell.value = title;
+    titleCell.font  = headerFont;
+    titleCell.fill  = headerFill();
+    titleCell.border = thinBorder;
+    ws.mergeCells(r, col, r, col + 1);
+    r++;
+
+    items.forEach(function(item) {
+      var c1 = ws.getCell(r, col);
+      var c2 = ws.getCell(r, col + 1);
+      c1.value = item.label;
+      c2.value = item.value;
+      c1.font  = bodyFont;
+      c2.font  = { bold: true, name: "Arial", size: 9 };
+      c1.border = thinBorder;
+      c2.border = thinBorder;
+      if (item.fill) c2.fill = lightFill(item.fill);
+      r++;
+    });
+    return r + 1;
+  }
+
+  // Colonne gauche : stats classiques
+  var r = 3;
+  r = writeStatsBlock(ws2, r, 1, "RÉPARTITION PAR TYPE",
+    Object.keys(types).sort(function(a, b) { return types[b] - types[a]; }).map(function(k) {
+      return { label: k || "Inconnu", value: types[k] };
+    })
+  );
+
+  r = writeStatsBlock(ws2, r, 1, "STATUTS QA",
+    [
+      { label: "PASS",         value: qaStats.PASS,       fill: COLORS.greenLight },
+      { label: "FAIL",         value: qaStats.FAIL,       fill: COLORS.redLight },
+      { label: "A TESTER",     value: qaStats["A TESTER"], fill: COLORS.orangeLight },
+      { label: "BLOCKED",      value: qaStats.BLOCKED,    fill: COLORS.orangeLight },
+      { label: "Non renseigné", value: qaStats[""] }
+    ]
+  );
+
+  r = writeStatsBlock(ws2, r, 1, "TRAÇABILITÉ",
+    [
+      { label: "Total tickets",    value: total },
+      { label: "Avec ticket Test", value: avecTest },
+      { label: "Avec bug lié",     value: avecBug },
+      { label: "Taux couverture",  value: total > 0 ? Math.round(avecTest / total * 100) + "%" : "0%",
+        fill: avecTest / total >= 0.8 ? COLORS.greenLight : avecTest / total >= 0.5 ? COLORS.orangeLight : COLORS.redLight }
+    ]
+  );
+
+  // Colonne droite : stats IA AbyQA
+  var r2 = 3;
+  r2 = writeStatsBlock(ws2, r2, 4, "STRATÉGIES IA",
+    Object.keys(stratCounts).sort(function(a, b) { return stratCounts[b] - stratCounts[a]; }).map(function(k) {
+      return { label: k.toUpperCase(), value: stratCounts[k] };
+    })
+  );
+
+  r2 = writeStatsBlock(ws2, r2, 4, "NIVEAUX DE RISQUE",
+    Object.keys(riskCounts).sort().map(function(k) {
+      var fill = /critique|élevé|high/i.test(k) ? COLORS.redLight :
+                 /moyen|medium/i.test(k) ? COLORS.orangeLight : COLORS.greenLight;
+      return { label: k, value: riskCounts[k], fill: fill };
+    })
+  );
+
+  r2 = writeStatsBlock(ws2, r2, 4, "QUALITÉ DES US (AbyQA)",
+    [
+      { label: "Score moyen",         value: avgScore + "/100",
+        fill: avgScore >= 70 ? COLORS.greenLight : avgScore >= 40 ? COLORS.orangeLight : COLORS.redLight },
+      { label: "US analysées",        value: scoreCount + "/" + total },
+      { label: "US enrichies (auto)", value: tickets.filter(function(t) { return t.enrichStatus; }).length }
+    ]
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // FEUILLE 3 : DÉTAIL PAR TICKET (vue complète)
+  // ══════════════════════════════════════════════════════════════════════════════
+  var ws3 = wb.addWorksheet("Détail " + version);
+
+  ws3.mergeCells("A1:H1");
+  var s3Title = ws3.getCell("A1");
+  s3Title.value = "DÉTAIL PAR TICKET — Release " + version;
+  s3Title.font  = { bold: true, color: { argb: "FFFFFFFF" }, name: "Arial", size: 11 };
+  s3Title.fill  = headerFill();
+  s3Title.alignment = { horizontal: "center", vertical: "middle" };
+  ws3.getRow(1).height = 28;
+
+  var detailHeaders = [
+    { name: "Ticket",       width: 15 },
+    { name: "Titre",        width: 40 },
+    { name: "Type",         width: 13 },
+    { name: "Statut QA",    width: 12 },
+    { name: "Stratégie IA", width: 14 },
+    { name: "Score",        width: 10 },
+    { name: "Risque",       width: 14 },
+    { name: "Justification IA", width: 50 }
+  ];
+
+  var dHeaderRow = ws3.getRow(2);
+  dHeaderRow.height = 22;
+  detailHeaders.forEach(function(h, i) {
+    var cell = dHeaderRow.getCell(i + 1);
+    cell.value = h.name;
+    cell.font  = headerFont;
+    cell.fill  = headerFill();
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = thinBorder;
+    ws3.getColumn(i + 1).width = h.width;
+  });
+
+  tickets.forEach(function(t, idx) {
+    var row = ws3.getRow(idx + 3);
+    var vals = [
+      t.key, t.titre, t.type, t.testStatut || "-",
+      t.strategy ? t.strategy.toUpperCase() : "-",
+      t.score ? t.score + "/100" : "-",
+      t.risk || "-",
+      t.reasoning || "-"
+    ];
+
+    vals.forEach(function(val, ci) {
+      var cell = row.getCell(ci + 1);
+      cell.value = val;
+      cell.font  = bodyFont;
+      cell.border = thinBorder;
+      cell.alignment = { vertical: "middle", wrapText: ci === 7 };
+      if (ci === 3) cell.fill = statusFill(t.testStatut);
+      if (ci === 4) cell.fill = strategyFill(t.strategy);
+    });
+    row.height = t.reasoning ? 30 : 18;
+  });
+
+  ws3.views = [{ state: "frozen", ySplit: 2 }];
+  ws3.autoFilter = { from: "A2", to: "H" + (tickets.length + 2) };
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // SAUVEGARDER
+  // ══════════════════════════════════════════════════════════════════════════════
+  await wb.xlsx.writeFile(outputPath);
+  console.log("[MATRIX] Matrice sauvegardée : " + outputPath);
+  return outputPath;
+}
+
+// ── GENERER LE RAPPORT JSON SYNTHESE ────────────────────────────────────────────
+function generateSynthesis(version, tickets) {
+  var types = {}, stratCounts = {};
+  var qaStats = { PASS: 0, FAIL: 0, "A TESTER": 0, BLOCKED: 0, other: 0 };
+  var totalScore = 0, scoreCount = 0;
+  var highRisk = [];
+
+  tickets.forEach(function(t) {
+    types[t.type] = (types[t.type] || 0) + 1;
+    if (t.strategy) stratCounts[t.strategy] = (stratCounts[t.strategy] || 0) + 1;
+    var k = t.testStatut in qaStats ? t.testStatut : "other";
+    qaStats[k]++;
+    if (t.score) { totalScore += t.score; scoreCount++; }
+    if (t.risk && /critique|élevé|high/i.test(t.risk)) highRisk.push(t.key + " — " + t.titre);
+  });
+
+  var total = tickets.length;
+  var avecTest = tickets.filter(function(t) { return t.testsLies; }).length;
+
+  return {
+    version:     version,
+    generatedAt: new Date().toISOString(),
+    total:       total,
+    byType:      types,
+    byStrategy:  stratCounts,
+    qa:          qaStats,
+    coverage:    total > 0 ? Math.round(avecTest / total * 100) : 0,
+    avgScore:    scoreCount > 0 ? Math.round(totalScore / scoreCount) : 0,
+    highRisk:    highRisk,
+    quality:     total > 0 ? Math.round(qaStats.PASS / Math.max(1, qaStats.PASS + qaStats.FAIL) * 100) : 0
+  };
+}
+
+// ── FONCTION PRINCIPALE (exportable) ────────────────────────────────────────────
+async function generate(version, outputFile) {
+  var outFile = outputFile || "Matrice-QA-" + version + ".xlsx";
+  var outPath = path.join(REPORTS_DIR, outFile);
+
+  console.log("[MATRIX] ══════════════════════════════════════════════");
+  console.log("[MATRIX] Release   : " + version);
+  console.log("[MATRIX] Projet    : " + CFG.jira.project);
+  console.log("[MATRIX] ══════════════════════════════════════════════");
+
+  // 1. Récupérer tickets Jira
+  var issues = await fetchReleaseTickets(version);
+  if (issues.length === 0) {
+    console.error("[MATRIX] Aucun ticket trouvé pour " + version);
+    return { error: "Aucun ticket trouvé pour " + version };
+  }
+
+  // 2. Extraire infos
+  console.log("[MATRIX] Extraction des informations...");
+  var tickets = issues.map(extractTicketInfo);
+
+  // 3. Charger données enrichies AbyQA
+  console.log("[MATRIX] Chargement données enrichies AbyQA...");
+  var enrichedMap = loadEnrichedData();
+  var enrichedCount = 0;
+  Object.keys(enrichedMap).forEach(function(k) {
+    if (tickets.some(function(t) { return t.key === k; })) enrichedCount++;
+  });
+  console.log("[MATRIX] " + enrichedCount + " tickets enrichis trouvés dans AbyQA");
+
+  // 4. Charger release tracker
+  var tracker = loadReleaseTracker(version);
+  if (tracker) console.log("[MATRIX] Release tracker trouvé (" + (tracker.tickets || []).length + " résultats)");
+
+  // 5. Fusionner les données
+  tickets = mergeData(tickets, enrichedMap, tracker);
+
+  // 6. Générer Excel
+  console.log("[MATRIX] Génération Excel (exceljs)...");
+  await generateExcel(version, tickets, outPath);
+
+  // 7. Générer synthèse JSON
+  var synthesis = generateSynthesis(version, tickets);
+  var synthPath = path.join(REPORTS_DIR, "synthesis-" + version + ".json");
+  fs.writeFileSync(synthPath, JSON.stringify(synthesis, null, 2), "utf8");
+  console.log("[MATRIX] Synthèse JSON : " + synthPath);
+
+  // 8. Bilan
+  console.log("[MATRIX] ══════════════════════════════════════════════");
+  console.log("[MATRIX] MATRICE GÉNÉRÉE");
+  console.log("[MATRIX]   Tickets     : " + tickets.length);
+  console.log("[MATRIX]   Enrichis IA : " + enrichedCount);
+  console.log("[MATRIX]   PASS        : " + synthesis.qa.PASS);
+  console.log("[MATRIX]   FAIL        : " + synthesis.qa.FAIL);
+  console.log("[MATRIX]   Couverture  : " + synthesis.coverage + "%");
+  console.log("[MATRIX]   Score moyen : " + synthesis.avgScore + "/100");
+  console.log("[MATRIX]   Qualité     : " + synthesis.quality + "%");
+  console.log("[MATRIX]   Fichier     : " + outPath);
+  console.log("[MATRIX] ══════════════════════════════════════════════");
+
+  // Bus event
+  try {
+    var bus = require("./agent-bus");
+    bus.publish("matrix:generated", { version: version, file: outPath, tickets: tickets.length, quality: synthesis.quality, coverage: synthesis.coverage });
+  } catch(e) { /* bus optionnel */ }
+
+  return { ok: true, file: outPath, synthesis: synthesis };
+}
+
+// ── EXPORTS ─────────────────────────────────────────────────────────────────────
+module.exports = {
+  generate:           generate,
+  fetchReleaseTickets: fetchReleaseTickets,
+  extractTicketInfo:   extractTicketInfo,
+  loadEnrichedData:    loadEnrichedData,
+  generateSynthesis:   generateSynthesis
+};
+
+// ── CLI ─────────────────────────────────────────────────────────────────────────
+if (require.main === module) {
   var args    = process.argv.slice(2);
   var version = args[0];
   var outArg  = args.find(function(a) { return a.startsWith("--output="); });
-  var outFile = outArg ? outArg.split("=")[1] : "Matrice-QA-" + (version || "release") + ".xlsx";
-  var outPath = path.join(REPORTS_DIR, outFile);
+  var outFile = outArg ? outArg.split("=")[1] : null;
 
   if (!version) {
     console.log("Usage : node agent-matrix.js v1.25.0 [--output=matrice.xlsx]");
     process.exit(1);
   }
 
-  if (CONFIG.jira.token === "TON_TOKEN_API_ICI") {
-    console.error("[ERR] Configure ton token dans CONFIG.jira.token (ligne 17)");
-    process.exit(1);
-  }
-
-  console.log("==================================================");
-  console.log("  AGENT MATRIX - ABY QA V2");
-  console.log("  Release : " + version);
-  console.log("  Projet  : " + CONFIG.jira.project);
-  console.log("==================================================\n");
-
-  // 1. Recuperer les tickets
-  var issues  = await fetchReleaseTickets(version);
-  if (issues.length === 0) {
-    console.error("[ERR] Aucun ticket trouve pour la release " + version);
-    console.error("      Verifie que le label '" + version + "' existe dans Jira.");
-    process.exit(1);
-  }
-
-  // 2. Extraire les infos
-  console.log("\n[INFO] Extraction des informations...");
-  var tickets = issues.map(extractTicketInfo);
-
-  var types = {};
-  tickets.forEach(function(t) { types[t.type] = (types[t.type] || 0) + 1; });
-  Object.keys(types).forEach(function(k) { console.log("  " + k + " : " + types[k]); });
-
-  // 3. Generer le script Python
-  console.log("\n[EXCEL] Generation de la matrice Excel...");
-  var pyScript = generatePythonScript(version, tickets, outPath);
-  var pyFile   = path.join(__dirname, "tmp_matrix.py");
-  fs.writeFileSync(pyFile, pyScript, "utf8");
-
-  // 4. Executer le script Python
-  try {
-    execSync("python3 " + pyFile + " 2>&1", { stdio: "inherit" });
-    fs.unlinkSync(pyFile);
-  } catch (e) {
-    try {
-      execSync("python " + pyFile + " 2>&1", { stdio: "inherit" });
-      fs.unlinkSync(pyFile);
-    } catch (e2) {
-      console.error("[ERR] Python non disponible. Installe python3 et openpyxl.");
-      process.exit(1);
-    }
-  }
-
-  // 5. Bilan
-  var avecTest = tickets.filter(function(t) { return t.testsLies; }).length;
-  var pass     = tickets.filter(function(t) { return t.testStatut === "PASS"; }).length;
-  var fail     = tickets.filter(function(t) { return t.testStatut === "FAIL"; }).length;
-  var aTesters = tickets.filter(function(t) { return t.testStatut === "A TESTER"; }).length;
-
-  console.log("\n==================================================");
-  console.log("  MATRICE GENEREE");
-  console.log("==================================================");
-  console.log("  Release    : " + version);
-  console.log("  Tickets    : " + tickets.length);
-  console.log("  Avec test  : " + avecTest);
-  console.log("  PASS       : " + pass);
-  console.log("  FAIL       : " + fail);
-  console.log("  A tester   : " + aTesters);
-  console.log("  Fichier    : " + outPath);
-  console.log("==================================================\n");
+  generate(version, outFile)
+    .then(function(r) { if (r.error) process.exit(1); })
+    .catch(function(e) { console.error("[MATRIX] ERREUR FATALE : " + e.message); process.exit(1); });
 }
-
-main().catch(function(e) { console.error("[ERR FATAL]", e.message); process.exit(1); });

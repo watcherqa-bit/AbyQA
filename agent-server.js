@@ -613,6 +613,20 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── API : Synthèse matrice QA par version ──────────────────────────────────
+  if (method === "GET" && url.match(/^\/api\/matrix\/synthesis\/.+/)) {
+    var synthVersion = decodeURIComponent(url.replace("/api/matrix/synthesis/", ""));
+    var synthPath = path.join(BASE_DIR, "reports", "synthesis-" + synthVersion + ".json");
+    if (fs.existsSync(synthPath)) {
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(fs.readFileSync(synthPath, "utf8"));
+    } else {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Synthèse non trouvée pour " + synthVersion }));
+    }
+    return;
+  }
+
   // â"€â"€ API : TÃ©lÃ©charger un fichier du dossier reports â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
   if (method === "GET" && url.startsWith("/api/download/")) {
     var dlParts = url.replace("/api/download/", "").split("?");

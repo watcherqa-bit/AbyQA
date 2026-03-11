@@ -552,8 +552,7 @@
   #panel-drupal label,
   #panel-css label,
   #panel-playwright-direct label,
-  #panel-releases label,
-  #panel-matrix label,
+  #panel-release-qa label,
   #backlog-add-modal label,
   #xray-modal label,
   #cascade-modal label {
@@ -1372,17 +1371,14 @@
       <div class="mega-tab" onclick="showSubTab('pipeline','logs')" data-subtab="logs">
         <span class="tab-icon">🔬</span> Logs
       </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','releases')" data-subtab="releases">
-        <span class="tab-icon">📦</span> Releases
+      <div class="mega-tab" onclick="showSubTab('pipeline','release-qa')" data-subtab="release-qa">
+        <span class="tab-icon">📦</span> Release QA
       </div>
     </div>
 
     <!-- TAB BAR — OUTILS -->
     <div class="mega-tabs" id="tabs-outils">
-      <div class="mega-tab active" onclick="showSubTab('outils','matrix')" data-subtab="matrix">
-        <span class="tab-icon">📐</span> Matrice QA
-      </div>
-      <div class="mega-tab" onclick="showSubTab('outils','css')" data-subtab="css">
+      <div class="mega-tab active" onclick="showSubTab('outils','css')" data-subtab="css">
         <span class="tab-icon">🎨</span> Audit CSS
       </div>
       <div class="mega-tab" onclick="showSubTab('outils','drupal')" data-subtab="drupal">
@@ -1438,7 +1434,7 @@
         <!-- Badge statut global -->
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
           <div id="rh-status" style="font-family:var(--mono);font-size:12px;font-weight:700;padding:4px 14px;border-radius:6px;border:1px solid var(--border);color:var(--text3);background:var(--bg3)">—</div>
-          <button onclick="showPanel('releases')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;font-family:var(--mono);padding:0">Voir détail →</button>
+          <button onclick="showPanel('release-qa')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:10px;font-family:var(--mono);padding:0">Voir détail →</button>
         </div>
 
       </div>
@@ -2429,108 +2425,133 @@
 
     <!-- ── MATRIX ── -->
     <!-- ══ SUIVI RELEASES ══ -->
-    <div class="panel" id="panel-releases">
+    <!-- ══ PANEL RELEASE QA (unifié : suivi + matrice + analyse IA) ══ -->
+    <div class="panel" id="panel-release-qa">
       <div class="panel-header">
         <div>
-          <div class="panel-title">Suivi <span>Releases</span></div>
-          <div class="panel-desc">Historique PASS/FAIL · Bugs ouverts · Taux qualité par release</div>
+          <div class="panel-title">Release <span>QA</span></div>
+          <div class="panel-desc">Suivi qualité · Matrice traçabilité · Analyse IA · Export Excel</div>
         </div>
         <button class="btn btn-secondary" onclick="loadReleaseTracker()" style="flex-shrink:0">🔄 Rafraîchir</button>
       </div>
 
+      <!-- Sélecteur release + export -->
       <div class="form-card">
-        <div class="form-card-title">📦 RELEASE</div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <select id="releaseSelector" onchange="showRelease(this.value)" style="min-width:200px">
-            <option value="">— Sélectionner une release —</option>
+            <option value="">-- Sélectionner une release --</option>
           </select>
-          <div id="releaseGlobalStatus" style="font-family:var(--mono);font-size:12px;padding:6px 14px;border-radius:6px;border:1px solid var(--border)">—</div>
+          <div id="releaseGlobalStatus" style="font-family:var(--mono);font-size:12px;padding:6px 14px;border-radius:6px;border:1px solid var(--border)">--</div>
           <div id="releaseLastUpdate" style="font-size:11px;color:var(--text3)"></div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn btn-primary" onclick="generateMatrix()" style="font-size:11px;padding:6px 14px">📊 Export Excel</button>
+          </div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:18px;text-align:center">
-          <div id="stat-tickets-num" style="font-size:28px;font-weight:800;font-family:var(--mono)">—</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">Tickets testés</div>
+      <!-- 6 stat cards -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-tickets-num" style="font-size:24px;font-weight:800;font-family:var(--mono)">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Tickets</div>
         </div>
-        <div style="background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:10px;padding:18px;text-align:center">
-          <div id="stat-pass-num" style="font-size:28px;font-weight:800;font-family:var(--mono);color:var(--green)">—</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">Tests PASS</div>
+        <div style="background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-pass-num" style="font-size:24px;font-weight:800;font-family:var(--mono);color:var(--green)">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">PASS</div>
         </div>
-        <div style="background:var(--bg2);border:1px solid rgba(255,59,92,.3);border-radius:10px;padding:18px;text-align:center">
-          <div id="stat-fail-num" style="font-size:28px;font-weight:800;font-family:var(--mono);color:var(--red)">—</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">Tests FAIL</div>
+        <div style="background:var(--bg2);border:1px solid rgba(255,59,92,.3);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-fail-num" style="font-size:24px;font-weight:800;font-family:var(--mono);color:var(--red)">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">FAIL</div>
         </div>
-        <div style="background:var(--bg2);border:1px solid rgba(255,149,0,.3);border-radius:10px;padding:18px;text-align:center">
-          <div id="stat-bugs-num" style="font-size:28px;font-weight:800;font-family:var(--mono);color:var(--orange)">—</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:4px">Bugs créés</div>
+        <div style="background:var(--bg2);border:1px solid rgba(255,149,0,.3);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-bugs-num" style="font-size:24px;font-weight:800;font-family:var(--mono);color:var(--orange)">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Bugs</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid rgba(0,212,255,.3);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-coverage-num" style="font-size:24px;font-weight:800;font-family:var(--mono);color:var(--cyan)">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Couverture</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid rgba(139,92,246,.3);border-radius:10px;padding:14px;text-align:center">
+          <div id="stat-score-num" style="font-size:24px;font-weight:800;font-family:var(--mono);color:#8b5cf6">--</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">Score IA</div>
         </div>
       </div>
 
       <!-- Barre qualité -->
-      <div class="form-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="form-card-title" style="margin:0">📈 TAUX DE QUALITÉ</div>
-          <div id="qualityPct" style="font-family:var(--mono);font-size:18px;font-weight:800;color:var(--green)">—</div>
+      <div class="form-card" style="padding:12px 20px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">QUALITÉ</div>
+          <div id="qualityPct" style="font-family:var(--mono);font-size:16px;font-weight:800;color:var(--green)">--</div>
         </div>
-        <div style="background:var(--bg3);border-radius:8px;overflow:hidden;height:24px;position:relative">
+        <div style="background:var(--bg3);border-radius:8px;overflow:hidden;height:20px;position:relative">
           <div id="qualityBarFill" style="height:100%;background:linear-gradient(90deg,var(--green),#00ff88);width:0%;transition:width .8s ease"></div>
-          <div id="qualityBarLabel" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text)">0%</div>
+          <div id="qualityBarLabel" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:700;color:var(--text)">0%</div>
         </div>
       </div>
 
-      <!-- Tableau des tickets -->
-      <div class="form-card" style="padding:0;overflow:hidden">
-        <div style="padding:14px 20px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">🎫 TICKETS DE LA RELEASE</div>
-        <div id="releaseTicketsTable" style="overflow-x:auto">
-          <div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">Rafraîchis pour charger</div>
+      <!-- Analyse IA (synthèse) -->
+      <div class="form-card" id="rqa-synthesis" style="display:none">
+        <div class="form-card-title" style="display:flex;align-items:center;gap:8px">
+          <span style="color:var(--cyan)">ANALYSE IA</span>
+          <span style="font-size:9px;color:var(--text3);font-weight:400">données AbyQA — non exporté vers Jira</span>
         </div>
-      </div>
-
-      <!-- FAIL détaillés -->
-      <div id="releaseFailSection" style="display:none">
-        <div class="form-card" style="border-color:rgba(255,59,92,.25)">
-          <div class="form-card-title" style="color:var(--red)">⚠️ ANOMALIES EN COURS</div>
-          <div id="releaseFailList"></div>
-        </div>
-      </div>
-
-      <!-- Fichiers téléchargeables -->
-      <div class="form-card">
-        <div class="form-card-title">📥 FICHIERS GÉNÉRÉS</div>
-        <div id="releaseFiles"><div style="color:var(--text3);font-size:12px">Aucune release chargée</div></div>
-      </div>
-
-      <!-- ── TEST PLAN par release ── -->
-      <div class="form-card" style="padding:0;overflow:hidden">
-        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">📋 TEST PLAN</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span id="testplan-progress" style="font-family:var(--mono);font-size:11px;color:var(--text3)">0/0 exécutés</span>
-            <button onclick="launchTestPlanAll()" class="btn" style="font-size:10px;padding:4px 10px;background:var(--green);border-color:var(--green)">▶ Tout lancer</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:6px;font-family:var(--mono)">STRATÉGIES DE TEST</div>
+            <div id="rqa-strategies" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          </div>
+          <div>
+            <div style="font-size:10px;color:var(--text3);margin-bottom:6px;font-family:var(--mono)">NIVEAUX DE RISQUE</div>
+            <div id="rqa-risks" style="display:flex;gap:6px;flex-wrap:wrap"></div>
           </div>
         </div>
-        <div id="testplan-list" style="max-height:400px;overflow-y:auto">
+        <div id="rqa-high-risk" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(255,59,92,.08);border:1px solid rgba(255,59,92,.2);border-radius:8px">
+          <div style="font-size:10px;color:var(--red);font-weight:600;margin-bottom:4px">TICKETS RISQUE ÉLEVÉ</div>
+          <div id="rqa-high-risk-list" style="font-size:11px;color:var(--text2)"></div>
+        </div>
+      </div>
+
+      <!-- Onglets internes : Tickets · Test Plan · Historique · Bibliothèque -->
+      <div style="display:flex;border-bottom:1px solid var(--border);background:var(--bg2);border-radius:10px 10px 0 0;overflow:hidden">
+        <button onclick="switchRQATab('tickets')" class="mega-tab active" id="rqa-tab-tickets" style="flex:1">🎫 Tickets</button>
+        <button onclick="switchRQATab('testplan')" class="mega-tab" id="rqa-tab-testplan" style="flex:1">📋 Test Plan</button>
+        <button onclick="switchRQATab('execution')" class="mega-tab" id="rqa-tab-execution" style="flex:1">🧪 Exécutions</button>
+        <button onclick="switchRQATab('library')" class="mega-tab" id="rqa-tab-library" style="flex:1">📚 Bibliothèque</button>
+      </div>
+
+      <!-- Tab: Tickets -->
+      <div class="form-card" id="rqa-pane-tickets" style="padding:0;overflow:hidden;border-radius:0 0 10px 10px;margin-top:0">
+        <div id="releaseTicketsTable" style="overflow-x:auto">
+          <div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">Sélectionne une release</div>
+        </div>
+      </div>
+
+      <!-- Tab: Test Plan -->
+      <div class="form-card" id="rqa-pane-testplan" style="padding:0;overflow:hidden;display:none;border-radius:0 0 10px 10px;margin-top:0">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span id="testplan-progress" style="font-family:var(--mono);font-size:11px;color:var(--text3)">0/0 exécutés</span>
+          <button onclick="launchTestPlanAll()" class="btn" style="font-size:10px;padding:4px 10px;background:var(--green);border-color:var(--green)">▶ Tout lancer</button>
+        </div>
+        <div id="testplan-list" style="max-height:500px;overflow-y:auto">
           <div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sélectionne une release</div>
         </div>
       </div>
 
-      <!-- ── TEST EXECUTION historique ── -->
-      <div class="form-card" style="padding:0;overflow:hidden">
-        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">🧪 HISTORIQUE D'EXECUTION</div>
-          <button onclick="exportTestExecution()" class="btn btn-secondary" style="font-size:10px;padding:4px 10px">📄 Export PDF</button>
+      <!-- Tab: Exécutions -->
+      <div class="form-card" id="rqa-pane-execution" style="padding:0;overflow:hidden;display:none;border-radius:0 0 10px 10px;margin-top:0">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Historique des runs</span>
+          <button onclick="exportTestExecution()" class="btn btn-secondary" style="font-size:10px;padding:4px 10px">📄 Export</button>
         </div>
         <div id="test-execution-list" style="max-height:500px;overflow-y:auto">
           <div style="padding:24px;text-align:center;color:var(--text3);font-size:12px">Sélectionne une release</div>
         </div>
       </div>
 
-      <!-- ── BIBLIOTHÈQUE DE TESTS ── -->
-      <div class="form-card" style="padding:0;overflow:hidden">
-        <div style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-          <div style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text2)">📚 BIBLIOTHÈQUE DE TESTS</div>
+      <!-- Tab: Bibliothèque -->
+      <div class="form-card" id="rqa-pane-library" style="padding:0;overflow:hidden;display:none;border-radius:0 0 10px 10px;margin-top:0">
+        <div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Tests de la release</span>
           <div style="display:flex;gap:6px">
             <button onclick="filterTestLib('all')" class="bl-phase-btn active" id="lib-filter-all" style="font-size:10px;padding:2px 8px">Tous</button>
             <button onclick="filterTestLib('auto')" class="bl-phase-btn" id="lib-filter-auto" style="font-size:10px;padding:2px 8px">AUTO</button>
@@ -2542,69 +2563,18 @@
         </div>
       </div>
 
-    </div>
-
-    <div class="panel" id="panel-matrix">
-      <div class="panel-header">
-        <div>
-          <div class="panel-title">Matrice <span>QA</span></div>
-          <div class="panel-desc">Traçabilité complète par release — Excel automatique</div>
+      <!-- FAIL détaillés -->
+      <div id="releaseFailSection" style="display:none">
+        <div class="form-card" style="border-color:rgba(255,59,92,.25)">
+          <div class="form-card-title" style="color:var(--red)">ANOMALIES EN COURS</div>
+          <div id="releaseFailList"></div>
         </div>
       </div>
 
+      <!-- Fichiers + terminal -->
       <div class="form-card">
-        <div class="form-card-title">📋 GÉNÉRER LA MATRICE</div>
-        <div class="form-row">
-          <div>
-            <label>Release / Version</label>
-            <input type="text" id="matrixVersion" value="v1.25.0" placeholder="v1.25.0">
-          </div>
-          <div>
-            <label>Nom du fichier</label>
-            <input type="text" id="matrixOutput" placeholder="Matrice-QA-v1.25.0.xlsx">
-          </div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary btn-full" onclick="generateMatrix()">📊 Générer la matrice Excel</button>
-        </div>
-      </div>
-
-      <div class="form-card">
-        <div class="form-card-title">📊 CONTENU DE LA MATRICE</div>
-        <div class="workflow">
-          <div class="workflow-step">
-            <div class="step-num">1</div>
-            <div class="step-content">
-              <div class="step-title">Onglet Matrice v1.25.0</div>
-              <div class="step-desc">1 ligne par ticket — Type, Assignee, Statut Jira, Ticket Test lié, Cas de test, Statut QA PASS/FAIL, Bugs liés, Preuves</div>
-            </div>
-          </div>
-          <div class="workflow-step">
-            <div class="step-num">2</div>
-            <div class="step-content">
-              <div class="step-title">Onglet Stats v1.25.0</div>
-              <div class="step-desc">Répartition par type, PASS/FAIL, taux de couverture tests</div>
-            </div>
-          </div>
-          <div class="workflow-step">
-            <div class="step-num">3</div>
-            <div class="step-content">
-              <div class="step-title">Onglet Détail TC</div>
-              <div class="step-desc">1 ligne par cas de test — vue exhaustive de tous les TC avec leur statut individuel</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ══ VUE RAPIDE TRAÇABILITÉ ══ -->
-      <div class="form-card" id="matrix-inline-card">
-        <div class="form-card-title" style="display:flex;align-items:center;justify-content:space-between">
-          <span>🔍 VUE RAPIDE — TRAÇABILITÉ</span>
-          <button onclick="renderMatrixInline()" style="background:rgba(59,111,255,.15);border:1px solid rgba(59,111,255,.4);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↺ Rafraîchir la vue</button>
-        </div>
-        <div id="matrix-inline-body">
-          <div style="color:var(--text3);font-size:12px;text-align:center;padding:24px;font-family:var(--mono)">Cliquez sur "Rafraîchir la vue" ou chargez le Backlog pour voir la couverture.</div>
-        </div>
+        <div class="form-card-title">FICHIERS GÉNÉRÉS</div>
+        <div id="releaseFiles"><div style="color:var(--text3);font-size:12px">Aucune release chargée</div></div>
       </div>
 
       <div class="terminal">
@@ -4933,15 +4903,15 @@ function loadReports() {
 // ── GROUPES DE PANELS (mega-panels avec onglets) ──
 var PANEL_GROUPS = {
   pipeline: {
-    tabs: ["backlog", "enriched", "pipeline", "playwright-direct", "reports", "logs", "releases"],
+    tabs: ["backlog", "enriched", "pipeline", "playwright-direct", "reports", "logs", "release-qa"],
     defaultTab: "backlog"
   },
   outils: {
-    tabs: ["matrix", "css", "drupal", "operations", "postman", "appium"],
-    defaultTab: "matrix"
+    tabs: ["css", "drupal", "operations", "postman", "appium"],
+    defaultTab: "css"
   }
 };
-var _activeSubTab = { pipeline: "backlog", outils: "matrix" };
+var _activeSubTab = { pipeline: "backlog", outils: "css" };
 
 // Trouver le groupe parent d'un sub-panel
 function findParentGroup(subId) {
@@ -5052,8 +5022,8 @@ function _triggerRefresh(id) {
   if (id === "logs")              loadTestLogs();
   if (id === "settings")          loadSettingsPanel();
   if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
-  if (id === "matrix")            renderMatrixInline();
-  if (id === "releases" && typeof loadReleases === "function") loadReleases();
+  if (id === "release-qa")        loadReleaseTracker();
+  if (id === "releases" && typeof loadReleaseTracker === "function") loadReleaseTracker();
   if (id === "postman")           postmanLoadCollections();
   if (id === "appium")            appiumLoadScripts();
 }
@@ -6112,6 +6082,7 @@ function showRelease(release) {
   loadTestPlan(release);
   loadTestExecution(release);
   loadTestLibrary(release);
+  loadReleaseSynthesis(release);
 }
 
 // ── TEST PLAN ────────────────────────────────────────────────────────────────
@@ -10851,7 +10822,7 @@ function initKeyboardShortcuts() {
         if (!active) break;
         if (active.id === "panel-backlog")  { loadBacklog(true); showToast("Backlog rechargé", "↺"); }
         if (active.id === "panel-reports")  { loadPlaywrightReports(); showToast("Rapports rechargés", "↺"); }
-        if (active.id === "panel-releases" && typeof loadReleases === "function") loadReleases();
+        if (active.id === "panel-release-qa" && typeof loadReleaseTracker === "function") loadReleaseTracker();
         break;
       case "k": case "K":
         if (document.getElementById("panel-backlog").classList.contains("active"))
@@ -13266,12 +13237,69 @@ function renderMatrixInline() {
 }
 
 function generateMatrix() {
-  var version = (document.getElementById("matrixVersion") || {}).value || "v1.25.0";
-  var output  = (document.getElementById("matrixOutput")  || {}).value || "";
+  var sel = document.getElementById("releaseSelector");
+  var version = sel ? sel.value : "";
+  if (!version) { showToast("Sélectionne une release d'abord", "⚠️"); return; }
   clearLog("logMatrix");
   log("logMatrix", "$ Génération matrice — version : " + version, "log-cmd");
-  callAgent({ agent: "matrix", version: version, output: output || ("Matrice-QA-" + version + ".xlsx") });
-  showToast("Génération matrice lancée", "📊");
+  callAgent({ agent: "matrix", version: version, output: "Matrice-QA-" + version + ".xlsx" });
+  showToast("Génération matrice Excel + synthèse IA lancée", "📊");
+}
+
+function switchRQATab(tab) {
+  ["tickets", "testplan", "execution", "library"].forEach(function(t) {
+    var pane = document.getElementById("rqa-pane-" + t);
+    var btn  = document.getElementById("rqa-tab-" + t);
+    if (pane) pane.style.display = t === tab ? "block" : "none";
+    if (btn) { btn.classList.toggle("active", t === tab); }
+  });
+}
+
+function loadReleaseSynthesis(version) {
+  api("/api/matrix/synthesis/" + encodeURIComponent(version))
+    .then(function(synth) {
+      var box = document.getElementById("rqa-synthesis");
+      if (!box || !synth || synth.error) { if (box) box.style.display = "none"; return; }
+      box.style.display = "block";
+
+      // Coverage + Score
+      var covEl = document.getElementById("stat-coverage-num");
+      var scrEl = document.getElementById("stat-score-num");
+      if (covEl) covEl.textContent = (synth.coverage || 0) + "%";
+      if (scrEl) scrEl.textContent = (synth.avgScore || 0) + "/100";
+
+      // Strategies
+      var stratBox = document.getElementById("rqa-strategies");
+      if (stratBox && synth.byStrategy) {
+        var stratColors = { e2e: "var(--blue)", api: "var(--orange)", css: "#ec4899", drupal: "#8b5cf6", manual: "var(--red)", mix: "var(--cyan)" };
+        stratBox.innerHTML = Object.keys(synth.byStrategy).map(function(k) {
+          return '<span style="background:rgba(0,0,0,.2);border:1px solid ' + (stratColors[k] || "var(--border)") + ';color:' + (stratColors[k] || "var(--text2)") + ';padding:3px 10px;border-radius:6px;font-size:11px;font-family:var(--mono)">' + k.toUpperCase() + ' <strong>' + synth.byStrategy[k] + '</strong></span>';
+        }).join("");
+      }
+
+      // Risks
+      var riskBox = document.getElementById("rqa-risks");
+      if (riskBox && synth.byRisk) {
+        riskBox.innerHTML = Object.keys(synth.byRisk || {}).map(function(k) {
+          var rc = /critique|élevé|high/i.test(k) ? "var(--red)" : /moyen|medium/i.test(k) ? "var(--orange)" : "var(--green)";
+          return '<span style="background:rgba(0,0,0,.2);border:1px solid ' + rc + ';color:' + rc + ';padding:3px 10px;border-radius:6px;font-size:11px;font-family:var(--mono)">' + k + ' <strong>' + (synth.byRisk[k] || 0) + '</strong></span>';
+        }).join("");
+      }
+
+      // High risk tickets
+      var hrBox = document.getElementById("rqa-high-risk");
+      var hrList = document.getElementById("rqa-high-risk-list");
+      if (hrBox && hrList && synth.highRisk && synth.highRisk.length > 0) {
+        hrBox.style.display = "block";
+        hrList.innerHTML = synth.highRisk.map(function(t) {
+          return '<div style="padding:2px 0;font-family:var(--mono);font-size:11px">' + escHtml(t) + '</div>';
+        }).join("");
+      } else if (hrBox) { hrBox.style.display = "none"; }
+    })
+    .catch(function() {
+      var box = document.getElementById("rqa-synthesis");
+      if (box) box.style.display = "none";
+    });
 }
 
 // ── MODAL MISE À JOUR TICKET ──────────────────────────────────────────────────
