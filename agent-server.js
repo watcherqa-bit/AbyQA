@@ -4168,6 +4168,48 @@ server.listen(PORT, "0.0.0.0", function() {
     } catch(e) { console.error("[PLAN] Erreur update :", e.message); }
   }
 
+  // ── Diagnostic IA post-test (générique, tous outils) ──────────────────────
+  function runDiagnosticIA(tool, evt) {
+    if (!evt.key) return;
+    var enrichedFile = path.join(BASE_DIR, "inbox", "enriched", evt.key + ".json");
+    // Charger le contexte du ticket si disponible
+    var context = {};
+    if (fs.existsSync(enrichedFile)) {
+      try {
+        var eData = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
+        context.ticketSummary = eData.summary || "";
+      } catch(e) {}
+    }
+    leadQA.analyzeTestResult(tool, evt, context)
+      .then(function(diag) {
+        console.log("[DIAG] " + tool + " " + evt.key + " → " + diag.verdict + " (" + diag.confidence + "%) — " + (diag.diagnostic || "").substring(0, 80));
+        // Sauvegarder le diagnostic dans le ticket enrichi
+        if (fs.existsSync(enrichedFile)) {
+          try {
+            var data = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
+            if (!data.diagnostics) data.diagnostics = [];
+            diag._tool = tool;
+            diag._event = evt.status || null;
+            data.diagnostics.push(diag);
+            // Garder les 20 derniers diagnostics max
+            if (data.diagnostics.length > 20) data.diagnostics = data.diagnostics.slice(-20);
+            data.lastDiagnostic = diag;
+            fs.writeFileSync(enrichedFile, JSON.stringify(data, null, 2), "utf8");
+          } catch(e) { console.error("[DIAG] Erreur save:", e.message); }
+        }
+        // Publier le diagnostic sur le bus → SSE dashboard
+        bus.publish("diagnostic:ready", {
+          key: evt.key, tool: tool, verdict: diag.verdict,
+          confidence: diag.confidence, diagnostic: diag.diagnostic,
+          category: diag.category, severity: diag.severity,
+          action: diag.action, actionType: diag.actionType
+        });
+      })
+      .catch(function(e) {
+        console.error("[DIAG] Erreur " + tool + " " + evt.key + ":", e.message);
+      });
+  }
+
   // Bridge : tous les événements bus → SSE dashboard
   bus.on("*", function(event) {
     try {
@@ -4234,6 +4276,8 @@ server.listen(PORT, "0.0.0.0", function() {
       updateTestPlanStep(evt.key, "playwright", evt.mode || "ui",
         evt.status === "PASS" || evt.status === "FAIL" ? evt.status.toLowerCase() : "fail",
         { pass: evt.pass, fail: evt.fail, total: evt.total, reportPath: evt.reportPath });
+      // Diagnostic IA
+      if (evt.key && evt.status !== "BLOCKED") runDiagnosticIA("playwright", evt);
     } catch(e) { console.error("[BUS] Erreur test:completed :", e.message); }
   });
 
@@ -4247,6 +4291,8 @@ server.listen(PORT, "0.0.0.0", function() {
       updateTestPlanStep(evt.key, "newman", "api",
         (evt.fail || 0) > 0 ? "fail" : "pass",
         { pass: evt.pass, fail: evt.fail, total: evt.total });
+      // Diagnostic IA
+      if (evt.key) runDiagnosticIA("newman", evt);
     } catch(e) { console.error("[BUS] Erreur test:api-completed :", e.message); }
   });
 
@@ -4260,6 +4306,8 @@ server.listen(PORT, "0.0.0.0", function() {
       updateTestPlanStep(evt.key, "appium", null,
         (evt.fail || 0) > 0 ? "fail" : "pass",
         { pass: evt.pass, fail: evt.fail, total: evt.total });
+      // Diagnostic IA
+      if (evt.key) runDiagnosticIA("appium", evt);
     } catch(e) { console.error("[BUS] Erreur test:mobile-completed :", e.message); }
   });
 
@@ -4274,6 +4322,9 @@ server.listen(PORT, "0.0.0.0", function() {
         updateTestPlanStep(evt.key, "css-audit", "css",
           cssPass ? "pass" : "fail",
           { pages: evt.pages, scores: evt.scores, reportPath: evt.reportPath });
+        // Diagnostic IA
+        evt.status = cssPass ? "PASS" : "FAIL";
+        runDiagnosticIA("css-audit", evt);
       }
     } catch(e) { console.error("[BUS] Erreur css:completed :", e.message); }
   });
@@ -4283,9 +4334,12 @@ server.listen(PORT, "0.0.0.0", function() {
     try {
       if (!evt.key) return;
       console.log("[BUS] drupal:completed → " + evt.key + " (" + evt.pass + "/" + evt.total + " pass)");
-      updateTestPlanStep(evt.key, "drupal", null,
-        (evt.fail || 0) > 0 ? "fail" : "pass",
+      var drupalStatus = (evt.fail || 0) > 0 ? "fail" : "pass";
+      updateTestPlanStep(evt.key, "drupal", null, drupalStatus,
         { pass: evt.pass, fail: evt.fail, total: evt.total, env: evt.env, type: evt.type, reportPath: evt.reportPath });
+      // Diagnostic IA
+      evt.status = drupalStatus === "pass" ? "PASS" : "FAIL";
+      runDiagnosticIA("drupal", evt);
     } catch(e) { console.error("[BUS] Erreur drupal:completed :", e.message); }
   });
 

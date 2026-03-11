@@ -1285,6 +1285,107 @@ async function analyzePlaywrightFail(logs, resultData) {
   }
 }
 
+// ── DIAGNOSTIC IA GÉNÉRIQUE POST-TEST ────────────────────────────────────────
+/**
+ * Analyse générique post-test (PASS ou FAIL) pour tout type d'outil.
+ * @param {string} tool - "playwright" | "css-audit" | "drupal" | "newman" | "appium"
+ * @param {object} resultData - { key, status, pass, fail, total, env, mode, failType, issues, reportPath, ... }
+ * @param {object} [context] - contexte optionnel { ticketSummary, ticketDescription, logs }
+ * @returns {Promise<object>} diagnostic structuré
+ */
+async function analyzeTestResult(tool, resultData, context) {
+  var status = resultData.status || (resultData.fail > 0 ? "FAIL" : "PASS");
+  var ctx = context || {};
+  var ticketInfo = ctx.ticketSummary ? ("Ticket: " + (resultData.key || "?") + " — " + ctx.ticketSummary + "\n") : "";
+  var logsSection = ctx.logs ? ("LOGS (extrait):\n" + String(ctx.logs).substring(0, 2000) + "\n\n") : "";
+
+  var issuesList = "";
+  if (Array.isArray(resultData.issues) && resultData.issues.length > 0) {
+    issuesList = "ANOMALIES DÉTECTÉES:\n" + resultData.issues.map(function(i) { return "- " + i; }).join("\n") + "\n\n";
+  }
+
+  var prompt = "Tu es Lead QA expert avec 10 ans d'expérience.\n" +
+    "Analyse le résultat de test suivant et fournis un diagnostic structuré.\n\n" +
+    "OUTIL: " + tool.toUpperCase() + "\n" +
+    "STATUT: " + status + "\n" +
+    ticketInfo +
+    "ENV: " + (resultData.env || "?") + " | MODE: " + (resultData.mode || "?") + "\n" +
+    "RÉSULTATS: " + (resultData.pass || 0) + " PASS / " + (resultData.fail || 0) + " FAIL / " + (resultData.total || 0) + " TOTAL\n";
+
+  if (resultData.failType) prompt += "TYPE ERREUR DÉTECTÉ: " + resultData.failType + "\n";
+  if (resultData.scores) prompt += "SCORES CSS: " + JSON.stringify(resultData.scores) + "\n";
+  if (resultData.pages) prompt += "PAGES TESTÉES: " + resultData.pages + "\n";
+  prompt += "\n" + issuesList + logsSection;
+
+  if (status === "PASS" || status === "pass") {
+    prompt += "Le test est PASS. Évalue:\n" +
+      "- La fiabilité du résultat (confiance: 0-100)\n" +
+      "- La couverture estimée (suffisante / partielle / faible)\n" +
+      "- Les risques résiduels ou zones non couvertes\n" +
+      "- Des suggestions d'amélioration\n\n";
+  } else {
+    prompt += "Le test est en ÉCHEC. Analyse:\n" +
+      "- La cause probable (bug réel, config, environnement, données de test, Cloudflare)\n" +
+      "- La sévérité (critique / majeur / mineur)\n" +
+      "- L'action recommandée\n" +
+      "- Si c'est un vrai bug ou un faux positif\n\n";
+  }
+
+  prompt += "Réponds UNIQUEMENT en JSON strict:\n" +
+    "{\n" +
+    '  "verdict": "PASS | FAIL | FALSE_POSITIVE | CONFIG_ISSUE",\n' +
+    '  "confidence": 85,\n' +
+    '  "diagnostic": "Explication claire en 2-3 phrases",\n' +
+    '  "category": "BUG | REGRESSION | CONFIG | ENVIRONMENT | DATA | CLOUDFLARE | COVERAGE_OK | COVERAGE_PARTIAL",\n' +
+    '  "severity": "CRITICAL | MAJOR | MINOR | INFO",\n' +
+    '  "action": "Description de l\'action recommandée",\n' +
+    '  "actionType": "CREATE_BUG | FIX_CONFIG | RERUN | EXTEND_TESTS | RENEW_SESSION | NONE",\n' +
+    '  "risksResidual": ["risque 1", "risque 2"],\n' +
+    '  "suggestions": ["suggestion 1"]\n' +
+    "}\n";
+
+  var fallback = {
+    verdict: status === "PASS" || status === "pass" ? "PASS" : "FAIL",
+    confidence: 50,
+    diagnostic: "Analyse non disponible",
+    category: status === "PASS" || status === "pass" ? "COVERAGE_OK" : "BUG",
+    severity: status === "PASS" || status === "pass" ? "INFO" : "MAJOR",
+    action: "Consulter le rapport",
+    actionType: "NONE",
+    risksResidual: [],
+    suggestions: []
+  };
+
+  try {
+    var response = await client.messages.create({
+      model: MODEL_FAST, max_tokens: 800,
+      messages: [{ role: "user", content: prompt }]
+    });
+    var text = response.content[0].text;
+    var match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      var parsed = JSON.parse(match[0]);
+      return {
+        verdict:        parsed.verdict || fallback.verdict,
+        confidence:     typeof parsed.confidence === "number" ? parsed.confidence : fallback.confidence,
+        diagnostic:     parsed.diagnostic || fallback.diagnostic,
+        category:       parsed.category || fallback.category,
+        severity:       parsed.severity || fallback.severity,
+        action:         parsed.action || fallback.action,
+        actionType:     parsed.actionType || fallback.actionType,
+        risksResidual:  Array.isArray(parsed.risksResidual) ? parsed.risksResidual : [],
+        suggestions:    Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        tool:           tool,
+        analyzedAt:     new Date().toISOString()
+      };
+    }
+    return Object.assign({}, fallback, { tool: tool, analyzedAt: new Date().toISOString() });
+  } catch(e) {
+    console.error("[LEAD-QA] analyzeTestResult error:", e.message);
+    return Object.assign({}, fallback, { tool: tool, diagnostic: "Erreur analyse: " + e.message, analyzedAt: new Date().toISOString() });
+  }
+}
+
 // ── EXTRACTION URLs DEPUIS DESCRIPTION ────────────────────────────────────────
 /**
  * Extrait toutes les URLs trouvées dans un texte (description de ticket Jira).
@@ -1502,6 +1603,8 @@ module.exports = {
   extractFromHTML,
   // Diagnostic Playwright
   analyzePlaywrightFail,
+  // Diagnostic IA générique post-test (tous outils)
+  analyzeTestResult,
   // Auto-debug agent errors
   analyzeAgentError,
   // Scénarios Playwright exécutables
