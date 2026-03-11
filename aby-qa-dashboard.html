@@ -3746,6 +3746,21 @@
           </div>
         </div>
       </div>
+      <!-- Retry automatique -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">RETRY AUTOMATIQUE</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="cfg-retry-enabled" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+            <span style="font-size:13px;color:var(--text)">Re-lancer automatiquement les tests sur erreur transitoire</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text2);width:110px;flex-shrink:0">Max retries</span>
+            <input type="number" id="cfg-retry-max" value="1" min="1" max="3" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;width:60px;font-family:var(--mono)">
+            <span style="font-size:11px;color:var(--text3)">par ticket (timeout, erreur réseau, RERUN recommandé par l'IA)</span>
+          </div>
+        </div>
+      </div>
       <!-- Email / Notifications -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">NOTIFICATIONS EMAIL</div>
@@ -4823,6 +4838,21 @@ sseBus.on("bus-event", function(data) {
     // Si le ticket courant est celui diagnostiqué, afficher le bandeau
     if (data.key && currentEnrichedKey && data.key === currentEnrichedKey) {
       renderDiagnosticBanner(data);
+    }
+  }
+  // Test retry — notification auto-retry en cours
+  if (evt === "test:retry") {
+    showToast("🔄 Retry auto : " + (data.key || "?") + " — " + (data.reason || "diagnostic"), "🔄");
+  }
+  // Test retry completed — notification résultat retry
+  if (evt === "test:retry-completed") {
+    var retryIcon = data.status === "PASS" ? "✅" : "❌";
+    showToast(retryIcon + " Retry " + (data.key || "?") + " : " + (data.status || "?") + " (" + (data.pass||0) + " pass / " + (data.fail||0) + " fail)", retryIcon);
+    // Refresh le plan si c'est le ticket courant
+    if (data.key && currentEnrichedKey && data.key === currentEnrichedKey) {
+      api("/api/enriched/" + data.key).then(function(d) {
+        if (d.testPlan) renderTestPlan(d.testPlan, data.key);
+      }).catch(function() {});
     }
   }
   // Test completed notification + update plan step if applicable
@@ -9536,6 +9566,12 @@ function loadSettingsPanel() {
       // Version courante
       var cfgRel = document.getElementById("cfg-latest-release");
       if (cfgRel) cfgRel.value = s.currentRelease || "v1.25.0";
+      // Retry settings
+      var rt = s.retry || {};
+      var cfgRetryEnabled = document.getElementById("cfg-retry-enabled");
+      var cfgRetryMax     = document.getElementById("cfg-retry-max");
+      if (cfgRetryEnabled) cfgRetryEnabled.checked = rt.enabled !== false;
+      if (cfgRetryMax) cfgRetryMax.value = rt.maxPerTicket || 1;
       // Email settings
       var em = s.email || {};
       var cfgAlerts = document.getElementById("cfg-email-alerts");
@@ -9645,6 +9681,10 @@ function saveSettingsPanel() {
       intervalMin: parseInt((polInterval && polInterval.value) || "5", 10)
     },
     currentRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0",
+    retry: {
+      enabled: !!(document.getElementById("cfg-retry-enabled") && document.getElementById("cfg-retry-enabled").checked),
+      maxPerTicket: parseInt((document.getElementById("cfg-retry-max") && document.getElementById("cfg-retry-max").value) || "1", 10)
+    },
     email: {
       alertsEnabled: !!(document.getElementById("cfg-email-alerts") && document.getElementById("cfg-email-alerts").checked),
       alertSeverity: (document.getElementById("cfg-email-severity") && document.getElementById("cfg-email-severity").value) || "CRITICAL",

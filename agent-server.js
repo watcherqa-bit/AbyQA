@@ -4249,6 +4249,9 @@ server.listen(PORT, "0.0.0.0", function() {
     } catch(e) { console.error("[PLAN] Erreur update :", e.message); }
   }
 
+  // ── Tracker retry diagnostic (1 seul retry par ticket+tool) ──────────────
+  var _diagRetried = {};
+
   // ── Diagnostic IA post-test (générique, tous outils) ──────────────────────
   function runDiagnosticIA(tool, evt) {
     if (!evt.key) return;
@@ -4299,6 +4302,23 @@ server.listen(PORT, "0.0.0.0", function() {
           category: diag.category, severity: diag.severity,
           action: diag.action, actionType: diag.actionType
         });
+
+        // Auto-retry si diagnostic recommande RERUN (1 seule fois par ticket+tool)
+        if (diag.actionType === "RERUN" && evt.key && tool === "playwright") {
+          var retrySettings = {};
+          try { retrySettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).retry || {}; } catch(e2) {}
+          if (retrySettings.enabled !== false) {
+            var retryKey = evt.key + ":" + tool;
+            if (!_diagRetried[retryKey]) {
+              _diagRetried[retryKey] = true;
+              console.log("[DIAG] Auto-retry recommandé pour " + evt.key + " (" + tool + ") — " + diag.category);
+              bus.publish("test:retry", {
+                key: evt.key, tool: tool, reason: diag.category, diagnostic: diag.diagnostic,
+                env: evt.env || "sophie", mode: evt.mode || "ui", urls: evt.urls || null
+              });
+            }
+          }
+        }
       })
       .catch(function(e) {
         console.error("[DIAG] Erreur " + tool + " " + evt.key + ":", e.message);
@@ -4436,6 +4456,44 @@ server.listen(PORT, "0.0.0.0", function() {
       evt.status = drupalStatus === "pass" ? "PASS" : "FAIL";
       runDiagnosticIA("drupal", evt);
     } catch(e) { console.error("[BUS] Erreur drupal:completed :", e.message); }
+  });
+
+  // test:retry → re-lancer un test Playwright après diagnostic IA RERUN
+  bus.on("test:retry", function(evt) {
+    try {
+      if (!evt.key) return;
+      console.log("[BUS] test:retry → re-lancement " + evt.key + " (" + (evt.tool || "playwright") + ") — raison: " + (evt.reason || "?"));
+      var retryArgs = [
+        "agent-playwright-direct.js",
+        "--mode=" + (evt.mode || "ui"),
+        "--source=url",
+        "--env=" + (evt.env || "sophie"),
+        "--key=" + evt.key
+      ];
+      if (evt.urls) {
+        var urlsTmpFile = path.join(BASE_DIR, "uploads", ".pw-retry-urls.txt");
+        try { fs.writeFileSync(urlsTmpFile, Array.isArray(evt.urls) ? evt.urls.join("\n") : String(evt.urls), "utf8"); } catch(e2) {}
+        retryArgs.push("--urls-file=" + urlsTmpFile);
+      }
+      runAgent("playwright-retry", "node", retryArgs, "default", false, {
+        bufferLogs: true,
+        timeout: 5 * 60,
+        onDone: function(exitCode, logs) {
+          var rLine = logs.find(function(l) { return l.startsWith("PLAYWRIGHT_DIRECT_RESULT:"); });
+          if (!rLine) return;
+          try {
+            var result = JSON.parse(rLine.replace("PLAYWRIGHT_DIRECT_RESULT:", ""));
+            result._retried = true;
+            result._retryReason = evt.reason || "diagnostic-rerun";
+            console.log("[RETRY] " + evt.key + " terminé → " + (result.status || "?") + " (" + (result.pass || 0) + " pass / " + (result.fail || 0) + " fail)");
+            bus.publish("test:retry-completed", {
+              key: evt.key, status: result.status, pass: result.pass, fail: result.fail,
+              reason: evt.reason, diagnostic: evt.diagnostic
+            });
+          } catch(e) { console.error("[RETRY] Erreur parse résultat:", e.message); }
+        }
+      });
+    } catch(e) { console.error("[BUS] Erreur test:retry :", e.message); }
   });
 
   // bug:detected → notification dashboard (bug local créé, en attente de revue)

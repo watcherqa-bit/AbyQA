@@ -70,6 +70,10 @@
     "intervalMin": 60
   },
   "currentRelease": "v1.25.0",
+  "retry": {
+    "enabled": true,
+    "maxPerTicket": 1
+  },
   "email": {
     "alertsEnabled": true,
     "alertSeverity": "CRITICAL",

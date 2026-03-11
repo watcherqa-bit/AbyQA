@@ -1051,6 +1051,37 @@ async function annotateScreenshot(page, steps) {
   } catch(e) { /* annotations non critiques — ne pas bloquer le screenshot */ }
 }
 
+// ── Retry wrapper : relance 1x si FAIL retryable (timeout, réseau) ──────────
+var RETRYABLE_FAIL_TYPES = ["TIMEOUT", "NETWORK_ERROR", "URL_404", null];
+var MAX_RETRIES = 1;
+
+async function runTestWithRetry(target, BT, device, browserName, mode, envNameOverride) {
+  var r = await runTest(target, BT, device, browserName, mode, envNameOverride);
+  if (r.status === "FAIL" && RETRYABLE_FAIL_TYPES.indexOf(r.failType) !== -1) {
+    // Vérifier si c'est un timeout ou erreur réseau dans les issues
+    var isRetryable = !r.failType || r.failType === "TIMEOUT" || r.failType === "NETWORK_ERROR" ||
+      (r.issues || []).some(function(i) {
+        return /timeout|timed?\s*out|net::ERR|ECONNREFUSED|ECONNRESET|navigation/i.test(i);
+      });
+    if (isRetryable) {
+      console.log("  [RETRY] " + r.label + " — FAIL retryable (" + (r.failType || "timeout/réseau") + ") — relance...");
+      // Pause courte avant retry
+      await new Promise(function(ok) { setTimeout(ok, 2000); });
+      var r2 = await runTest(target, BT, device, browserName, mode, envNameOverride);
+      if (r2.status === "PASS") {
+        console.log("  [RETRY] " + r.label + " — PASS au retry");
+        r2._retried = true;
+      } else {
+        console.log("  [RETRY] " + r.label + " — toujours FAIL après retry");
+        r2._retried = true;
+        r2._retriedStillFail = true;
+      }
+      return r2;
+    }
+  }
+  return r;
+}
+
 async function runTest(target, BT, device, browserName, mode, envNameOverride) {
   var thisEnv = envNameOverride || ENV_NAME;
   var result = { label: target.label, url: target.url, mode: mode, env: thisEnv, device: device.name, browser: browserName, status: "PASS", failType: null, issues: [], steps: [], screenshot: null };
@@ -2348,7 +2379,7 @@ async function main() {
           for (var ti2 = 0; ti2 < envTargets.length; ti2++) {
             var tgt2 = envTargets[ti2];
             process.stdout.write("  [" + (ti2+1) + "/" + envTargets.length + "] " + (tgt2.label||tgt2.url).substring(0,35) + "... ");
-            var r2 = await runTest(tgt2, BT2, dev2, bn2, MODE, envName);
+            var r2 = await runTestWithRetry(tgt2, BT2, dev2, bn2, MODE, envName);
             console.log(r2.status + (r2.issues.length ? " — " + r2.issues[0].substring(0,45) : ""));
             results.push(r2);
           }
@@ -2544,8 +2575,8 @@ async function main() {
         var testPct = Math.round(25 + (testIdx / totalTests) * 60);
         console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "test", current: testIdx, total: totalTests, pct: testPct, label: (tgt.label||tgt.url).substring(0,60), browser: bn, device: dev.name }));
         process.stdout.write("  [" + (ti+1) + "/" + targets.length + "] " + (tgt.label||tgt.url).substring(0,40) + "... ");
-        var r = await runTest(tgt, BT, dev, bn, MODE);
-        console.log(r.status + (r.issues.length ? " — " + r.issues[0].substring(0,50) : ""));
+        var r = await runTestWithRetry(tgt, BT, dev, bn, MODE);
+        console.log(r.status + (r.issues.length ? " — " + r.issues[0].substring(0,50) : "") + (r._retried ? " (retry)" : ""));
         console.log("PLAYWRIGHT_PROGRESS:" + JSON.stringify({ step: "test-done", current: testIdx, total: totalTests, pct: testPct, status: r.status, label: (tgt.label||tgt.url).substring(0,60) }));
         allResults.push(r);
       }
