@@ -21,7 +21,7 @@ module.exports = function handle(method, url, req, res, ctx) {
           var d = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
           return { key: d.key, summary: d.summary, epic: d.epic, score: d.score,
                    status: d.status, createdAt: d.createdAt, issues: d.issues,
-                   type: d.type || "Story",
+                   type: d.type || "Story", strategy: d.strategy || null,
                    testUrls: Array.isArray(d.testUrls) ? d.testUrls : [] };
         } catch(e) { return null; }
       }).filter(Boolean).sort(function(a, b) {

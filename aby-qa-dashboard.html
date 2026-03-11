@@ -3001,6 +3001,17 @@
             </div>
           </div>
 
+          <!-- Bandeau stratégie IA (interne AbyQA uniquement, jamais poussé dans Jira) -->
+          <div id="editor-strategy-bar" style="display:none;padding:8px 16px;background:rgba(0,212,255,.06);border-bottom:1px solid rgba(0,212,255,.15);font-size:11px;color:var(--text2)">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font-weight:600;color:var(--cyan)">Stratégie IA</span>
+              <span id="strat-decision" style="background:rgba(0,212,255,.15);color:var(--cyan);padding:2px 8px;border-radius:4px;font-family:var(--mono);font-weight:600"></span>
+              <span id="strat-confidence" style="font-family:var(--mono)"></span>
+              <span id="strat-reasoning" style="color:var(--text3);font-style:italic;flex:1;min-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+              <span style="font-size:9px;color:var(--text3);opacity:.6">interne — non envoyé à Jira</span>
+            </div>
+          </div>
+
           <!-- Onglets Original / Enrichi / Dépendances -->
           <div style="display:flex;border-bottom:1px solid var(--border);background:var(--bg2)" id="editor-tabs">
             <button onclick="switchEditorTab('original')" id="tab-original"
@@ -11023,6 +11034,7 @@ function loadEnrichedList() {
           '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">',
           '<span style="font-size:10px;color:', typeColor, ';background:rgba(0,0,0,.2);border-radius:4px;padding:1px 6px">', typeIcon, ' ', (u.type || "Story"), '</span>',
           u.epic ? '<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">[' + escHtml(u.epic) + ']</span>' : '',
+          u.strategy ? '<span style="font-size:9px;color:var(--cyan);background:rgba(0,212,255,.1);border-radius:3px;padding:1px 5px;font-family:var(--mono)">' + u.strategy.toUpperCase() + '</span>' : '',
           u.score ? '<span style="font-size:10px;color:' + (u.score >= 70 ? "var(--green)" : u.score >= 40 ? "var(--orange)" : "var(--red)") + ';margin-left:auto;font-family:var(--mono)">' + u.score + '/100</span>' : '',
           '</div>',
           '</div>'
@@ -11054,6 +11066,30 @@ function selectEnriched(key) {
       document.getElementById("editor-status").textContent = statusMap[data.status] || "⏳ " + (data.status || "En attente");
       document.getElementById("editor-actions").style.display = "flex";
       updateEditorPushButtons(data.status);
+
+      // Bandeau stratégie IA
+      var stratBar = document.getElementById("editor-strategy-bar");
+      if (stratBar) {
+        if (data.strategy || (data.analysis && data.analysis.automationType)) {
+          stratBar.style.display = "block";
+          var decisionColors = { e2e:"#3b82f6", api:"#f59e0b", drupal:"#8b5cf6", css:"#ec4899", manual:"#ef4444", mix:"#06b6d4" };
+          var strat = data.strategy || data.analysis.automationType || "";
+          var conf = data.analysis && data.analysis.confidence ? data.analysis.confidence : "";
+          var reason = data.analysis && data.analysis.reasoning ? data.analysis.reasoning : "";
+          var risk = data.analysis && data.analysis.risk ? data.analysis.risk : "";
+          var complexity = data.analysis && data.analysis.complexity ? data.analysis.complexity : "";
+          document.getElementById("strat-decision").textContent = strat.toUpperCase();
+          document.getElementById("strat-decision").style.background = "rgba(" + (decisionColors[strat] ? "0,212,255" : "255,255,255") + ",.15)";
+          document.getElementById("strat-confidence").textContent = conf ? conf + "% confiance" : "";
+          var reasonParts = [];
+          if (reason) reasonParts.push(reason);
+          if (risk) reasonParts.push("Risque: " + risk);
+          if (complexity) reasonParts.push("Complexité: " + complexity);
+          document.getElementById("strat-reasoning").textContent = reasonParts.join(" · ");
+        } else {
+          stratBar.style.display = "none";
+        }
+      }
 
       // Onglet dépendances
       var links = data.links || [];

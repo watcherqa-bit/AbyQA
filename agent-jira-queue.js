@@ -477,11 +477,11 @@ async function workflowBacklog(ticket) {
       originalMarkdown:  extractDesc(ticket.fields),
       enrichedMarkdown:  enriched.markdown,
       filepath:          filepath,
-      status:            "pending",
+      status:            "enriched-ready",
       createdAt:         new Date().toISOString(),
       updatedAt:         new Date().toISOString()
     });
-    log("[BACKLOG] " + key + " — Sauvegardé dans inbox/enriched/ — en attente de validation");
+    log("[BACKLOG] " + key + " — Sauvegardé dans inbox/enriched/ — prêt à pousser");
 
     // Pousser SSE vers le dashboard (badge + notification)
     pushSSE({
@@ -578,7 +578,7 @@ async function workflowUS(ticket) {
       csvFilepath:       csvFilepath,
       testFilepath:      testFilepath,
       strategy:          strategy.decision,
-      analysis:          { priority: analysis.priority, risk: analysis.risk, epic: analysis.epic },
+      analysis:          { priority: analysis.priority, risk: analysis.risk, epic: analysis.epic, complexity: analysis.complexity, automationType: analysis.automationType, confidence: strategy.confidence, reasoning: strategy.reasoning },
       status:            "test-ready",
       createdAt:         new Date().toISOString()
     };
