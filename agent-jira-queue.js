@@ -271,11 +271,39 @@ async function bugAlreadyExists(sourceKey) {
 
 // Check si un ticket TEST existe déjà pour ce ticket source (évite les doublons TEST)
 async function testAlreadyExists(sourceKey) {
-  // Vérifier le verrou mémoire d'abord
+  // 1. Vérifier le verrou mémoire d'abord
   if (_inProgress.has("TEST-" + sourceKey)) {
     log("[DEDUP] TEST pour " + sourceKey + " — création déjà en cours (verrou mémoire)");
     return true;
   }
+
+  // 2. Vérifier les issuelinks Jira (tickets TEST liés directement à l'US)
+  try {
+    var issueRes = await jiraApiAsync("GET", "/rest/api/3/issue/" + sourceKey + "?fields=issuelinks", null);
+    var links = (issueRes.data && issueRes.data.fields && issueRes.data.fields.issuelinks) || [];
+    var linkedTest = links.find(function(l) {
+      var linked = l.outwardIssue || l.inwardIssue;
+      return linked && linked.fields && linked.fields.issuetype &&
+        (linked.fields.issuetype.name === "Test" || linked.fields.issuetype.name === "Test Case" ||
+         linked.fields.issuetype.name === "Test Execution");
+    });
+    if (linkedTest) {
+      var linkedKey = (linkedTest.outwardIssue || linkedTest.inwardIssue).key;
+      log("[DEDUP] TEST lié trouvé pour " + sourceKey + " via issuelinks : " + linkedKey);
+      return linkedKey;
+    }
+  } catch(e) {
+    log("[DEDUP] Erreur vérification issuelinks " + sourceKey + " : " + e.message);
+  }
+
+  // 3. Vérifier enriched local (déjà en status test-ready ou test-pushed)
+  var enriched = getEnrichedUS(sourceKey);
+  if (enriched && (enriched.status === "test-ready" || enriched.status === "test-pushed")) {
+    log("[DEDUP] TEST local déjà généré pour " + sourceKey + " (status: " + enriched.status + ")");
+    return true;
+  }
+
+  // 4. Recherche JQL (tickets auto-générés avec labels)
   var jql = "project = " + CFG.jira.project +
     " AND issuetype in (Test, \"Test Case\")" +
     " AND labels in (\"auto-generated\", \"qa-auto\")" +
@@ -532,9 +560,22 @@ async function workflowUS(ticket) {
 
   try {
     // 0. Anti-doublon — vérifier si un TEST existe déjà pour cette US
-    if (await testAlreadyExists(key)) {
-      log("[US] " + key + " — TEST déjà existant, skip");
-      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "dedup-skipped", summary: summary });
+    var existingTest = await testAlreadyExists(key);
+    if (existingTest) {
+      var linkedTestKey = typeof existingTest === "string" ? existingTest : null;
+      log("[US] " + key + " — TEST déjà existant" + (linkedTestKey ? " (" + linkedTestKey + ")" : "") + " — enrichissement sans doublon");
+
+      // Enrichir l'US locale avec la référence au test existant (pas de création doublon)
+      var existing = getEnrichedUS(key) || {};
+      if (!existing.linkedTestKey && linkedTestKey) {
+        existing.linkedTestKey = linkedTestKey;
+        existing.status = existing.status || "test-ready";
+        existing.updatedAt = new Date().toISOString();
+        saveEnrichedUS(key, existing);
+      }
+
+      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "dedup-skipped", summary: summary,
+        detail: "TEST existant" + (linkedTestKey ? " : " + linkedTestKey : "") + " — pas de doublon créé" });
       return;
     }
     _inProgress.add("TEST-" + key);
