@@ -1368,6 +1368,9 @@
       <div class="mega-tab" onclick="showSubTab('pipeline','logs')" data-subtab="logs">
         <span class="tab-icon">🔬</span> Logs
       </div>
+      <div class="mega-tab" onclick="showSubTab('pipeline','diagnostics')" data-subtab="diagnostics">
+        <span class="tab-icon">🧠</span> Diagnostics
+      </div>
       <div class="mega-tab" onclick="showSubTab('pipeline','release-qa')" data-subtab="release-qa">
         <span class="tab-icon">📦</span> Release QA
       </div>
@@ -3098,6 +3101,47 @@
       </div>
       <div id="logs-list" style="display:flex;flex-direction:column;gap:12px;padding:20px 24px">
         <div style="color:var(--text3);font-size:12px;text-align:center;padding:40px">Aucun log — les échecs de tests apparaîtront ici</div>
+      </div>
+    </div>
+
+    <!-- ══ HISTORIQUE DIAGNOSTICS IA ══ -->
+    <div class="panel" id="panel-diagnostics">
+      <div class="panel-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">🧠</span>
+          <div>
+            <div class="panel-title">Diagnostics IA</div>
+            <div class="panel-desc">Historique des analyses Claude — tendances qualité et alertes</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="diag-filter-tool" onchange="loadDiagnostics()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px">
+            <option value="all">Tous les outils</option>
+            <option value="playwright">Playwright</option>
+            <option value="newman">Newman (API)</option>
+            <option value="appium">Appium (Mobile)</option>
+            <option value="css-audit">CSS Audit</option>
+            <option value="drupal">Drupal</option>
+          </select>
+          <select id="diag-filter-verdict" onchange="loadDiagnostics()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px">
+            <option value="all">Tous verdicts</option>
+            <option value="PASS">PASS</option>
+            <option value="FAIL">FAIL</option>
+            <option value="FALSE_POSITIVE">FALSE_POSITIVE</option>
+            <option value="CONFIG_ISSUE">CONFIG_ISSUE</option>
+          </select>
+          <button onclick="loadDiagnostics()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">↺ Actualiser</button>
+        </div>
+      </div>
+      <!-- Trend chart -->
+      <div style="padding:12px 24px">
+        <canvas id="diag-trend-chart" height="120" style="width:100%;background:var(--bg3);border-radius:8px"></canvas>
+      </div>
+      <!-- Stats cards -->
+      <div id="diag-stats" style="display:flex;gap:12px;padding:0 24px 12px;flex-wrap:wrap"></div>
+      <!-- Table -->
+      <div id="diag-list" style="padding:0 24px 20px">
+        <div style="color:var(--text3);font-size:12px;text-align:center;padding:40px">Aucun diagnostic — les analyses IA apparaîtront ici après les tests</div>
       </div>
     </div>
 
@@ -5034,7 +5078,7 @@ function loadReports() {
 // ── GROUPES DE PANELS (mega-panels avec onglets) ──
 var PANEL_GROUPS = {
   pipeline: {
-    tabs: ["backlog", "enriched", "pipeline", "reports", "logs", "release-qa"],
+    tabs: ["backlog", "enriched", "pipeline", "reports", "logs", "diagnostics", "release-qa"],
     defaultTab: "backlog"
   },
   tests: {
@@ -5151,6 +5195,7 @@ function _triggerRefresh(id) {
   if (id === "pipeline")          updatePWDSummary();
   if (id === "reports")           loadPlaywrightReports();
   if (id === "logs")              loadTestLogs();
+  if (id === "diagnostics")       loadDiagnostics();
   if (id === "settings")          loadSettingsPanel();
   if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
   if (id === "release-qa")        loadReleaseTracker();
@@ -15898,6 +15943,146 @@ function pushXraySteps() {
 
 // ── LOGS DE TESTS ─────────────────────────────────────────────────────────────
 var _logsData = [];
+
+// ── DIAGNOSTICS IA — Historique + Trend Chart ──────────────────────────────
+function loadDiagnostics() {
+  var list  = document.getElementById("diag-list");
+  var stats = document.getElementById("diag-stats");
+  if (list) list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:32px">Chargement…</div>';
+  fetch(SERVER + "/api/diagnostics").then(function(r){return r.json()}).then(function(diags) {
+    // Filtres
+    var toolF = (document.getElementById("diag-filter-tool") || {}).value || "all";
+    var verdF = (document.getElementById("diag-filter-verdict") || {}).value || "all";
+    var filtered = diags.filter(function(d) {
+      if (toolF !== "all" && d._tool !== toolF) return false;
+      if (verdF !== "all" && d.verdict !== verdF) return false;
+      return true;
+    });
+
+    // Stats cards
+    var total = filtered.length;
+    var passC = filtered.filter(function(d){return d.verdict==="PASS"}).length;
+    var failC = filtered.filter(function(d){return d.verdict==="FAIL"}).length;
+    var fpC   = filtered.filter(function(d){return d.verdict==="FALSE_POSITIVE"}).length;
+    var critC = filtered.filter(function(d){return d.severity==="CRITICAL"}).length;
+    if (stats) {
+      stats.innerHTML =
+        '<div style="flex:1;min-width:80px;background:var(--bg3);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--text)">' + total + '</div><div style="font-size:10px;color:var(--text3)">Total</div></div>' +
+        '<div style="flex:1;min-width:80px;background:rgba(16,185,129,.08);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--green)">' + passC + '</div><div style="font-size:10px;color:var(--text3)">PASS</div></div>' +
+        '<div style="flex:1;min-width:80px;background:rgba(239,68,68,.08);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--red)">' + failC + '</div><div style="font-size:10px;color:var(--text3)">FAIL</div></div>' +
+        '<div style="flex:1;min-width:80px;background:rgba(245,158,11,.08);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:var(--orange)">' + fpC + '</div><div style="font-size:10px;color:var(--text3)">FALSE_POS</div></div>' +
+        '<div style="flex:1;min-width:80px;background:rgba(239,68,68,.15);border-radius:8px;padding:12px;text-align:center"><div style="font-size:20px;font-weight:700;color:#ef4444">' + critC + '</div><div style="font-size:10px;color:var(--text3)">CRITICAL</div></div>';
+    }
+
+    // Trend chart (derniers 30 jours)
+    drawDiagTrendChart(filtered);
+
+    // Table
+    if (!filtered.length) {
+      if (list) list.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:40px">Aucun diagnostic</div>';
+      return;
+    }
+    var html = '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Date</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Ticket</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Outil</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Verdict</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Sévérité</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Confiance</th>' +
+      '<th style="text-align:left;padding:8px;color:var(--text3);font-weight:500">Diagnostic</th></tr>';
+
+    var sevColors = { CRITICAL:"#ef4444", MAJOR:"#f59e0b", MINOR:"var(--text2)", INFO:"var(--green)" };
+    var verdColors = { PASS:"var(--green)", FAIL:"var(--red)", FALSE_POSITIVE:"var(--orange)", CONFIG_ISSUE:"var(--cyan)" };
+
+    filtered.slice(0, 100).forEach(function(d) {
+      var dt = d._at ? new Date(d._at).toLocaleString("fr-FR", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}) : "—";
+      html += '<tr style="border-bottom:1px solid var(--border);cursor:pointer" onclick="showPanel(\'enriched\');loadEnrichedTicket(\'' + escHtml(d.key) + '\')">' +
+        '<td style="padding:6px 8px;color:var(--text2)">' + dt + '</td>' +
+        '<td style="padding:6px 8px;font-family:var(--mono);color:var(--cyan)">' + escHtml(d.key) + '</td>' +
+        '<td style="padding:6px 8px;color:var(--text2)">' + escHtml(d._tool || "?") + '</td>' +
+        '<td style="padding:6px 8px;font-weight:600;color:' + (verdColors[d.verdict] || "var(--text)") + '">' + escHtml(d.verdict || "?") + '</td>' +
+        '<td style="padding:6px 8px;color:' + (sevColors[d.severity] || "var(--text2)") + '">' + escHtml(d.severity || "—") + '</td>' +
+        '<td style="padding:6px 8px;color:var(--text2)">' + (d.confidence || "—") + '%</td>' +
+        '<td style="padding:6px 8px;color:var(--text2);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml((d.diagnostic || "").substring(0, 100)) + '</td></tr>';
+    });
+    html += '</table>';
+    if (list) list.innerHTML = html;
+  }).catch(function(e) {
+    if (list) list.innerHTML = '<div style="color:var(--red);font-size:12px;text-align:center;padding:40px">Erreur : ' + escHtml(e.message) + '</div>';
+  });
+}
+
+function drawDiagTrendChart(diags) {
+  var canvas = document.getElementById("diag-trend-chart");
+  if (!canvas) return;
+  var ctx = canvas.getContext("2d");
+  var W = canvas.parentElement.clientWidth - 24;
+  var H = 120;
+  canvas.width = W * (window.devicePixelRatio || 1);
+  canvas.height = H * (window.devicePixelRatio || 1);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.scale(window.devicePixelRatio || 1, window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, W, H);
+
+  // Grouper par jour (derniers 14 jours)
+  var days = {};
+  var now = new Date();
+  for (var i = 13; i >= 0; i--) {
+    var d = new Date(now); d.setDate(d.getDate() - i);
+    var key = d.toISOString().substring(0, 10);
+    days[key] = { pass: 0, fail: 0, fp: 0 };
+  }
+  diags.forEach(function(d) {
+    if (!d._at) return;
+    var dk = d._at.substring(0, 10);
+    if (!days[dk]) return;
+    if (d.verdict === "PASS") days[dk].pass++;
+    else if (d.verdict === "FAIL") days[dk].fail++;
+    else days[dk].fp++;
+  });
+
+  var keys = Object.keys(days).sort();
+  var maxVal = 1;
+  keys.forEach(function(k) { var t = days[k].pass + days[k].fail + days[k].fp; if (t > maxVal) maxVal = t; });
+
+  var pad = { l: 30, r: 10, t: 10, b: 25 };
+  var chartW = W - pad.l - pad.r;
+  var chartH = H - pad.t - pad.b;
+  var barW = chartW / keys.length;
+
+  // Grid
+  ctx.strokeStyle = "rgba(255,255,255,.06)";
+  ctx.lineWidth = 1;
+  for (var g = 0; g <= 4; g++) {
+    var gy = pad.t + chartH - (chartH * g / 4);
+    ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(W - pad.r, gy); ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.3)";
+    ctx.font = "9px monospace";
+    ctx.textAlign = "right";
+    ctx.fillText(Math.round(maxVal * g / 4), pad.l - 4, gy + 3);
+  }
+
+  keys.forEach(function(k, i) {
+    var x = pad.l + i * barW;
+    var d = days[k];
+    var total = d.pass + d.fail + d.fp;
+    // Stacked bar: pass (green), fail (red), fp (orange)
+    var y = pad.t + chartH;
+    [{v: d.pass, c: "rgba(16,185,129,.7)"}, {v: d.fail, c: "rgba(239,68,68,.7)"}, {v: d.fp, c: "rgba(245,158,11,.5)"}].forEach(function(seg) {
+      if (seg.v <= 0) return;
+      var bh = (seg.v / maxVal) * chartH;
+      ctx.fillStyle = seg.c;
+      ctx.fillRect(x + 2, y - bh, barW - 4, bh);
+      y -= bh;
+    });
+    // Date label
+    ctx.fillStyle = "rgba(255,255,255,.4)";
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(k.substring(5), x + barW / 2, H - 5);
+  });
+}
 
 function loadTestLogs() {
   var list = document.getElementById('logs-list');

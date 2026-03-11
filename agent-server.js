@@ -3812,6 +3812,30 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/diagnostics — Historique de tous les diagnostics IA ─────────
+  if (method === "GET" && url.startsWith("/api/diagnostics")) {
+    var enrichedDir = path.join(BASE_DIR, "inbox", "enriched");
+    var allDiags = [];
+    try {
+      var files = fs.readdirSync(enrichedDir).filter(function(f) { return f.endsWith(".json"); });
+      files.forEach(function(f) {
+        try {
+          var data = JSON.parse(fs.readFileSync(path.join(enrichedDir, f), "utf8"));
+          if (data.diagnostics && data.diagnostics.length > 0) {
+            data.diagnostics.forEach(function(d) {
+              allDiags.push(Object.assign({}, d, { key: data.key || f.replace(".json",""), summary: data.summary || "" }));
+            });
+          }
+        } catch(e) {}
+      });
+    } catch(e) {}
+    // Trier par date desc
+    allDiags.sort(function(a, b) { return (b._at || "").localeCompare(a._at || ""); });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(allDiags));
+    return;
+  }
+
   // ── GET /api/purge/preview — Aperçu de ce qui serait purgé ──────────────
   if (method === "GET" && url === "/api/purge/preview") {
     var prev = purge.preview();
@@ -4311,6 +4335,7 @@ server.listen(PORT, "0.0.0.0", function() {
             if (!data.diagnostics) data.diagnostics = [];
             diag._tool = tool;
             diag._event = evt.status || null;
+            diag._at = new Date().toISOString();
             data.diagnostics.push(diag);
             // Garder les 20 derniers diagnostics max
             if (data.diagnostics.length > 20) data.diagnostics = data.diagnostics.slice(-20);
