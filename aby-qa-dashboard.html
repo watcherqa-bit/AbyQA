@@ -2996,6 +2996,10 @@
               style="padding:8px 20px;font-size:12px;border:none;background:none;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent">
               Dépendances <span id="tab-deps-count" style="font-size:10px;color:var(--text3)"></span>
             </button>
+            <button onclick="switchEditorTab('plan')" id="tab-plan"
+              style="padding:8px 20px;font-size:12px;border:none;background:none;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;display:none">
+              Plan de test <span id="tab-plan-count" style="font-size:10px;color:var(--text3)"></span>
+            </button>
           </div>
 
           <!-- Zone texte originale (lecture seule) -->
@@ -3015,6 +3019,13 @@
           <div id="editor-deps-pane" style="display:none;flex:1;overflow-y:auto;padding:16px">
             <div id="editor-deps-content" style="display:flex;flex-direction:column;gap:8px">
               <div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Aucun ticket lié</div>
+            </div>
+          </div>
+
+          <!-- Zone plan de test IA -->
+          <div id="editor-plan-pane" style="display:none;flex:1;overflow-y:auto;padding:16px">
+            <div id="editor-plan-content" style="display:flex;flex-direction:column;gap:10px">
+              <div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Aucun plan de test</div>
             </div>
           </div>
 
@@ -4750,10 +4761,16 @@ sseBus.on("bus-event", function(data) {
   if (evt === "session:expired") {
     showToast("Session Playwright expirée — renouveler dans Paramètres", "⚠️");
   }
-  // Test completed notification
+  // Test completed notification + update plan step if applicable
   if (evt === "test:completed" || evt === "test:api-completed" || evt === "test:mobile-completed") {
     var status = data.status || (data.fail > 0 ? "FAIL" : "PASS");
     showToast((data.key || "Test") + " : " + status + " (" + (data.pass||0) + "/" + (data.total||0) + ")", status === "PASS" ? "✅" : "❌");
+    // Si le ticket courant est celui qui vient de terminer, refresh le plan
+    if (data.key && currentEnrichedKey && data.key === currentEnrichedKey) {
+      api("/api/enriched/" + data.key).then(function(d) {
+        if (d.testPlan) renderTestPlan(d.testPlan, data.key);
+      }).catch(function() {});
+    }
   }
 });
 
@@ -11062,6 +11079,9 @@ function selectEnriched(key) {
         }
       }
 
+      // Onglet Plan de test
+      renderTestPlan(data.testPlan || [], key);
+
       // Onglet dépendances
       var links = data.links || [];
       var depsCount = document.getElementById("tab-deps-count");
@@ -11096,17 +11116,17 @@ function selectEnriched(key) {
 }
 
 function switchEditorTab(tab) {
-  var orig  = document.getElementById("editor-original-pane");
-  var enri  = document.getElementById("editor-enriched-pane");
-  var deps  = document.getElementById("editor-deps-pane");
-  var tOrig = document.getElementById("tab-original");
-  var tEnri = document.getElementById("tab-enriched");
-  var tDeps = document.getElementById("tab-deps");
-  [orig, enri, deps].forEach(function(el) { if (el) el.style.display = "none"; });
-  [tOrig, tEnri, tDeps].forEach(function(el) { if (el) { el.style.color = "var(--text3)"; el.style.borderBottomColor = "transparent"; } });
-  var pane = tab === "original" ? orig : tab === "deps" ? deps : enri;
-  var btn  = tab === "original" ? tOrig : tab === "deps" ? tDeps : tEnri;
-  if (pane) pane.style.display = "flex";
+  var panes = { original: "editor-original-pane", enriched: "editor-enriched-pane", deps: "editor-deps-pane", plan: "editor-plan-pane" };
+  var tabs  = { original: "tab-original", enriched: "tab-enriched", deps: "tab-deps", plan: "tab-plan" };
+  Object.keys(panes).forEach(function(k) {
+    var el = document.getElementById(panes[k]);
+    var bt = document.getElementById(tabs[k]);
+    if (el) el.style.display = "none";
+    if (bt) { bt.style.color = "var(--text3)"; bt.style.borderBottomColor = "transparent"; }
+  });
+  var pane = document.getElementById(panes[tab] || panes.enriched);
+  var btn  = document.getElementById(tabs[tab]  || tabs.enriched);
+  if (pane) pane.style.display = tab === "plan" || tab === "deps" ? "block" : "flex";
   if (btn)  { btn.style.color = "var(--cyan)"; btn.style.borderBottomColor = "var(--cyan)"; }
 }
 
@@ -13299,6 +13319,166 @@ function loadReleaseSynthesis(version) {
     .catch(function() {
       var box = document.getElementById("rqa-synthesis");
       if (box) box.style.display = "none";
+    });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// PLAN DE TEST IA
+// ══════════════════════════════════════════════════════════════════════════════
+
+function renderTestPlan(testPlan, ticketKey) {
+  var planTab = document.getElementById("tab-plan");
+  var planCount = document.getElementById("tab-plan-count");
+  var content = document.getElementById("editor-plan-content");
+  if (!content) return;
+
+  if (!testPlan || testPlan.length === 0) {
+    if (planTab) planTab.style.display = "none";
+    content.innerHTML = '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px">Aucun plan de test généré</div>';
+    return;
+  }
+
+  // Afficher l'onglet
+  if (planTab) planTab.style.display = "inline-block";
+  if (planCount) planCount.textContent = "(" + testPlan.length + ")";
+
+  var toolIcons  = { playwright: "🎭", newman: "📮", drupal: "🧪", manual: "📋" };
+  var typeColors = { e2e: "var(--blue)", api: "var(--orange)", css: "#ec4899", drupal: "#8b5cf6", manual: "var(--red)" };
+  var statusIcons = { pending: "⏳", running: "🔄", pass: "✅", fail: "❌", skipped: "⏭", blocked: "⚠️" };
+
+  var done  = testPlan.filter(function(s) { return s.status === "pass"; }).length;
+  var fail  = testPlan.filter(function(s) { return s.status === "fail"; }).length;
+  var total = testPlan.length;
+  var pct   = total > 0 ? Math.round(done / total * 100) : 0;
+
+  var html = '';
+
+  // Progress header
+  html += '<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg3);border-radius:8px;margin-bottom:8px">';
+  html += '<div style="font-family:var(--mono);font-size:11px;color:var(--text2);font-weight:600">PLAN DE TEST</div>';
+  html += '<div style="flex:1;background:var(--bg);border-radius:6px;height:8px;overflow:hidden">';
+  html += '<div style="height:100%;width:' + pct + '%;background:var(--green);transition:width .5s"></div></div>';
+  html += '<div style="font-family:var(--mono);font-size:11px;color:' + (pct === 100 ? 'var(--green)' : fail > 0 ? 'var(--red)' : 'var(--text3)') + '">' + done + '/' + total + '</div>';
+  html += '</div>';
+
+  // Steps
+  testPlan.forEach(function(step) {
+    var color  = typeColors[step.type] || "var(--text2)";
+    var icon   = toolIcons[step.tool]  || "🔧";
+    var stIcon = statusIcons[step.status] || "⏳";
+    var isBlocked = step.dependsOn && testPlan.some(function(s) { return s.order === step.dependsOn && s.status !== "pass"; });
+    var canLaunch = step.status === "pending" && !isBlocked && step.tool !== "manual";
+
+    html += '<div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--bg2);border:1px solid ' +
+      (step.status === "pass" ? "rgba(0,232,122,.3)" : step.status === "fail" ? "rgba(255,59,92,.3)" : "var(--border)") +
+      ';border-radius:10px;' + (step.status === "pass" ? "opacity:.7;" : "") + '">';
+
+    // Order number
+    html += '<div style="width:28px;height:28px;border-radius:50%;background:' +
+      (step.status === "pass" ? "var(--green)" : step.status === "fail" ? "var(--red)" : step.status === "running" ? "var(--blue)" : "var(--bg3)") +
+      ';display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;color:' +
+      (step.status === "pending" ? "var(--text3)" : "white") + ';flex-shrink:0">' +
+      (step.status === "pass" ? "✓" : step.status === "fail" ? "✗" : step.order) + '</div>';
+
+    // Content
+    html += '<div style="flex:1;min-width:0">';
+    html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">';
+    html += '<span style="font-size:14px">' + icon + '</span>';
+    html += '<span style="font-size:12px;font-weight:600;color:var(--text)">' + escHtml(step.label) + '</span>';
+    if (!step.required) html += '<span style="font-size:9px;color:var(--text3);font-style:italic">optionnel</span>';
+    html += '</div>';
+    html += '<div style="display:flex;gap:6px;align-items:center">';
+    html += '<span style="font-size:10px;color:' + color + ';background:rgba(0,0,0,.2);border-radius:3px;padding:1px 6px;font-family:var(--mono)">' + step.type.toUpperCase() + '</span>';
+    html += '<span style="font-size:10px;color:var(--text3);font-family:var(--mono)">' + step.tool + '</span>';
+    if (step.mode) html += '<span style="font-size:10px;color:var(--text3)">mode: ' + step.mode + '</span>';
+    if (step.dependsOn) html += '<span style="font-size:10px;color:var(--text3)">après étape ' + step.dependsOn + '</span>';
+    html += '</div>';
+    if (step.result) {
+      html += '<div style="font-size:10px;color:var(--text3);margin-top:3px;font-family:var(--mono)">';
+      if (step.result.pass !== undefined) html += '<span style="color:var(--green)">' + step.result.pass + ' PASS</span> · ';
+      if (step.result.fail !== undefined) html += '<span style="color:var(--red)">' + step.result.fail + ' FAIL</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+
+    // Action button
+    if (canLaunch) {
+      html += '<button onclick="launchPlanStep(\'' + ticketKey + '\',' + step.order + ')" class="btn btn-primary" style="font-size:11px;padding:6px 14px;flex-shrink:0">▶ Lancer</button>';
+    } else if (isBlocked) {
+      html += '<span style="font-size:10px;color:var(--text3);flex-shrink:0">🔒 Bloqué</span>';
+    } else if (step.tool === "manual" && step.status === "pending") {
+      html += '<div style="display:flex;gap:4px;flex-shrink:0">';
+      html += '<button onclick="markPlanStep(\'' + ticketKey + '\',' + step.order + ',\'pass\')" style="background:rgba(0,232,122,.15);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:10px">✓ OK</button>';
+      html += '<button onclick="markPlanStep(\'' + ticketKey + '\',' + step.order + ',\'fail\')" style="background:rgba(255,59,92,.15);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:10px">✗ KO</button>';
+      html += '</div>';
+    } else if (step.status === "running") {
+      html += '<span style="font-size:11px;color:var(--blue);flex-shrink:0;font-family:var(--mono)">en cours...</span>';
+    } else {
+      html += '<span style="font-size:14px;flex-shrink:0">' + stIcon + '</span>';
+    }
+
+    html += '</div>';
+  });
+
+  content.innerHTML = html;
+}
+
+function launchPlanStep(ticketKey, stepOrder) {
+  api("/api/enriched/" + ticketKey)
+    .then(function(data) {
+      var plan = data.testPlan || [];
+      var step = plan.find(function(s) { return s.order === stepOrder; });
+      if (!step) { showToast("Étape introuvable", "⚠️"); return; }
+
+      // Marquer running
+      apiPost("/api/enriched/" + ticketKey + "/plan-step", { order: stepOrder, status: "running" })
+        .then(function() {
+          // Refresh plan display
+          step.status = "running";
+          renderTestPlan(plan, ticketKey);
+        });
+
+      // Router vers le bon outil
+      if (step.tool === "playwright") {
+        // Ouvrir Playwright Direct pré-rempli
+        showPanel("playwright-direct");
+        var modeMap = { "ui": "ui", "api": "api", "css-audit": "css-audit" };
+        var mode = modeMap[step.mode] || "ui";
+        setTimeout(function() {
+          if (typeof selectPWDMode === "function") selectPWDMode(mode);
+          if (typeof selectPWDSource === "function") selectPWDSource("jira-key");
+          var jiraInput = document.getElementById("pwd-jira-key");
+          if (jiraInput) { jiraInput.value = ticketKey; }
+          // Injecter le label comme instruction
+          var instrField = document.getElementById("pwd-instructions");
+          if (instrField) instrField.value = step.label + "\n(Plan de test auto — " + ticketKey + " étape " + step.order + ")";
+          showToast("Playwright pré-rempli — " + step.label, "🎭");
+        }, 300);
+      } else if (step.tool === "newman") {
+        showPanel("postman");
+        setTimeout(function() {
+          var postmanText = document.getElementById("postman-text");
+          if (postmanText) postmanText.value = step.label + "\nTicket: " + ticketKey;
+          showToast("Postman pré-rempli — " + step.label, "📮");
+        }, 300);
+      } else if (step.tool === "drupal") {
+        showPanel("drupal");
+        setTimeout(function() {
+          var drupalCtx = document.getElementById("drupal-context");
+          if (drupalCtx) drupalCtx.value = step.label + "\nTicket: " + ticketKey;
+          showToast("Drupal pré-rempli — " + step.label, "🧪");
+        }, 300);
+      }
+    });
+}
+
+function markPlanStep(ticketKey, stepOrder, status) {
+  apiPost("/api/enriched/" + ticketKey + "/plan-step", { order: stepOrder, status: status })
+    .then(function(resp) {
+      if (resp.ok && resp.plan) {
+        renderTestPlan(resp.plan, ticketKey);
+        showToast("Étape " + stepOrder + " : " + status.toUpperCase(), status === "pass" ? "✅" : "❌");
+      }
     });
 }
 

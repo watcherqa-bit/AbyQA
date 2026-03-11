@@ -146,6 +146,41 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
+  // ── Mettre à jour le statut d'une étape du test plan ─────────────────────
+  if (method === "POST" && url.match(/^\/api\/enriched\/[A-Z]+-\d+\/plan-step$/)) {
+    var psKey  = url.split("/")[3];
+    var psFile = path.join(ENRICHED_DIR, psKey + ".json");
+    if (!fs.existsSync(psFile)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Ticket introuvable" }));
+      return true;
+    }
+    var psChunks = [];
+    req.on("data", function(c) { psChunks.push(c); });
+    req.on("end", function() {
+      try {
+        var psBody = JSON.parse(Buffer.concat(psChunks).toString());
+        var psData = JSON.parse(fs.readFileSync(psFile, "utf8"));
+        var plan = psData.testPlan || [];
+        var stepIdx = plan.findIndex(function(s) { return s.order === psBody.order; });
+        if (stepIdx >= 0) {
+          plan[stepIdx].status = psBody.status || "pending";
+          if (psBody.result) plan[stepIdx].result = psBody.result;
+          if (psBody.reportPath) plan[stepIdx].reportPath = psBody.reportPath;
+          plan[stepIdx].updatedAt = new Date().toISOString();
+          psData.testPlan = plan;
+          fs.writeFileSync(psFile, JSON.stringify(psData, null, 2), "utf8");
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, plan: plan }));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return true;
+  }
+
   // ── File des tests prêts à lancer dans Playwright Direct ─────────────────
   var TESTS_DIR = path.join(BASE_DIR, "inbox", "tests");
   if (!fs.existsSync(TESTS_DIR)) fs.mkdirSync(TESTS_DIR, { recursive: true });

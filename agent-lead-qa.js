@@ -485,23 +485,73 @@ async function decideStrategy(ticket) {
     "Ticket  : " + (ticket.key || "") + "\n" +
     "Résumé  : " + summary + "\n" +
     "Description : " + desc.substring(0, 600) + "\n\n" +
-    "Choix :\n" +
-    "• manual  → complexité métier, exploration, jugement humain\n" +
-    "• e2e     → parcours utilisateur, formulaires, navigation DOM\n" +
-    "• api     → REST, HTTP, payloads, codes retour\n" +
-    "• drupal  → création/édition contenu BO Drupal (32 types)\n" +
-    "• css     → audit visuel, cross-browser, régressions\n" +
-    "• mix     → plusieurs types nécessaires\n\n" +
+    "Types de test disponibles :\n" +
+    "• e2e     → parcours utilisateur, formulaires, navigation DOM (Playwright UI)\n" +
+    "• api     → REST, HTTP, payloads, codes retour (Playwright API ou Newman)\n" +
+    "• drupal  → création/édition contenu BO Drupal — données de test nécessaires AVANT les tests\n" +
+    "• css     → audit visuel, cross-browser, régressions (Playwright screenshots)\n" +
+    "• manual  → complexité métier, exploration, jugement humain requis\n\n" +
+    "IMPORTANT : Génère un plan de test ordonné (testPlan). Chaque étape a :\n" +
+    "- order : numéro d'ordre (1, 2, 3...)\n" +
+    "- type : e2e | api | drupal | css | manual\n" +
+    "- tool : playwright | newman | drupal | manual\n" +
+    "- label : description courte de l'étape (ex: 'Créer 3 articles de test')\n" +
+    "- mode : playwright mode si applicable (ui | api | css-audit | null)\n" +
+    "- required : true si indispensable, false si optionnel\n" +
+    "- dependsOn : numéro de l'étape prérequise (null si aucune)\n\n" +
+    "Exemples :\n" +
+    "- Ticket formulaire contact → [{drupal, 'Créer données test'}, {e2e, 'Tester soumission'}, {api, 'Vérifier endpoint POST'}]\n" +
+    "- Ticket API REST → [{api, 'Tester les endpoints'}]\n" +
+    "- Ticket refonte visuelle → [{css, 'Audit cross-browser'}, {e2e, 'Vérifier navigation'}]\n\n" +
     "Retourne un JSON :\n" +
     "{\n" +
     '  "decision": "e2e|api|drupal|css|manual|mix",\n' +
     '  "types": ["e2e", "api"],\n' +
     '  "confidence": 85,\n' +
     '  "reasoning": "Justification courte (2 phrases max)",\n' +
-    '  "playwrightMode": "ui|api|drupal|css-audit|null"\n' +
+    '  "playwrightMode": "ui|api|drupal|css-audit|null",\n' +
+    '  "testPlan": [\n' +
+    '    { "order": 1, "type": "drupal", "tool": "drupal", "label": "Créer 3 articles de test sur Sophie", "mode": null, "required": true, "dependsOn": null },\n' +
+    '    { "order": 2, "type": "e2e", "tool": "playwright", "label": "Tester le formulaire de soumission", "mode": "ui", "required": true, "dependsOn": 1 },\n' +
+    '    { "order": 3, "type": "css", "tool": "playwright", "label": "Vérifier le rendu cross-browser", "mode": "css-audit", "required": false, "dependsOn": null }\n' +
+    '  ]\n' +
     "}";
 
-  return await askJSON(prompt, MODEL_FAST);
+  var result = await askJSON(prompt, MODEL_FAST);
+
+  // Garantir que testPlan est un array valide
+  if (!Array.isArray(result.testPlan) || result.testPlan.length === 0) {
+    // Fallback : construire un plan simple depuis la décision
+    result.testPlan = [buildDefaultStep(result.decision, result.playwrightMode, summary)];
+  }
+
+  // Normaliser chaque étape
+  result.testPlan = result.testPlan.map(function(step, idx) {
+    return {
+      order:     step.order || (idx + 1),
+      type:      step.type || result.decision || "e2e",
+      tool:      step.tool || (step.type === "drupal" ? "drupal" : step.type === "api" ? "newman" : "playwright"),
+      label:     step.label || "Test " + (step.type || ""),
+      mode:      step.mode || null,
+      required:  step.required !== false,
+      dependsOn: step.dependsOn || null,
+      status:    "pending"
+    };
+  });
+
+  return result;
+}
+
+function buildDefaultStep(decision, playwrightMode, summary) {
+  var toolMap  = { e2e: "playwright", api: "playwright", css: "playwright", drupal: "drupal", manual: "manual" };
+  var modeMap  = { e2e: "ui", api: "api", css: "css-audit", drupal: null, manual: null };
+  var labelMap = { e2e: "Test E2E", api: "Test API", css: "Audit visuel", drupal: "Préparer données de test", manual: "Test manuel" };
+  var d = decision || "e2e";
+  return {
+    order: 1, type: d, tool: toolMap[d] || "playwright",
+    label: (labelMap[d] || "Test") + " — " + (summary || "").substring(0, 50),
+    mode: playwrightMode || modeMap[d] || null, required: true, dependsOn: null, status: "pending"
+  };
 }
 
 // ── 5. GÉNÉRER UN TICKET TEST ─────────────────────────────────────────────────

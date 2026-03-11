@@ -4090,6 +4090,32 @@ server.listen(PORT, "0.0.0.0", function() {
     console.error("[BUS] Erreur non gérée :", err.message || err);
   });
 
+  // ── Mise à jour automatique du plan de test enrichi ──────────────────────
+  function updateTestPlanStep(ticketKey, tool, mode, status, result) {
+    if (!ticketKey) return;
+    var enrichedFile = path.join(BASE_DIR, "inbox", "enriched", ticketKey + ".json");
+    if (!fs.existsSync(enrichedFile)) return;
+    try {
+      var data = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
+      var plan = data.testPlan;
+      if (!Array.isArray(plan) || plan.length === 0) return;
+      // Trouver l'étape : d'abord running, sinon première pending du tool
+      var step = plan.find(function(s) {
+        return s.status === "running" && s.tool === tool;
+      }) || plan.find(function(s) {
+        return s.tool === tool && (s.mode === mode || !mode) && s.status === "pending";
+      });
+      if (!step) return;
+      step.status    = status;
+      step.result    = result || {};
+      step.updatedAt = new Date().toISOString();
+      if (result && result.reportPath) step.reportPath = result.reportPath;
+      data.testPlan = plan;
+      fs.writeFileSync(enrichedFile, JSON.stringify(data, null, 2), "utf8");
+      console.log("[PLAN] " + ticketKey + " étape " + step.order + " → " + status);
+    } catch(e) { console.error("[PLAN] Erreur update :", e.message); }
+  }
+
   // Bridge : tous les événements bus → SSE dashboard
   bus.on("*", function(event) {
     try {
@@ -4152,6 +4178,10 @@ server.listen(PORT, "0.0.0.0", function() {
           reason: "Cloudflare block durant test " + evt.key
         });
       }
+      // Mettre à jour le plan de test si le ticket en a un
+      updateTestPlanStep(evt.key, "playwright", evt.mode || "ui",
+        evt.status === "PASS" || evt.status === "FAIL" ? evt.status.toLowerCase() : "fail",
+        { pass: evt.pass, fail: evt.fail, total: evt.total, reportPath: evt.reportPath });
     } catch(e) { console.error("[BUS] Erreur test:completed :", e.message); }
   });
 
@@ -4162,6 +4192,9 @@ server.listen(PORT, "0.0.0.0", function() {
       var comment = "Test API (" + (evt.collectionName || "?") + ") : " + (evt.pass || 0) + " PASS / " + (evt.fail || 0) + " FAIL — env " + (evt.env || "?");
       console.log("[BUS] test:api-completed → commentaire Jira " + evt.key);
       jiraComment(evt.key, comment);
+      updateTestPlanStep(evt.key, "newman", "api",
+        (evt.fail || 0) > 0 ? "fail" : "pass",
+        { pass: evt.pass, fail: evt.fail, total: evt.total });
     } catch(e) { console.error("[BUS] Erreur test:api-completed :", e.message); }
   });
 
@@ -4172,6 +4205,9 @@ server.listen(PORT, "0.0.0.0", function() {
       var comment = "Test Mobile (" + (evt.device || "?") + ") : " + (evt.pass || 0) + " PASS / " + (evt.fail || 0) + " FAIL — env " + (evt.env || "?");
       console.log("[BUS] test:mobile-completed → commentaire Jira " + evt.key);
       jiraComment(evt.key, comment);
+      updateTestPlanStep(evt.key, "appium", null,
+        (evt.fail || 0) > 0 ? "fail" : "pass",
+        { pass: evt.pass, fail: evt.fail, total: evt.total });
     } catch(e) { console.error("[BUS] Erreur test:mobile-completed :", e.message); }
   });
 

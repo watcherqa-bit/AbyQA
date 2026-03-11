@@ -579,6 +579,7 @@ async function workflowUS(ticket) {
       testFilepath:      testFilepath,
       strategy:          strategy.decision,
       analysis:          { priority: analysis.priority, risk: analysis.risk, epic: analysis.epic, complexity: analysis.complexity, automationType: analysis.automationType, confidence: strategy.confidence, reasoning: strategy.reasoning },
+      testPlan:          strategy.testPlan || [],
       status:            "test-ready",
       createdAt:         new Date().toISOString()
     };
@@ -606,7 +607,7 @@ async function workflowUS(ticket) {
     // Émettre sur le bus inter-agents
     try {
       var bus = require("./agent-bus");
-      bus.publish("test:generated", { key: key, testKey: key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision });
+      bus.publish("test:generated", { key: key, testKey: key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision, testPlan: strategy.testPlan || [] });
     } catch(e) { /* bus optionnel */ }
 
     // 7. Si automatisable → lancer Playwright
