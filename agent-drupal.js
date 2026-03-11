@@ -802,6 +802,15 @@ async function main() {
   var reportPath = generateReport(env, typeKey, typeConfig, results);
   var ok         = results.filter(function(r) { return r.success; }).length;
 
+  // BUS_EVENT pour le plan de test
+  var keyArg = process.argv.find(function(a) { return a.startsWith("--key="); });
+  var busKey = keyArg ? keyArg.split("=")[1] : null;
+  console.log("BUS_EVENT:" + JSON.stringify({
+    event: "drupal:completed", key: busKey, env: env.name,
+    type: typeKey, pass: ok, fail: results.length - ok, total: results.length,
+    reportPath: reportPath
+  }));
+
   console.log("\n==================================================");
   console.log("  RESULTAT : " + ok + "/" + results.length + " crees avec succes");
   for (var j = 0; j < results.length; j++) {

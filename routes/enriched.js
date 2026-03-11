@@ -19,10 +19,16 @@ module.exports = function handle(method, url, req, res, ctx) {
       var list  = files.map(function(f) {
         try {
           var d = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
+          var planSummary = null;
+          if (Array.isArray(d.testPlan) && d.testPlan.length > 0) {
+            var tp = d.testPlan;
+            planSummary = { total: tp.length, pass: tp.filter(function(s){return s.status==="pass"}).length, fail: tp.filter(function(s){return s.status==="fail"}).length };
+          }
           return { key: d.key, summary: d.summary, epic: d.epic, score: d.score,
                    status: d.status, createdAt: d.createdAt, issues: d.issues,
                    type: d.type || "Story", strategy: d.strategy || null,
-                   testUrls: Array.isArray(d.testUrls) ? d.testUrls : [] };
+                   testUrls: Array.isArray(d.testUrls) ? d.testUrls : [],
+                   planSummary: planSummary };
         } catch(e) { return null; }
       }).filter(Boolean).sort(function(a, b) {
         return new Date(b.createdAt) - new Date(a.createdAt);

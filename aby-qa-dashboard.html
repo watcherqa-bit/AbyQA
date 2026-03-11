@@ -11025,6 +11025,14 @@ function loadEnrichedList() {
           u.strategy ? '<span style="font-size:9px;color:var(--cyan);background:rgba(0,212,255,.1);border-radius:3px;padding:1px 5px;font-family:var(--mono)">' + u.strategy.toUpperCase() + '</span>' : '',
           u.score ? '<span style="font-size:10px;color:' + (u.score >= 70 ? "var(--green)" : u.score >= 40 ? "var(--orange)" : "var(--red)") + ';margin-left:auto;font-family:var(--mono)">' + u.score + '/100</span>' : '',
           '</div>',
+          u.planSummary ? (function() {
+            var ps = u.planSummary; var psPct = ps.total > 0 ? Math.round(ps.pass / ps.total * 100) : 0;
+            var psColor = ps.fail > 0 ? "var(--red)" : psPct === 100 ? "var(--green)" : "var(--blue)";
+            return '<div style="display:flex;align-items:center;gap:6px;margin-top:4px">' +
+              '<div style="flex:1;background:var(--bg);border-radius:4px;height:4px;overflow:hidden">' +
+              '<div style="height:100%;width:' + psPct + '%;background:' + psColor + '"></div></div>' +
+              '<span style="font-size:9px;color:' + psColor + ';font-family:var(--mono)">' + ps.pass + '/' + ps.total + '</span></div>';
+          })() : '',
           '</div>'
         ].join("");
       }).join("");
@@ -13411,6 +13419,11 @@ function renderTestPlan(testPlan, ticketKey) {
       html += '<button onclick="markPlanStep(\'' + ticketKey + '\',' + step.order + ',\'pass\')" style="background:rgba(0,232,122,.15);border:1px solid rgba(0,232,122,.3);color:var(--green);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:10px">✓ OK</button>';
       html += '<button onclick="markPlanStep(\'' + ticketKey + '\',' + step.order + ',\'fail\')" style="background:rgba(255,59,92,.15);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:10px">✗ KO</button>';
       html += '</div>';
+    } else if (step.status === "fail" && step.tool !== "manual") {
+      html += '<div style="display:flex;gap:4px;flex-shrink:0;align-items:center">';
+      html += '<span style="font-size:14px">❌</span>';
+      html += '<button onclick="rerunPlanStep(\'' + ticketKey + '\',' + step.order + ')" class="btn" style="font-size:10px;padding:4px 10px;background:rgba(255,59,92,.15);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:6px;cursor:pointer">↻ Relancer</button>';
+      html += '</div>';
     } else if (step.status === "running") {
       html += '<span style="font-size:11px;color:var(--blue);flex-shrink:0;font-family:var(--mono)">en cours...</span>';
     } else {
@@ -13419,6 +13432,21 @@ function renderTestPlan(testPlan, ticketKey) {
 
     html += '</div>';
   });
+
+  // Fix 3: Global plan verdict
+  var requiredSteps = testPlan.filter(function(s) { return s.required !== false; });
+  var allRequiredDone = requiredSteps.length > 0 && requiredSteps.every(function(s) { return s.status === "pass" || s.status === "fail"; });
+  if (allRequiredDone) {
+    var allPass = requiredSteps.every(function(s) { return s.status === "pass"; });
+    var verdictColor = allPass ? "var(--green)" : "var(--red)";
+    var verdictIcon = allPass ? "✅" : "❌";
+    var verdictText = allPass ? "PLAN VALIDÉ — Tous les tests requis passent" : "PLAN ÉCHOUÉ — " + requiredSteps.filter(function(s) { return s.status === "fail"; }).length + " test(s) requis en échec";
+    html += '<div style="margin-top:12px;padding:12px 16px;border-radius:10px;background:' + (allPass ? 'rgba(0,232,122,.08)' : 'rgba(255,59,92,.08)') + ';border:1px solid ' + (allPass ? 'rgba(0,232,122,.3)' : 'rgba(255,59,92,.3)') + ';display:flex;align-items:center;gap:10px">';
+    html += '<span style="font-size:20px">' + verdictIcon + '</span>';
+    html += '<div><div style="font-size:13px;font-weight:700;color:' + verdictColor + '">' + verdictText + '</div>';
+    html += '<div style="font-size:10px;color:var(--text3);margin-top:2px">' + done + '/' + total + ' pass · ' + fail + ' fail · ' + (total - done - fail) + ' restant(s)</div>';
+    html += '</div></div>';
+  }
 
   content.innerHTML = html;
 }
@@ -13468,6 +13496,11 @@ function launchPlanStep(ticketKey, stepOrder) {
           if (drupalCtx) drupalCtx.value = step.label + "\nTicket: " + ticketKey;
           showToast("Drupal pré-rempli — " + step.label, "🧪");
         }, 300);
+      } else if (step.tool === "css-audit") {
+        showPanel("css-audit");
+        setTimeout(function() {
+          showToast("CSS Audit — " + step.label, "🎨");
+        }, 300);
       }
     });
 }
@@ -13478,6 +13511,17 @@ function markPlanStep(ticketKey, stepOrder, status) {
       if (resp.ok && resp.plan) {
         renderTestPlan(resp.plan, ticketKey);
         showToast("Étape " + stepOrder + " : " + status.toUpperCase(), status === "pass" ? "✅" : "❌");
+      }
+    });
+}
+
+function rerunPlanStep(ticketKey, stepOrder) {
+  // Reset step to pending, then launch
+  apiPost("/api/enriched/" + ticketKey + "/plan-step", { order: stepOrder, status: "pending" })
+    .then(function(resp) {
+      if (resp.ok) {
+        showToast("Étape " + stepOrder + " remise en attente", "↻");
+        launchPlanStep(ticketKey, stepOrder);
       }
     });
 }

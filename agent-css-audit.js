@@ -818,6 +818,21 @@ async function main() {
 
   var reportPath = generateReport(allResults);
 
+  // BUS_EVENT pour le plan de test
+  var cssKeyArg = process.argv.find(function(a) { return a.startsWith("--key="); });
+  var cssBusKey = cssKeyArg ? cssKeyArg.split("=")[1] : null;
+  var cssScores = {};
+  var cssTotalPages = 0;
+  envKeys.forEach(function(k) {
+    var r = (allResults[k] || []).filter(function(x) { return x.score !== null && x.score !== undefined; });
+    cssTotalPages += r.length;
+    cssScores[k] = r.length ? Math.round(r.reduce(function(s, x) { return s + x.score; }, 0) / r.length) : null;
+  });
+  console.log("BUS_EVENT:" + JSON.stringify({
+    event: "css:completed", key: cssBusKey, envs: envKeys,
+    scores: cssScores, pages: cssTotalPages, reportPath: reportPath
+  }));
+
   // Afficher le resume final
   console.log("==================================================");
   console.log("  AUDIT CSS TERMINE");

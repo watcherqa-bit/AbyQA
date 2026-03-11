@@ -1852,6 +1852,7 @@ var server = http.createServer(function(req, res) {
                 cssArgs.push("--urls-file=" + urlsTmpFile);
               }
             }
+            if (params.ticketKey) cssArgs.push("--key=" + params.ticketKey);
             runAgent(agent, "node", cssArgs, clientId);
             break;
           case "playwright":
@@ -1896,7 +1897,9 @@ var server = http.createServer(function(req, res) {
             break;
           case "drupal":
             var d2 = "Creer " + (params.count||"3") + " " + (params.type||"news") + " sur " + (params.subject||"l'aeronautique");
-            runAgent(agent, "node", ["agent-drupal.js", d2, params.env || "sophie"], clientId);
+            var drupalArgs = ["agent-drupal.js", d2, params.env || "sophie"];
+            if (params.ticketKey) drupalArgs.push("--key=" + params.ticketKey);
+            runAgent(agent, "node", drupalArgs, clientId);
             break;
           case "drupal-audit":
             runAgent(agent, "node", ["agent-drupal-audit.js", params.env || "sophie"], clientId);
@@ -4211,13 +4214,30 @@ server.listen(PORT, "0.0.0.0", function() {
     } catch(e) { console.error("[BUS] Erreur test:mobile-completed :", e.message); }
   });
 
-  // css:completed avec issues → log
+  // css:completed → log + update plan
   bus.on("css:completed", function(evt) {
     try {
       if (evt.issues && evt.issues.length > 0) {
         console.log("[BUS] css:completed → " + evt.issues.length + " issue(s) sur " + (evt.env || "?") + "/" + (evt.browser || "?"));
       }
+      if (evt.key) {
+        var cssPass = (evt.scores && evt.scores.length > 0) ? evt.scores.every(function(s) { return s >= 80; }) : true;
+        updateTestPlanStep(evt.key, "css-audit", "css",
+          cssPass ? "pass" : "fail",
+          { pages: evt.pages, scores: evt.scores, reportPath: evt.reportPath });
+      }
     } catch(e) { console.error("[BUS] Erreur css:completed :", e.message); }
+  });
+
+  // drupal:completed → update plan
+  bus.on("drupal:completed", function(evt) {
+    try {
+      if (!evt.key) return;
+      console.log("[BUS] drupal:completed → " + evt.key + " (" + evt.pass + "/" + evt.total + " pass)");
+      updateTestPlanStep(evt.key, "drupal", null,
+        (evt.fail || 0) > 0 ? "fail" : "pass",
+        { pass: evt.pass, fail: evt.fail, total: evt.total, env: evt.env, type: evt.type, reportPath: evt.reportPath });
+    } catch(e) { console.error("[BUS] Erreur drupal:completed :", e.message); }
   });
 
   // session:expired → log alerte
