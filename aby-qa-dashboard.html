@@ -1404,9 +1404,6 @@
       <div class="mega-tab" onclick="showSubTab('resultats','logs')" data-subtab="logs">
         <span class="tab-icon">🔬</span> Logs
       </div>
-      <div class="mega-tab" onclick="showSubTab('resultats','operations')" data-subtab="operations">
-        <span class="tab-icon">⚡</span> Opérations
-      </div>
     </div>
 
     <!-- TAB BAR — OUTILS -->
@@ -1845,7 +1842,7 @@
       <!-- ÉTAPE 1 : SOURCE -->
       <div class="form-card">
         <div class="form-card-title">📥 ÉTAPE 1 — SOURCE DU TICKET</div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:4px" id="sourceGrid">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:4px" id="sourceGrid">
           <div class="source-tile active" id="src-xml" onclick="selectSource('xml')">
             <div class="source-icon">📄</div>
             <div class="source-label">US Jira</div>
@@ -1865,6 +1862,11 @@
             <div class="source-icon">🐛</div>
             <div class="source-label">Correctif bug</div>
             <div class="source-hint">Clé Jira existant</div>
+          </div>
+          <div class="source-tile" id="src-command" onclick="selectSource('command')">
+            <div class="source-icon">🤖</div>
+            <div class="source-label">Commande IA</div>
+            <div class="source-hint">Saisie libre</div>
           </div>
         </div>
 
@@ -1967,6 +1969,31 @@
             <div style="font-size:12px;font-weight:600;color:var(--text)" id="bugLoadedTitle"></div>
             <div style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:4px" id="bugLoadedMeta"></div>
           </div>
+        </div>
+
+        <!-- Zone Commande IA -->
+        <div id="zone-command" class="source-zone" style="display:none;margin-top:16px">
+          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
+            <textarea id="ops-input" rows="5"
+              placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;&#10;&#10;Ctrl+Entrée pour analyser"
+              style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
+              onkeydown="opsInputKeydown(event)"></textarea>
+            <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
+            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
+              <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
+              <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
+              <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira">🎫 Ticket</button>
+              <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement en direct" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
+              <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
+              <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
+              <div style="flex:1"></div>
+              <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 22px;font-size:13px">🔍 Analyser</button>
+            </div>
+          </div>
+          <!-- Tickets référencés -->
+          <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+          <!-- Picker enrichis -->
+          <div id="ops-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:240px;overflow-y:auto;margin-top:10px"></div>
         </div>
       </div>
 
@@ -2147,7 +2174,144 @@
         </div>
       </div>
 
-      <!-- Terminal -->
+      <!-- ── STEPPER WORKFLOW (depuis Opérations) ── -->
+      <div id="ops-stepper" style="display:none;align-items:center;padding:10px 4px 16px;gap:0">
+        <div class="ops-step active" data-step="1" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--blue);transition:all .3s">1</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--blue);white-space:nowrap">Ticket</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-1"></div>
+        <div class="ops-step" data-step="2" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">2</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Contexte</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-2"></div>
+        <div class="ops-step" data-step="3" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">3</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Analyser</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-3"></div>
+        <div class="ops-step" data-step="4" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">4</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Générer</div>
+        </div>
+        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-4"></div>
+        <div class="ops-step" data-step="5" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
+          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">5</div>
+          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Push / Tester</div>
+        </div>
+      </div>
+
+      <!-- ── BLOC INSPECTEUR DOM ── -->
+      <div id="ops-inspect-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:12px;overflow:visible">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border)">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">🔍 INSPECTEUR DOM</div>
+          <button onclick="document.getElementById('ops-inspect-block').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">✕</button>
+        </div>
+        <div style="padding:14px 16px">
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+            <select id="inspect-env" onchange="inspectEnvChanged(this.value)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer">
+              <option value="sophie">Sophie (staging 1)</option>
+              <option value="paulo">Paulo (staging 2)</option>
+              <option value="prod">Prod</option>
+              <option value="drupal-sophie">Drupal — Sophie</option>
+              <option value="drupal-paulo">Drupal — Paulo</option>
+            </select>
+            <input type="text" id="inspect-url" placeholder="/fr ou /en/group/about" value="/fr"
+              style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;font-family:var(--mono)"
+              onkeydown="if(event.key==='Enter') runInspect()">
+            <button class="btn btn-primary" onclick="runInspect()" id="inspect-btn" style="white-space:nowrap">🔍 Inspecter</button>
+            <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Forcer re-inspection">↺ Forcer</button>
+          </div>
+          <div id="inspect-status" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;min-height:16px"></div>
+          <div id="inspect-result" style="display:none">
+            <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start">
+              <img id="inspect-shot" src="" style="width:200px;border-radius:8px;border:1px solid var(--border2)" onerror="this.style.display='none'">
+              <div>
+                <div id="inspect-title" style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px"></div>
+                <div id="inspect-summary" style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8"></div>
+              </div>
+            </div>
+            <div id="inspect-selectors" style="margin-top:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--text2);max-height:180px;overflow-y:auto;line-height:1.8"></div>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button class="btn btn-primary" onclick="injectInspectContext()" style="font-size:12px">➕ Injecter dans la commande</button>
+              <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↺ Actualiser</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── BLOC CONFIRMATION INTENTION ── -->
+      <div id="ops-confirm-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div style="flex:1">
+            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
+            <div id="ops-intent-label" style="font-size:15px;font-weight:600;color:var(--text)"></div>
+            <div id="ops-intent-detail" style="font-size:12px;color:var(--text2);margin-top:4px;font-family:var(--mono)"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+            <button class="btn" onclick="opsReset()" style="font-size:12px;padding:6px 14px">✏️ Modifier</button>
+            <button class="btn btn-primary" onclick="opsExecute()" id="ops-execute-btn" style="font-size:12px;padding:6px 18px">🚀 Lancer</button>
+            <button class="btn" id="ops-alt-btn" style="display:none;font-size:12px;padding:6px 18px;font-weight:600"></button>
+          </div>
+        </div>
+        <div id="ops-ticket-mini" style="display:none;margin-bottom:10px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px"></div>
+        <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+      </div>
+
+      <!-- ── STEPS MANUELS XRAY ── -->
+      <div id="ops-steps-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
+          <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
+        </div>
+        <div id="ops-steps-list" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-primary" onclick="opsSendToXray()" style="font-size:12px">📋 Envoyer vers Xray</button>
+          <button class="btn" onclick="opsSaveStepsDraft()" style="font-size:12px">💾 Brouillon</button>
+        </div>
+      </div>
+
+      <!-- ── JAUGE DE PROGRESSION ── -->
+      <div id="ops-progress-wrap" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">PROGRESSION DES TESTS</div>
+          <span id="ops-progress-label" style="font-family:var(--mono);font-size:12px;color:var(--text2)">0 / 0</span>
+        </div>
+        <div style="background:var(--bg3);border-radius:8px;height:22px;overflow:hidden;border:1px solid var(--border2);position:relative">
+          <div id="ops-progress-bar-pass" style="position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:8px 0 0 8px;transition:width .4s ease;width:0"></div>
+          <div id="ops-progress-bar-fail" style="position:absolute;top:0;height:100%;background:linear-gradient(90deg,#ef4444,#dc2626);transition:width .4s ease,left .4s ease;width:0;left:0"></div>
+          <div id="ops-progress-pct" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)"></div>
+        </div>
+        <div id="ops-progress-detail" style="display:flex;gap:14px;margin-top:8px;font-family:var(--mono);font-size:11px">
+          <span id="ops-progress-pass" style="color:#10b981">✅ 0 pass</span>
+          <span id="ops-progress-fail" style="color:#ef4444">❌ 0 fail</span>
+          <span id="ops-progress-current" style="color:var(--text3);flex:1;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></span>
+        </div>
+      </div>
+
+      <!-- ── RÉSULTAT FINAL TESTS ── -->
+      <div id="ops-test-result-wrap" style="display:none;margin-top:12px"></div>
+
+      <!-- ── TERMINAL OPS (commande IA) ── -->
+      <div id="ops-terminal-wrap" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
+          <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL IA</div>
+          <div style="display:flex;gap:8px">
+            <button onclick="stopAgent()" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">⏹ Stop</button>
+            <button onclick="clearLog('ops-log')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Vider</button>
+          </div>
+        </div>
+        <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
+      </div>
+
+      <!-- ── RÉSULTATS IA (innerHTML géré par opsRenderGenResult) ── -->
+      <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;overflow:visible"></div>
+
+      <!-- ── Badge intention (flottant) ── -->
+      <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3);position:absolute;top:16px;right:16px"></span>
+
+      <!-- Terminal Pipeline classique -->
       <div class="terminal" id="termPipeline">
         <div class="terminal-header">
           <div class="term-dot" style="background:#ff5f56"></div>
@@ -4119,293 +4283,8 @@
   </div>
 </div>
 
-    <!-- ══ OPÉRATIONS ══ -->
-    <div class="panel" id="panel-operations">
-
-      <!-- ── EN-TÊTE ── -->
-      <div class="panel-header" style="margin-bottom:0;padding-bottom:16px;flex-shrink:0">
-        <div>
-          <div class="panel-title">Opérations <span>QA</span></div>
-          <div class="panel-desc">Centre de commande — saisie libre, tickets, config</div>
-        </div>
-        <span id="ops-intent-badge" style="display:none;font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;background:rgba(59,111,255,.15);color:var(--blue);border:1px solid rgba(59,111,255,.3)"></span>
-      </div>
-
-      <!-- ── ONGLETS ── -->
-      <div id="ops-tab-bar" style="display:flex;gap:6px;margin-bottom:20px;padding:8px;background:#1e2a3a;border-radius:10px;border:1px solid #3a4a6b">
-        <div id="ops-tab-commande" onclick="switchOpsTab('commande')"
-          style="flex:1;text-align:center;padding:10px 16px;background:var(--blue);color:#fff;font-family:var(--mono);font-size:12px;font-weight:700;border-radius:7px;cursor:pointer;letter-spacing:.05em">
-          ✏️ Commande
-        </div>
-        <div id="ops-tab-config" onclick="switchOpsTab('config')"
-          style="flex:1;text-align:center;padding:10px 16px;background:#252f42;color:#a0aec0;font-family:var(--mono);font-size:12px;border-radius:7px;cursor:pointer;letter-spacing:.05em;border:1px solid #3a4a6b">
-          ⚙️ Config
-        </div>
-        <div id="ops-tab-tickets" onclick="switchOpsTab('tickets')"
-          style="flex:1;text-align:center;padding:10px 16px;background:#252f42;color:#a0aec0;font-family:var(--mono);font-size:12px;border-radius:7px;cursor:pointer;letter-spacing:.05em;border:1px solid #3a4a6b">
-          🎫 Tickets
-        </div>
-      </div>
-
-      <!-- ── STEPPER WORKFLOW ── -->
-      <div id="ops-stepper" style="display:flex;align-items:center;padding:10px 4px 16px;gap:0">
-        <div class="ops-step active" data-step="1" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
-          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--blue);color:#fff;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--blue);transition:all .3s">1</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--blue);white-space:nowrap">Ticket</div>
-        </div>
-        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-1"></div>
-        <div class="ops-step" data-step="2" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
-          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">2</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Contexte</div>
-        </div>
-        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-2"></div>
-        <div class="ops-step" data-step="3" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
-          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">3</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Analyser</div>
-        </div>
-        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-3"></div>
-        <div class="ops-step" data-step="4" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
-          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">4</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Générer</div>
-        </div>
-        <div style="flex:1;height:2px;background:var(--border);margin:0 2px;margin-bottom:14px;transition:background .3s" id="ops-line-4"></div>
-        <div class="ops-step" data-step="5" style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:0 0 auto">
-          <div class="ops-step-dot" style="width:28px;height:28px;border-radius:50%;background:var(--bg3);color:var(--text3);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:700;border:2px solid var(--border);transition:all .3s">5</div>
-          <div style="font-family:var(--mono);font-size:9px;color:var(--text3);white-space:nowrap">Push / Tester</div>
-        </div>
-      </div>
-
-      <!-- ── CONTENU ONGLETS + BLOCS COMMUNS ── -->
-      <div style="padding-bottom:40px;overflow:hidden">
-
-        <!-- ─── ONGLET COMMANDE ─── -->
-        <div id="ops-pane-commande">
-          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
-            <textarea id="ops-input" rows="5"
-              placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;&#10;&#10;Ctrl+Entrée pour analyser"
-              style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
-              onkeydown="opsInputKeydown(event)"></textarea>
-            <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
-            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
-              <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
-              <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
-              <button class="chat-tool-btn" onclick="switchOpsTab('tickets')" title="Référencer un ticket Jira">🎫 Ticket</button>
-              <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement en direct" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
-              <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
-              <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
-              <div style="flex:1"></div>
-              <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 22px;font-size:13px">🔍 Analyser</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ─── ONGLET CONFIGURATION ─── -->
-        <div id="ops-pane-config" style="display:none">
-
-          <!-- Environnements -->
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">ENVIRONNEMENTS <span style="font-size:9px">(MULTI-SELECTION)</span></label>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <label class="check-pill"><input type="checkbox" id="ops-env-sophie" checked><span>Sophie</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-env-paulo"><span>Paulo</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-env-prod"><span>Prod</span></label>
-            </div>
-          </div>
-
-          <!-- Devices -->
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">DEVICES <span style="font-size:9px">(MULTI-SELECTION)</span></label>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <label class="check-pill"><input type="checkbox" id="ops-dev-desktop" checked><span>Desktop 1920x1080</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-dev-tablet"><span>iPad 768x1024</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-dev-iphone"><span>iPhone 375x812</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-dev-samsung"><span>Samsung 360x740</span></label>
-            </div>
-          </div>
-
-          <!-- Navigateurs -->
-          <div style="margin-bottom:16px">
-            <label style="display:block;font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:10px">NAVIGATEURS <span style="font-size:9px">(PLAYWRIGHT)</span></label>
-            <div style="display:flex;gap:10px;flex-wrap:wrap">
-              <label class="check-pill"><input type="checkbox" id="ops-br-chromium" checked><span>Chromium</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-br-firefox"><span>Firefox</span></label>
-              <label class="check-pill"><input type="checkbox" id="ops-br-webkit"><span>WebKit</span></label>
-            </div>
-          </div>
-
-          <!-- Mode + Release + Confirmer -->
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">⚙️ MODE &amp; RELEASE</div>
-            <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap">
-              <div>
-                <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Mode de test</div>
-                <select id="ops-mode" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer">
-                  <option value="auto">🤖 Automatique (détection IA)</option>
-                  <option value="ui">🖥️ UI Playwright</option>
-                  <option value="api">⚡ API REST</option>
-                  <option value="fix">🔧 Correctif / Fix</option>
-                  <option value="tnr">🔁 TNR Complet</option>
-                  <option value="manual">📋 Manuel</option>
-                </select>
-              </div>
-              <div>
-                <div style="font-size:11px;color:var(--text2);margin-bottom:6px">Version release</div>
-                <input type="text" id="ops-release" placeholder="v1.25.0"
-                  style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:8px 14px;font-size:13px;width:140px;font-family:var(--mono)">
-              </div>
-              <button class="btn btn-primary" onclick="switchOpsTab('commande')" style="margin-left:auto;padding:9px 20px;font-size:13px">
-                ✅ Confirmer la config
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- ─── ONGLET TICKETS ─── -->
-        <div id="ops-pane-tickets" style="display:none">
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:12px">RÉFÉRENCER UN TICKET JIRA (US · BUG · TEST)</div>
-            <div style="display:flex;gap:8px;margin-bottom:12px">
-              <input type="text" id="ops-ticket-key" placeholder="Ex: 2706 ou SAFWBST-2706" oninput="this.value=this.value.toUpperCase()"
-                style="flex:1;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:9px 14px;font-size:13px;font-family:var(--mono)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault();opsLoadTicket();}">
-              <button class="btn btn-primary" onclick="opsLoadTicket()" style="padding:8px 16px;font-size:13px;white-space:nowrap">🔍 Charger</button>
-              <button class="btn btn-secondary" onclick="opsLoadFromEnriched()" style="padding:8px 16px;font-size:13px;white-space:nowrap" title="Charger depuis les tickets enrichis locaux">📂 Enrichi</button>
-            </div>
-            <div id="ops-ticket-preview" style="font-size:12px;color:var(--text2);font-family:var(--mono);margin-bottom:14px"></div>
-            <!-- Picker enrichis -->
-            <div id="ops-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:240px;overflow-y:auto;margin-bottom:14px"></div>
-            <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px"></div>
-          </div>
-        </div>
-
-        <!-- ─── BLOC INSPECTEUR ─── -->
-        <div id="ops-inspect-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(0,232,122,.3);border-radius:12px;overflow:visible">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border)">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em">🔍 INSPECTEUR DOM</div>
-            <button onclick="document.getElementById('ops-inspect-block').style.display='none'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">✕</button>
-          </div>
-          <div style="padding:14px 16px">
-            <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-              <select id="inspect-env" onchange="inspectEnvChanged(this.value)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer">
-                <option value="sophie">🌐 Sophie (staging 1)</option>
-                <option value="paulo">🌐 Paulo (staging 2)</option>
-                <option value="prod">🌐 Prod</option>
-                <option value="drupal-sophie">🧪 Drupal — Sophie</option>
-                <option value="drupal-paulo">🧪 Drupal — Paulo</option>
-              </select>
-              <input type="text" id="inspect-url" placeholder="/fr ou /en/group/about" value="/fr"
-                style="flex:1;min-width:160px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:13px;font-family:var(--mono)"
-                onkeydown="if(event.key==='Enter') runInspect()">
-              <button class="btn btn-primary" onclick="runInspect()" id="inspect-btn" style="white-space:nowrap">🔍 Inspecter</button>
-              <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Forcer re-inspection (ignorer cache)">↺ Forcer</button>
-              <button onclick="openSessionUpload()" id="inspect-session-btn" style="background:none;border:1px solid rgba(249,115,22,.4);color:#f97316;border-radius:8px;padding:7px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)" title="Uploader une session sauvegardée (contourne Cloudflare)">💾 Session</button>
-            </div>
-
-            <!-- Upload session -->
-            <div id="inspect-session-block" style="display:none;background:var(--bg3);border:1px solid rgba(249,115,22,.3);border-radius:8px;padding:12px;margin-bottom:10px;font-size:12px">
-              <div style="color:#f97316;font-family:var(--mono);font-size:10px;letter-spacing:.08em;margin-bottom:8px">💾 UPLOAD SESSION (BYPASS CLOUDFLARE)</div>
-              <div style="color:var(--text2);margin-bottom:8px;line-height:1.6">
-                1. En local : <code style="background:var(--bg);padding:1px 5px;border-radius:4px">node login-save-state.js sophie</code> (ou paulo)<br>
-                2. Copie le contenu de <code style="background:var(--bg);padding:1px 5px;border-radius:4px">auth/sophie.json</code><br>
-                3. Colle ci-dessous et clique Uploader
-              </div>
-              <textarea id="inspect-session-json" rows="4" placeholder='{"cookies":[...],"origins":[]}' style="width:100%;background:var(--bg);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:8px;font-family:var(--mono);font-size:11px;resize:vertical;box-sizing:border-box"></textarea>
-              <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
-                <button onclick="uploadSession()" style="background:#f97316;color:#fff;border:none;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">⬆️ Uploader</button>
-                <button onclick="document.getElementById('inspect-session-block').style.display='none'" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">Annuler</button>
-                <span id="inspect-session-status" style="font-size:11px;color:var(--text3);font-family:var(--mono)"></span>
-              </div>
-            </div>
-
-            <div id="inspect-status" style="font-size:12px;color:var(--text3);font-family:var(--mono);margin-bottom:10px;min-height:16px"></div>
-            <div id="inspect-result" style="display:none">
-              <div style="display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start">
-                <img id="inspect-shot" src="" style="width:200px;border-radius:8px;border:1px solid var(--border2)" onerror="this.style.display='none'">
-                <div>
-                  <div id="inspect-title" style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px"></div>
-                  <div id="inspect-summary" style="font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8"></div>
-                </div>
-              </div>
-              <div id="inspect-selectors" style="margin-top:12px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:11px;color:var(--text2);max-height:180px;overflow-y:auto;line-height:1.8"></div>
-              <div style="margin-top:10px;display:flex;gap:8px">
-                <button class="btn btn-primary" onclick="injectInspectContext()" style="font-size:12px">➕ Injecter dans la commande</button>
-                <button onclick="runInspect(true)" style="background:none;border:1px solid var(--border2);color:var(--text3);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:11px;font-family:var(--mono)">↺ Actualiser</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ─── BLOC CONFIRMATION INTENTION ─── -->
-        <div id="ops-confirm-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid rgba(59,111,255,.35);border-radius:12px;padding:16px">
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
-            <div style="flex:1">
-              <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em;margin-bottom:6px">INTENTION DÉTECTÉE</div>
-              <div id="ops-intent-label" style="font-size:15px;font-weight:600;color:var(--text)"></div>
-              <div id="ops-intent-detail" style="font-size:12px;color:var(--text2);margin-top:4px;font-family:var(--mono)"></div>
-            </div>
-            <div style="display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
-              <button class="btn" onclick="opsReset()" style="font-size:12px;padding:6px 14px">✏️ Modifier</button>
-              <button class="btn btn-primary" onclick="opsExecute()" id="ops-execute-btn" style="font-size:12px;padding:6px 18px">🚀 Lancer</button>
-              <button class="btn" id="ops-alt-btn" style="display:none;font-size:12px;padding:6px 18px;font-weight:600"></button>
-            </div>
-          </div>
-          <!-- Mini-résumé enrichi (ticket chargé) -->
-          <div id="ops-ticket-mini" style="display:none;margin-bottom:10px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px"></div>
-          <div id="ops-config-summary" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-        </div>
-
-        <!-- ─── STEPS MANUELS ─── -->
-        <div id="ops-steps-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">ÉTAPES DE TEST MANUELLES</div>
-            <button onclick="opsAddStep()" style="background:rgba(59,111,255,.1);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:4px 12px;cursor:pointer;font-size:12px">+ Ajouter étape</button>
-          </div>
-          <div id="ops-steps-list" style="display:flex;flex-direction:column;gap:8px"></div>
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-primary" onclick="opsSendToXray()" style="font-size:12px">📋 Envoyer vers Xray</button>
-            <button class="btn" onclick="opsSaveStepsDraft()" style="font-size:12px">💾 Brouillon</button>
-          </div>
-        </div>
-
-        <!-- ─── JAUGE DE PROGRESSION ─── -->
-        <div id="ops-progress-wrap" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px 16px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">PROGRESSION DES TESTS</div>
-            <span id="ops-progress-label" style="font-family:var(--mono);font-size:12px;color:var(--text2)">0 / 0</span>
-          </div>
-          <div style="background:var(--bg3);border-radius:8px;height:22px;overflow:hidden;border:1px solid var(--border2);position:relative">
-            <div id="ops-progress-bar-pass" style="position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,#10b981,#059669);border-radius:8px 0 0 8px;transition:width .4s ease;width:0"></div>
-            <div id="ops-progress-bar-fail" style="position:absolute;top:0;height:100%;background:linear-gradient(90deg,#ef4444,#dc2626);transition:width .4s ease,left .4s ease;width:0;left:0"></div>
-            <div id="ops-progress-pct" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)"></div>
-          </div>
-          <div id="ops-progress-detail" style="display:flex;gap:14px;margin-top:8px;font-family:var(--mono);font-size:11px">
-            <span id="ops-progress-pass" style="color:#10b981">✅ 0 pass</span>
-            <span id="ops-progress-fail" style="color:#ef4444">❌ 0 fail</span>
-            <span id="ops-progress-current" style="color:var(--text3);flex:1;text-align:right;overflow:hidden;white-space:nowrap;text-overflow:ellipsis"></span>
-          </div>
-        </div>
-
-        <!-- ─── RÉSULTAT FINAL TESTS ─── -->
-        <div id="ops-test-result-wrap" style="display:none;margin-top:12px"></div>
-
-        <!-- ─── TERMINAL ─── -->
-        <div id="ops-terminal-wrap" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3)">
-            <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.1em">TERMINAL</div>
-            <div style="display:flex;gap:8px">
-              <button onclick="stopAgent()" style="background:rgba(255,59,92,.1);border:1px solid rgba(255,59,92,.3);color:var(--red);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;font-family:var(--mono)">⏹ Stop</button>
-              <button onclick="clearLog('ops-log')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono)">✕ Vider</button>
-            </div>
-          </div>
-          <div id="ops-log" class="terminal" style="height:220px;overflow-y:auto;padding:12px 16px"></div>
-        </div>
-
-        <!-- ─── RÉSULTATS (innerHTML géré par opsRenderGenResult) ─── -->
-        <div id="ops-results-block" style="display:none;margin-top:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px;overflow:visible"></div>
-
-      </div>
-    </div>
-
+    <!-- ══ OPÉRATIONS (fusionné dans Pipeline — ancien panel supprimé) ══ -->
+    <!-- Tout le contenu est maintenant dans panel-pipeline -->
     <!-- ── POSTMAN (Tests API) ── -->
     <div class="panel" id="panel-postman">
       <div class="panel-header">
@@ -5116,7 +4995,7 @@ var PANEL_GROUPS = {
     defaultTab: "playwright-direct"
   },
   resultats: {
-    tabs: ["reports", "logs", "operations"],
+    tabs: ["reports", "logs"],
     defaultTab: "reports"
   },
   outils: {
@@ -5436,10 +5315,13 @@ function selectSource(src) {
   var tile = document.getElementById("src-" + src);
   if (tile) tile.classList.add("active");
   // Toggle zones
-  ["xml","spec","manual","bug"].forEach(function(z) {
+  ["xml","spec","manual","bug","command"].forEach(function(z) {
     var el = document.getElementById("zone-" + z);
     if (el) el.style.display = z === src ? "block" : "none";
   });
+  // Afficher le stepper IA quand source = command
+  var stepper = document.getElementById("ops-stepper");
+  if (stepper) stepper.style.display = src === "command" ? "flex" : "none";
   log("logPipeline", "Source sélectionnée : " + src, "log-dim");
 }
 
@@ -6976,23 +6858,26 @@ function opsRemoveContext(i) { opsContext.splice(i, 1); opsRenderPills(); }
 function opsRemoveTicket(i)  { opsTickets.splice(i, 1); opsRenderPills(); opsRenderLoadedTickets(); }
 
 function opsGetConfig() {
+  // Lire la config depuis Pipeline Step 2 (source unique de vérité)
   var envs = [], browsers = [], devices = [];
-  if ((document.getElementById('ops-env-sophie')  || {}).checked) envs.push('sophie');
-  if ((document.getElementById('ops-env-paulo')   || {}).checked) envs.push('paulo');
-  if ((document.getElementById('ops-env-prod')    || {}).checked) envs.push('prod');
-  if ((document.getElementById('ops-br-chromium') || {}).checked) browsers.push('chromium');
-  if ((document.getElementById('ops-br-firefox')  || {}).checked) browsers.push('firefox');
-  if ((document.getElementById('ops-br-webkit')   || {}).checked) browsers.push('webkit');
-  if ((document.getElementById('ops-dev-desktop') || {}).checked) devices.push({name:'desktop-hd',    w:1920, h:1080});
-  if ((document.getElementById('ops-dev-tablet')  || {}).checked) devices.push({name:'tablet-ipad',   w:768,  h:1024});
-  if ((document.getElementById('ops-dev-iphone')  || {}).checked) devices.push({name:'mobile-iphone', w:375,  h:812});
-  if ((document.getElementById('ops-dev-samsung') || {}).checked) devices.push({name:'mobile-samsung', w:360, h:800});
+  if ((document.getElementById('env-sophie')  || {}).checked) envs.push('sophie');
+  if ((document.getElementById('env-paulo')   || {}).checked) envs.push('paulo');
+  if ((document.getElementById('env-prod')    || {}).checked) envs.push('prod');
+  if ((document.getElementById('br-chromium') || {}).checked) browsers.push('chromium');
+  if ((document.getElementById('br-firefox')  || {}).checked) browsers.push('firefox');
+  if ((document.getElementById('br-webkit')   || {}).checked) browsers.push('webkit');
+  if ((document.getElementById('dev-desktop-hd') || {}).checked) devices.push({name:'desktop-hd',    w:1920, h:1080});
+  if ((document.getElementById('dev-tablet')     || {}).checked) devices.push({name:'tablet-ipad',   w:768,  h:1024});
+  if ((document.getElementById('dev-iphone')     || {}).checked) devices.push({name:'mobile-iphone', w:375,  h:812});
+  if ((document.getElementById('dev-samsung')    || {}).checked) devices.push({name:'mobile-samsung', w:360, h:800});
+  var testType = (document.getElementById('pipe-testtype') || {}).value || 'auto';
+  var mode = testType === 'auto' ? 'ui' : testType === 'manual' ? 'manual' : testType;
   return {
     envs:     envs,
     browsers: browsers,
     devices:  devices,
-    mode:     (document.getElementById('ops-mode')    || {}).value || 'auto',
-    release:  (document.getElementById('ops-release') || {}).value || 'v1.25.0'
+    mode:     mode,
+    release:  (document.getElementById('pipe-release') || {}).value || 'v1.25.0'
   };
 }
 
@@ -11122,7 +11007,7 @@ function initKeyboardShortcuts() {
           toggleBacklogView();
         break;
       case "b": case "B": showPanel("backlog");       break;
-      case "o": case "O": showPanel("operations");   break;
+      case "o": case "O": selectSource("command");     break;
       case "d": case "D": showPanel("dashboard-home"); break;
       case "?":           showShortcutsHelp();      break;
     }
@@ -11140,7 +11025,7 @@ function showShortcutsHelp() {
     '<div style="background:#111520;border:1px solid #2a3350;border-radius:16px;padding:28px 32px;min-width:340px">' +
       '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:20px">⌨️ Raccourcis clavier</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px">' +
-        [["D","Dashboard"],["B","Backlog QA"],["O","Opérations"],
+        [["D","Dashboard"],["B","Backlog QA"],["O","Commande IA"],
          ["R","Rafraîchir le panel actif"],["K","Toggle Liste/Kanban (Backlog)"],
          ["?","Afficher/masquer cette aide"]]
         .map(function(s) {
