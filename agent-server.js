@@ -3574,6 +3574,96 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── POST /api/enriched/:key/push — Pousser un ticket enrichi vers Jira ────
+  if (method === "POST" && url.match(/^\/api\/enriched\/[A-Z]+-\d+\/push$/)) {
+    var pushKey = url.split("/")[3];
+    var enrichedFile = path.join(BASE_DIR, "inbox", "enriched", pushKey + ".json");
+    if (!fs.existsSync(enrichedFile)) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Ticket enrichi introuvable : " + pushKey }));
+      return;
+    }
+    var pushChunks = [];
+    req.on("data", function(c) { pushChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var enrichedData = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
+        var pushType = "enrichment"; // default
+        try { var pushBody = JSON.parse(Buffer.concat(pushChunks).toString()); pushType = pushBody.type || "enrichment"; } catch(e) {}
+
+        if (pushType === "enrichment") {
+          // Push enrichissement US vers Jira (mise à jour description)
+          var adfDoc;
+          if (enrichedData.enrichedMarkdown) {
+            // Tenter ADF structuré si structured existe
+            if (enrichedData.structured) {
+              adfDoc = leadQA.buildADFDescription(enrichedData.structured);
+            } else {
+              adfDoc = enrichedData.enrichedMarkdown;
+            }
+          } else {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Pas de contenu enrichi pour " + pushKey }));
+            return;
+          }
+          // Mettre à jour Jira
+          await jiraApiCall("PUT", "/rest/api/3/issue/" + pushKey, {
+            fields: { description: typeof adfDoc === "object" ? adfDoc : { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: String(adfDoc).substring(0, 30000) }] }] } }
+          });
+          await jiraComment(pushKey, "[QA Auto] US enrichie — Score : " + (enrichedData.score || "?") + "/100");
+          enrichedData.status = "pushed";
+          enrichedData.pushedAt = new Date().toISOString();
+          fs.writeFileSync(enrichedFile, JSON.stringify(enrichedData, null, 2));
+          console.log("[PUSH] " + pushKey + " — Enrichissement poussé vers Jira");
+          bus.publish("jira:updated", { key: pushKey, field: "description", action: "enrichment-pushed" });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: pushKey, action: "enrichment-pushed" }));
+
+        } else if (pushType === "test") {
+          // Créer le ticket TEST dans Jira
+          if (!enrichedData.testMarkdown) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Pas de TEST généré pour " + pushKey }));
+            return;
+          }
+          var sourceTicket = { key: pushKey, epic: (enrichedData.analysis && enrichedData.analysis.epic) || "", summary: enrichedData.summary || "" };
+          var testResult = { title: enrichedData.testTitle || "TEST - " + pushKey, markdown: enrichedData.testMarkdown };
+          var jiraPriority = (enrichedData.analysis && enrichedData.analysis.priority === "Critique") ? "Highest" :
+                             (enrichedData.analysis && enrichedData.analysis.priority === "Haute") ? "High" :
+                             (enrichedData.analysis && enrichedData.analysis.priority === "Basse") ? "Low" : "Medium";
+          var extPayload = leadQA.buildExternalJiraPayload(testResult, sourceTicket, { priority: jiraPriority });
+          var valResult = leadQA.validateJiraPayload(extPayload.fields);
+          if (!valResult.valid) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Contenu interdit : " + valResult.violations.join(", ") }));
+            return;
+          }
+          var jiraResult = await jiraApiCall("POST", "/rest/api/3/issue", { fields: extPayload.fields });
+          var testKey = (jiraResult.data && jiraResult.data.key) ? jiraResult.data.key : null;
+          if (testKey) {
+            enrichedData.jiraTestKey = testKey;
+            enrichedData.status = "test-pushed";
+            enrichedData.testPushedAt = new Date().toISOString();
+            fs.writeFileSync(enrichedFile, JSON.stringify(enrichedData, null, 2));
+            console.log("[PUSH] " + pushKey + " — Ticket TEST créé : " + testKey);
+            bus.publish("jira:updated", { key: pushKey, field: "test", action: "test-created", testKey: testKey });
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: pushKey, testKey: testKey || null, action: "test-created" }));
+
+        } else {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Type inconnu : " + pushType }));
+        }
+      } catch(e) {
+        console.error("[PUSH] Erreur " + pushKey + " :", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ── GET /api/bus/history — Derniers événements du bus inter-agents ────────
   if (method === "GET" && url.startsWith("/api/bus/history")) {
     var busN = parseInt((url.split("?n=")[1]) || "50", 10);

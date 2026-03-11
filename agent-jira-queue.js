@@ -499,47 +499,13 @@ async function workflowBacklog(ticket) {
       bus.publish("ticket:enriched", { key: key, summary: summary, type: "Story", enrichedPath: filepath, analysis: { score: review.score } });
     } catch(e) { /* bus optionnel */ }
 
-    // 4. Attendre validation via le dashboard (polling fichier)
-    var validation = await requestValidation(
-      "us-enrichment", key,
-      "User Story - [" + enriched.epic + "] - " + summary,
-      enriched.markdown,
-      { filepath: filepath, score: review.score, issues: review.issues }
-    );
-
-    if (!validation.approved) {
-      log("[BACKLOG] " + key + " — Enrichissement rejeté par l'utilisateur");
-      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "rejected", summary: summary });
-      return;
-    }
-
-    // 5. Construire le document ADF avec accordéons
-    var adfDoc;
-    if (enriched.structured) {
-      adfDoc = leadQA.buildADFDescription(enriched.structured);
-      adfDoc.fallbackText = enriched.markdown; // pour le fallback texte si ADF échoue
-    } else {
-      // Fallback : markdown brut si pas de données structurées
-      var finalData = getEnrichedUS(key);
-      adfDoc = (finalData && finalData.enrichedMarkdown) || enriched.markdown;
-    }
-
-    // 6. Mettre à jour la description Jira (ADF avec backup auto)
-    await updateJiraDescription(key, adfDoc);
-
-    // 5. Commenter sur le ticket
-    await postComment(key,
-      "[QA Auto] US enrichie\n" +
-      "Score initial : " + review.score + "/100\n" +
-      "Éléments ajoutés : " + (review.missingElements || []).join(", ") + "\n" +
-      "Fichier : " + path.basename(filepath) + "\n" +
-      "QA"
-    );
-
+    // Enrichissement terminé — prêt pour validation dans le dashboard
+    // Le push Jira se fera manuellement via POST /api/enriched/:key/push
     statsToday.enriched++;
     saveState();
-    pushSSE({ type: "queue-item", key: key, issueType: "US", status: "enriched", summary: summary,
-      detail: "Score : " + review.score + "/100 → enrichi et mis à jour dans Jira" });
+    log("[BACKLOG] " + key + " — Enrichi automatiquement (score " + review.score + "/100) — en attente de push Jira");
+    pushSSE({ type: "queue-item", key: key, issueType: "US", status: "enriched-ready", summary: summary,
+      detail: "Score : " + review.score + "/100 — prêt à pousser vers Jira" });
 
   } catch(e) {
     log("[!] Erreur workflowBacklog " + key + " : " + e.message);
@@ -602,60 +568,26 @@ async function workflowUS(ticket) {
     );
     var csvFilepath = leadQA.saveCSV(csvContent, key + "-" + summary.substring(0, 30));
 
-    // 5. Validation Gate — ticket TEST + CSV
-    var valTest = await requestValidation(
-      "test-ticket",
-      key,
-      testResult.title,
-      testResult.markdown,
-      { csvFilepath: csvFilepath, testFilepath: testFilepath, strategy: strategy }
-    );
-
-    if (!valTest.approved) {
-      log("[US] " + key + " — Ticket TEST rejeté");
-      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "rejected", summary: summary });
-      return;
-    }
-
-    // 6. Créer le ticket TEST dans Jira (vue externe — payload minimal)
-    var jiraPriority = analysis.priority === "Critique" ? "Highest" :
-                       analysis.priority === "Haute"    ? "High"    :
-                       analysis.priority === "Basse"    ? "Low"     : "Medium";
-    var extPayload = leadQA.buildExternalJiraPayload(testResult, sourceTicket, {
-      version: version, priority: jiraPriority
-    });
-
-    // Validation anti-contenu interdit
-    var validation = leadQA.validateJiraPayload(extPayload.fields);
-    if (!validation.valid) {
-      log("[US] " + key + " — BLOQUÉ : contenu interdit dans le payload Jira : " + validation.violations.join(", "));
-      pushSSE({ type: "queue-item", key: key, issueType: "US", status: "blocked", summary: summary,
-        detail: "Contenu interdit : " + validation.violations.join(", ") });
-      return;
-    }
-
-    var jiraTestResult = await createJiraIssue(extPayload.fields);
-    var testKey = (jiraTestResult.data && jiraTestResult.data.key) ? jiraTestResult.data.key : "";
-    if (testKey) log("[US] " + key + " — Ticket TEST créé : " + testKey);
-
-    // 6b. Générer et pousser les steps Xray (3 colonnes) sur le ticket TEST
-    if (testKey) {
-      try {
-        log("[US] " + key + " — Génération steps Xray...");
-        var xraySteps = await leadQA.buildXraySteps(sourceTicket);
-        if (xraySteps.length > 0) {
-          await pushXraySteps(testKey, xraySteps);
-          log("[US] " + key + " — " + xraySteps.length + " steps importés dans Xray (" + testKey + ")");
-        }
-      } catch(e) {
-        log("[US] " + key + " — Erreur push Xray steps : " + e.message);
-      }
-    }
+    // 5. Sauvegarder le TEST + CSV dans enriched (prêt pour revue)
+    // Le push Jira se fera manuellement via le dashboard
+    var enrichedTestData = {
+      key:               key,
+      summary:           summary,
+      testTitle:         testResult.title,
+      testMarkdown:      testResult.markdown,
+      csvFilepath:       csvFilepath,
+      testFilepath:      testFilepath,
+      strategy:          strategy.decision,
+      analysis:          { priority: analysis.priority, risk: analysis.risk, epic: analysis.epic },
+      status:            "test-ready",
+      createdAt:         new Date().toISOString()
+    };
+    saveEnrichedUS(key, Object.assign({}, getEnrichedUS(key) || {}, enrichedTestData));
 
     // Sauvegarder dans la file des tests → disponible dans Playwright Direct
     saveTestQueue(key + "-test", {
       key:       key + "-test",
-      jiraKey:   testKey || null,
+      jiraKey:   null,
       sourceKey: key,
       title:     testResult.title,
       mode:      strategy.decision,
@@ -665,12 +597,16 @@ async function workflowUS(ticket) {
       status:    "pending",
       createdAt: new Date().toISOString()
     });
+
+    log("[US] " + key + " — TEST + CSV générés automatiquement — en attente de push Jira");
     pushSSE({ type: "test-queue-update", key: key });
+    pushSSE({ type: "queue-item", key: key, issueType: "US", status: "test-ready", summary: summary,
+      detail: "TEST + CSV générés — stratégie " + strategy.decision + " — prêt à pousser" });
 
     // Émettre sur le bus inter-agents
     try {
       var bus = require("./agent-bus");
-      bus.publish("test:generated", { key: key, testKey: testKey || key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision });
+      bus.publish("test:generated", { key: key, testKey: key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision });
     } catch(e) { /* bus optionnel */ }
 
     // 7. Si automatisable → lancer Playwright

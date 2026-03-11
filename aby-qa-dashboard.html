@@ -2992,10 +2992,12 @@
               <div id="editor-title" style="font-size:13px;font-weight:600;color:var(--text)">Sélectionne une US dans la liste</div>
               <div id="editor-meta" style="font-size:11px;color:var(--text3);margin-top:2px;font-family:var(--mono)"></div>
             </div>
-            <div style="display:flex;gap:8px" id="editor-actions" style="display:none">
+            <div style="display:flex;gap:8px;display:none" id="editor-actions">
               <button class="btn btn-secondary" style="padding:6px 14px;font-size:12px" onclick="saveEdits()">💾 Sauvegarder</button>
               <button class="btn btn-secondary" style="padding:6px 14px;font-size:12px;color:var(--red);border-color:rgba(255,59,92,.3)" onclick="rejectEnriched()">✕ Rejeter</button>
-              <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" onclick="approveEnriched()">✅ Valider → Jira</button>
+              <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-push-enrichment" onclick="pushEnrichedToJira('enrichment')" style="display:none">📤 Pousser enrichissement → Jira</button>
+              <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-push-test" onclick="pushEnrichedToJira('test')" style="display:none">🧪 Créer ticket TEST → Jira</button>
+              <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-approve-legacy" onclick="approveEnriched()">✅ Valider → Jira</button>
             </div>
           </div>
 
@@ -4749,6 +4751,29 @@ sseBus.on("poll-ticket", function(data) {
 
 sseBus.on("poll-qa-ready", function(data) {
   handleQAReady(data);
+});
+
+sseBus.on("bus-event", function(data) {
+  var evt = data._event || data.event || "";
+  // Auto-refresh enriched list when enrichment/test generated
+  if (evt === "ticket:enriched" || evt === "test:generated") {
+    loadEnrichedList();
+    var lbl = evt === "ticket:enriched" ? "Ticket enrichi" : "Test généré";
+    showToast(lbl + " : " + (data.key || ""), evt === "ticket:enriched" ? "📝" : "🧪");
+  }
+  // Refresh on Jira push
+  if (evt === "jira:updated") {
+    loadEnrichedList();
+  }
+  // Session expired
+  if (evt === "session:expired") {
+    showToast("Session Playwright expirée — renouveler dans Paramètres", "⚠️");
+  }
+  // Test completed notification
+  if (evt === "test:completed" || evt === "test:api-completed" || evt === "test:mobile-completed") {
+    var status = data.status || (data.fail > 0 ? "FAIL" : "PASS");
+    showToast((data.key || "Test") + " : " + status + " (" + (data.pass||0) + "/" + (data.total||0) + ")", status === "PASS" ? "✅" : "❌");
+  }
 });
 
 sseBus.on("playwright-progress", function(data) {
@@ -10859,6 +10884,7 @@ function showShortcutsHelp() {
 // US ENRICHIES — Gestion stockage + éditeur
 // ══════════════════════════════════════════════════════
 var currentEnrichedKey = null;
+var currentEnrichedStatus = null;
 
 var typeIconMap = { Story:"📖", Bug:"🐛", Test:"🧪", Task:"✅", "Sub-task":"↳", "Epic":"⚡" };
 
@@ -10930,7 +10956,7 @@ function approveEnrichedBulk() {
 function loadEnrichedList() {
   api("/api/enriched")
     .then(function(list) {
-      var pending = list.filter(function(u) { return u.status === "pending"; });
+      var pending = list.filter(function(u) { return u.status === "pending" || u.status === "enriched-ready" || u.status === "test-ready"; });
       var badge   = document.getElementById("badge-enriched");
       var counter = document.getElementById("enriched-count");
       if (badge) { badge.textContent = pending.length; badge.style.display = pending.length > 0 ? "inline" : "none"; }
@@ -10961,15 +10987,20 @@ function loadEnrichedList() {
       }
 
       // Stocker les clés pending pour "Tout sélectionner"
-      _enrichedPendingKeys = list.filter(function(u) { return u.status === "pending"; }).map(function(u) { return u.key; });
+      _enrichedPendingKeys = list.filter(function(u) { return u.status === "pending" || u.status === "enriched-ready" || u.status === "test-ready"; }).map(function(u) { return u.key; });
 
       container.innerHTML = list.map(function(u) {
-        var statusColor = u.status === "approved" ? "var(--green)" :
-                          u.status === "rejected" ? "var(--red)"   : "var(--orange)";
-        var statusLabel = u.status === "approved" ? "✅" : u.status === "rejected" ? "✕" : "⏳";
+        var statusColor = u.status === "approved" || u.status === "pushed" || u.status === "test-pushed" ? "var(--green)" :
+                          u.status === "rejected" ? "var(--red)" :
+                          u.status === "enriched-ready" || u.status === "test-ready" ? "var(--blue)" : "var(--orange)";
+        var statusLabel = u.status === "approved" || u.status === "pushed" ? "✅" :
+                          u.status === "test-pushed" ? "✅🧪" :
+                          u.status === "rejected" ? "✕" :
+                          u.status === "enriched-ready" ? "📝" :
+                          u.status === "test-ready" ? "🧪" : "⏳";
         var typeIcon    = typeIconMap[u.type] || "📄";
         var typeColor   = { Story:"var(--blue)", Bug:"var(--red)", Test:"var(--green)", Task:"var(--text2)" }[u.type] || "var(--text3)";
-        var isPending   = u.status === "pending";
+        var isPending   = u.status === "pending" || u.status === "enriched-ready" || u.status === "test-ready";
         var chk = isPending
           ? '<input type="checkbox" id="chk-' + u.key + '" ' +
             (_enrichedSelected.has(u.key) ? 'checked ' : '') +
@@ -11013,10 +11044,16 @@ function selectEnriched(key) {
       document.getElementById("editor-enriched").value   = data.enrichedMarkdown || "";
       document.getElementById("editor-score").textContent = data.score ? "Score : " + data.score + "/100" : "";
       document.getElementById("editor-issues").textContent = (data.issues || []).join(" · ");
-      document.getElementById("editor-status").textContent = data.status === "pending" ? "⏳ En attente" :
-                                                              data.status === "approved" ? "✅ Validé" :
-                                                              data.status === "imported" ? "📥 Importé" : "✕ Rejeté";
+      currentEnrichedStatus = data.status || "pending";
+      var statusMap = {
+        "pending": "⏳ En attente", "approved": "✅ Validé", "pushed": "✅ Poussé",
+        "imported": "📥 Importé", "rejected": "✕ Rejeté",
+        "enriched-ready": "📝 Enrichi (prêt)", "test-ready": "🧪 Test généré (prêt)",
+        "test-pushed": "✅🧪 Test créé dans Jira"
+      };
+      document.getElementById("editor-status").textContent = statusMap[data.status] || "⏳ " + (data.status || "En attente");
       document.getElementById("editor-actions").style.display = "flex";
+      updateEditorPushButtons(data.status);
 
       // Onglet dépendances
       var links = data.links || [];
@@ -11098,6 +11135,58 @@ function importFromJira(keyOverride) {
       if (btn && !keyOverride) { btn.disabled = false; btn.textContent = "↓ Importer"; }
       setTimeout(function() { if (statusEl) statusEl.textContent = ""; }, 4000);
     });
+}
+
+function updateEditorPushButtons(status) {
+  var btnEnrich = document.getElementById("btn-push-enrichment");
+  var btnTest   = document.getElementById("btn-push-test");
+  var btnLegacy = document.getElementById("btn-approve-legacy");
+  if (!btnEnrich || !btnTest || !btnLegacy) return;
+  // Hide all push buttons by default
+  btnEnrich.style.display = "none";
+  btnTest.style.display   = "none";
+  btnLegacy.style.display = "none";
+  if (status === "enriched-ready") {
+    btnEnrich.style.display = "inline-flex";
+  } else if (status === "test-ready") {
+    btnTest.style.display = "inline-flex";
+  } else if (status === "pending" || status === "imported") {
+    btnLegacy.style.display = "inline-flex";
+  }
+  // pushed/test-pushed/approved/rejected → no push button (already done)
+}
+
+function pushEnrichedToJira(pushType) {
+  if (!currentEnrichedKey) return;
+  saveEdits();
+  var label = pushType === "enrichment" ? "enrichissement" : "ticket TEST";
+  if (!confirm("Pousser " + label + " vers Jira pour " + currentEnrichedKey + " ?")) return;
+  var keyToPush = currentEnrichedKey;
+  setTimeout(function() {
+    apiPost("/api/enriched/" + keyToPush + "/push", { type: pushType })
+      .then(function(data) {
+        var s = document.getElementById("editor-status");
+        if (data.ok) {
+          if (s) s.textContent = pushType === "test" ? "✅🧪 Ticket TEST créé dans Jira" : "✅ Enrichissement poussé dans Jira";
+          showToast(pushType === "test" ? "Ticket TEST créé : " + (data.testKey || "") : "Enrichissement poussé dans Jira", pushType === "test" ? "🧪" : "📤");
+          currentEnrichedKey = null;
+          currentEnrichedStatus = null;
+          enrichedAttachments = [];
+          updateAttachCount();
+          renderEnrichedAttachList();
+          document.getElementById("editor-title").textContent = "Sélectionne un ticket dans la liste";
+          document.getElementById("editor-enriched").value = "";
+          document.getElementById("editor-actions").style.display = "none";
+          loadEnrichedList();
+        } else {
+          if (s) s.textContent = "❌ Erreur : " + (data.error || "Erreur inconnue");
+          showToast("Erreur push Jira : " + (data.error || ""), "❌");
+        }
+      })
+      .catch(function(e) {
+        showToast("Erreur réseau : " + e.message, "❌");
+      });
+  }, 500);
 }
 
 function saveEdits() {
