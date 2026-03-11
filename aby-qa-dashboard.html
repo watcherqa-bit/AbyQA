@@ -2445,6 +2445,8 @@
           <div id="releaseLastUpdate" style="font-size:11px;color:var(--text3)"></div>
           <div style="margin-left:auto;display:flex;gap:8px">
             <button class="btn btn-primary" onclick="generateMatrix()" style="font-size:11px;padding:6px 14px">📊 Export Excel</button>
+            <button class="btn btn-primary" onclick="generateReleasePDF()" style="font-size:11px;padding:6px 14px;background:rgba(139,92,246,.15);border-color:rgba(139,92,246,.3);color:#8b5cf6">📄 Export PDF</button>
+            <button class="btn btn-primary" onclick="emailReleaseReport()" style="font-size:11px;padding:6px 14px;background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.3);color:var(--blue)">📧 Envoyer par mail</button>
           </div>
         </div>
       </div>
@@ -13537,6 +13539,48 @@ function generateMatrix() {
   log("logMatrix", "$ Génération matrice — version : " + version, "log-cmd");
   callAgent({ agent: "matrix", version: version, output: "Matrice-QA-" + version + ".xlsx" });
   showToast("Génération matrice Excel + synthèse IA lancée", "📊");
+}
+
+function generateReleasePDF() {
+  var sel = document.getElementById("releaseSelector");
+  var version = sel ? sel.value : "";
+  if (!version) { showToast("Sélectionne une release d'abord", "⚠️"); return; }
+  showToast("Génération PDF en cours...", "📄");
+  fetch(SERVER + "/api/release/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version: version })
+  }).then(function(r){return r.json()}).then(function(d) {
+    if (d.ok) {
+      if (d.pdfPath) {
+        showToast("PDF généré : " + d.pdfPath, "📄");
+        window.open(SERVER + "/reports/" + d.pdfPath, "_blank");
+      } else if (d.htmlPath) {
+        showToast("HTML généré (PDF non disponible)", "📄");
+        window.open(SERVER + "/reports/" + d.htmlPath, "_blank");
+      }
+    } else {
+      showToast("Erreur PDF : " + (d.error || "?"), "❌");
+    }
+  }).catch(function(e) { showToast("Erreur : " + e.message, "❌"); });
+}
+
+function emailReleaseReport() {
+  var sel = document.getElementById("releaseSelector");
+  var version = sel ? sel.value : "";
+  if (!version) { showToast("Sélectionne une release d'abord", "⚠️"); return; }
+  showToast("Envoi du rapport par mail...", "📧");
+  fetch(SERVER + "/api/email/send-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version: version })
+  }).then(function(r){return r.json()}).then(function(d) {
+    if (d.ok) {
+      showToast("Rapport envoyé par mail", "📧");
+    } else {
+      showToast("Erreur envoi : " + (d.error || "?"), "❌");
+    }
+  }).catch(function(e) { showToast("Erreur : " + e.message, "❌"); });
 }
 
 function switchRQATab(tab) {

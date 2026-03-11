@@ -69,6 +69,7 @@ const leadQA = require("./agent-lead-qa");
 var mailer = null;
 try { mailer = require("./agent-mailer"); } catch(e) { console.log("[SERVER] agent-mailer non disponible:", e.message); }
 var purge = require("./agent-purge");
+var pdfReport = require("./agent-pdf-report");
 
 // â"€â"€ CLIENT ANTHROPIC (chat) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 var _chatAnthropicClient = null;
@@ -3726,6 +3727,66 @@ var server = http.createServer(function(req, res) {
         }
       } catch(e) {
         console.error("[PUSH] Erreur " + pushKey + " :", e.message);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/release/pdf — Générer un rapport PDF de release ───────────────
+  if (method === "POST" && url === "/api/release/pdf") {
+    var pdfChunks = [];
+    req.on("data", function(c) { pdfChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        var body = JSON.parse(Buffer.concat(pdfChunks).toString());
+        var version = body.version || "?";
+        // Collecter les tickets enrichis
+        var enrichedDir = path.join(BASE_DIR, "inbox", "enriched");
+        var tickets = [];
+        var allDiags = [];
+        var passCount = 0, failCount = 0, bugCount = 0;
+        try {
+          var files = fs.readdirSync(enrichedDir).filter(function(f) { return f.endsWith(".json"); });
+          files.forEach(function(f) {
+            try {
+              var data = JSON.parse(fs.readFileSync(path.join(enrichedDir, f), "utf8"));
+              // Filtrer par release si spécifié
+              if (body.version && data.fixVersion && data.fixVersion !== body.version) return;
+              var t = {
+                key: data.key || f.replace(".json",""),
+                type: data.type || "?",
+                summary: data.summary || "",
+                status: data.jiraStatus || "?",
+                qaStatus: data.lastDiagnostic ? data.lastDiagnostic.verdict : "?",
+                testPass: 0, testTotal: 0
+              };
+              if (data.testPlan) {
+                t.testTotal = data.testPlan.length;
+                t.testPass = data.testPlan.filter(function(s){return s.status==="pass"}).length;
+              }
+              if (data.lastDiagnostic && data.lastDiagnostic.verdict === "PASS") passCount++;
+              if (data.lastDiagnostic && data.lastDiagnostic.verdict === "FAIL") failCount++;
+              if (data.type === "Bug") bugCount++;
+              tickets.push(t);
+              if (data.diagnostics) {
+                data.diagnostics.forEach(function(d) { allDiags.push(Object.assign({}, d, {key: t.key})); });
+              }
+            } catch(e) {}
+          });
+        } catch(e) {}
+
+        var result = await pdfReport.generate({
+          version: version,
+          tickets: tickets,
+          stats: { total: tickets.length, pass: passCount, fail: failCount, bugs: bugCount },
+          diagnostics: allDiags,
+          date: new Date().toLocaleDateString("fr-FR")
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, pdfPath: result.pdfPath ? path.basename(result.pdfPath) : null, htmlPath: result.htmlPath ? path.basename(result.htmlPath) : null }));
+      } catch(e) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: e.message }));
       }
