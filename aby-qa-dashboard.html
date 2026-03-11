@@ -1317,14 +1317,14 @@
     <button id="sidebarToggle" class="sidebar-toggle" onclick="toggleSidebar()" title="Réduire/Agrandir le menu">‹</button>
     <div class="sidebar-section">
 
-      <div class="nav-item active" onclick="showPanel('dashboard')" title="Dashboard QA">
+      <div class="nav-item active" onclick="showPanel('dashboard')" title="Dashboard — vue d'ensemble, release, diagnostics">
         <div class="icon">🏠</div>
         <span class="nav-text">Dashboard</span>
       </div>
 
-      <div class="nav-item" onclick="showPanel('pipeline')" title="Pipeline QA — ticket de A à Z">
-        <div class="icon">🔄</div>
-        <span class="nav-text">Pipeline</span>
+      <div class="nav-item" onclick="showPanel('tickets')" title="Tickets — backlog, enrichissement, pipeline Jira">
+        <div class="icon">🎫</div>
+        <span class="nav-text">Tickets</span>
         <span class="nav-badge new nav-text" id="badge-backlog" style="display:none">0</span>
       </div>
 
@@ -1333,16 +1333,16 @@
         <span class="nav-text">Tests</span>
       </div>
 
-      <div class="nav-item" onclick="showPanel('chat')" title="Chat Aby — assistant QA contextuel">
-        <div class="icon">💬</div>
-        <span class="nav-text">Chat Aby</span>
+      <div class="nav-item" onclick="showPanel('resultats')" title="Résultats — rapports, logs, opérations">
+        <div class="icon">📊</div>
+        <span class="nav-text">Résultats</span>
       </div>
 
       <div class="sidebar-divider nav-text"></div>
 
-      <div class="nav-item" onclick="showPanel('settings')" title="Paramètres QA">
-        <div class="icon">⚙️</div>
-        <span class="nav-text">Paramètres</span>
+      <div class="nav-item" onclick="showPanel('outils')" title="Outils — Chat Aby, Paramètres">
+        <div class="icon">🛠️</div>
+        <span class="nav-text">Outils</span>
       </div>
     </div>
 
@@ -1351,28 +1351,29 @@
   <!-- CONTENT -->
   <div class="content">
 
-    <!-- TAB BAR — PIPELINE -->
-    <div class="mega-tabs" id="tabs-pipeline">
-      <div class="mega-tab active" onclick="showSubTab('pipeline','backlog')" data-subtab="backlog">
-        <span class="tab-icon">📥</span> Backlog
+    <!-- TAB BAR — DASHBOARD -->
+    <div class="mega-tabs active" id="tabs-dashboard">
+      <div class="mega-tab active" onclick="showSubTab('dashboard','dashboard-home')" data-subtab="dashboard-home">
+        <span class="tab-icon">🏠</span> Vue d'ensemble
       </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','enriched')" data-subtab="enriched">
-        <span class="tab-icon">✏️</span> Enrichissement
+      <div class="mega-tab" onclick="showSubTab('dashboard','release-qa')" data-subtab="release-qa">
+        <span class="tab-icon">📦</span> Release QA
       </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','pipeline')" data-subtab="pipeline">
-        <span class="tab-icon">🔗</span> Pipeline Jira
-      </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','reports')" data-subtab="reports">
-        <span class="tab-icon">📄</span> Rapports
-      </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','logs')" data-subtab="logs">
-        <span class="tab-icon">🔬</span> Logs
-      </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','diagnostics')" data-subtab="diagnostics">
+      <div class="mega-tab" onclick="showSubTab('dashboard','diagnostics')" data-subtab="diagnostics">
         <span class="tab-icon">🧠</span> Diagnostics
       </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','release-qa')" data-subtab="release-qa">
-        <span class="tab-icon">📦</span> Release QA
+    </div>
+
+    <!-- TAB BAR — TICKETS -->
+    <div class="mega-tabs" id="tabs-tickets">
+      <div class="mega-tab active" onclick="showSubTab('tickets','backlog')" data-subtab="backlog">
+        <span class="tab-icon">📥</span> Backlog
+      </div>
+      <div class="mega-tab" onclick="showSubTab('tickets','enriched')" data-subtab="enriched">
+        <span class="tab-icon">✏️</span> Enrichissement
+      </div>
+      <div class="mega-tab" onclick="showSubTab('tickets','pipeline')" data-subtab="pipeline">
+        <span class="tab-icon">🔗</span> Pipeline Jira
       </div>
     </div>
 
@@ -1395,8 +1396,31 @@
       </div>
     </div>
 
+    <!-- TAB BAR — RESULTATS -->
+    <div class="mega-tabs" id="tabs-resultats">
+      <div class="mega-tab active" onclick="showSubTab('resultats','reports')" data-subtab="reports">
+        <span class="tab-icon">📄</span> Rapports
+      </div>
+      <div class="mega-tab" onclick="showSubTab('resultats','logs')" data-subtab="logs">
+        <span class="tab-icon">🔬</span> Logs
+      </div>
+      <div class="mega-tab" onclick="showSubTab('resultats','operations')" data-subtab="operations">
+        <span class="tab-icon">⚡</span> Opérations
+      </div>
+    </div>
+
+    <!-- TAB BAR — OUTILS -->
+    <div class="mega-tabs" id="tabs-outils">
+      <div class="mega-tab active" onclick="showSubTab('outils','chat')" data-subtab="chat">
+        <span class="tab-icon">💬</span> Chat Aby
+      </div>
+      <div class="mega-tab" onclick="showSubTab('outils','settings')" data-subtab="settings">
+        <span class="tab-icon">⚙️</span> Paramètres
+      </div>
+    </div>
+
     <!-- ── DASHBOARD ── -->
-    <div class="panel active" id="panel-dashboard">
+    <div class="panel active" id="panel-dashboard-home">
       <div class="panel-header">
         <div>
           <div class="panel-title">Dashboard <span>QA</span></div>
@@ -5079,16 +5103,28 @@ function loadReports() {
 // ── NAVIGATION ────────────────────────────────────────────────────────────────
 // ── GROUPES DE PANELS (mega-panels avec onglets) ──
 var PANEL_GROUPS = {
-  pipeline: {
-    tabs: ["backlog", "enriched", "pipeline", "reports", "logs", "diagnostics", "release-qa"],
+  dashboard: {
+    tabs: ["dashboard-home", "release-qa", "diagnostics"],
+    defaultTab: "dashboard-home"
+  },
+  tickets: {
+    tabs: ["backlog", "enriched", "pipeline"],
     defaultTab: "backlog"
   },
   tests: {
     tabs: ["playwright-direct", "css", "postman", "appium", "drupal"],
     defaultTab: "playwright-direct"
+  },
+  resultats: {
+    tabs: ["reports", "logs", "operations"],
+    defaultTab: "reports"
+  },
+  outils: {
+    tabs: ["chat", "settings"],
+    defaultTab: "chat"
   }
 };
-var _activeSubTab = { pipeline: "backlog", tests: "playwright-direct" };
+var _activeSubTab = { dashboard: "dashboard-home", tickets: "backlog", tests: "playwright-direct", resultats: "reports", outils: "chat" };
 
 // Trouver le groupe parent d'un sub-panel
 function findParentGroup(subId) {
@@ -5170,7 +5206,8 @@ function showSubTab(groupId, tabId, opts) {
   var panel = document.getElementById("panel-" + tabId);
   if (panel) {
     panel.classList.add("active");
-    panel.style.display = (tabId === "backlog") ? "flex" : "block";
+    var flexPanels = ["backlog", "chat"];
+    panel.style.display = (flexPanels.indexOf(tabId) !== -1) ? "flex" : "block";
   }
 
   // Mémoriser l'onglet actif
@@ -5192,6 +5229,7 @@ function showSubTab(groupId, tabId, opts) {
 }
 
 function _triggerRefresh(id) {
+  if (id === "dashboard-home")    { /* dashboard auto-refreshed via SSE */ }
   if (id === "backup")            loadReports();
   if (id === "playwright-direct") { loadTestQueue(); updatePWDSummary(); }
   if (id === "pipeline")          updatePWDSummary();
@@ -6729,9 +6767,10 @@ document.addEventListener("DOMContentLoaded", function() {
 
   // Restaurer le panel depuis le hash URL (refresh / partage de lien)
   var initPanel = window.location.hash.slice(1) || "dashboard";
-  var validPanels = ["dashboard","backlog","enriched","operations","chat","playwright-direct",
-                     "reports","logs","matrix","css","releases","drupal","settings","pipeline"];
-  if (!document.getElementById("panel-" + initPanel)) initPanel = "dashboard";
+  var validPanels = ["dashboard","dashboard-home","backlog","enriched","operations","chat","playwright-direct",
+                     "reports","logs","matrix","css","releases","drupal","settings","pipeline",
+                     "release-qa","diagnostics","postman","appium","tickets","tests","resultats","outils"];
+  if (!document.getElementById("panel-" + initPanel) && !PANEL_GROUPS[initPanel]) initPanel = "dashboard";
   // Pousser l'état initial dans l'historique pour que le 1er back fonctionne
   history.replaceState({ panel: initPanel }, "", "#" + initPanel);
   showPanel(initPanel, { _fromPopstate: true });
@@ -9548,7 +9587,7 @@ function syncSidebarFromSettings(s) {
     var rb2 = document.getElementById("c2-release-input");
     if (rb2 && !rb2.dataset.userEdited) rb2.value = s.currentRelease;
     // Mettre à jour les occurrences panel dashboard
-    var panelDesc = document.querySelector("#panel-dashboard .panel-desc");
+    var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
     if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + s.currentRelease;
     updateReleaseHealthCard();
   }
@@ -11082,9 +11121,9 @@ function initKeyboardShortcuts() {
         if (document.getElementById("panel-backlog").classList.contains("active"))
           toggleBacklogView();
         break;
-      case "b": case "B": showPanel("backlog");     break;
-      case "o": case "O": showPanel("operations");  break;
-      case "d": case "D": showPanel("dashboard");   break;
+      case "b": case "B": showPanel("backlog");       break;
+      case "o": case "O": showPanel("operations");   break;
+      case "d": case "D": showPanel("dashboard-home"); break;
       case "?":           showShortcutsHelp();      break;
     }
   });
@@ -11101,7 +11140,7 @@ function showShortcutsHelp() {
     '<div style="background:#111520;border:1px solid #2a3350;border-radius:16px;padding:28px 32px;min-width:340px">' +
       '<div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan);margin-bottom:20px">⌨️ Raccourcis clavier</div>' +
       '<div style="display:flex;flex-direction:column;gap:10px">' +
-        [["B","Aller au Backlog QA"],["O","Aller aux Opérations"],["D","Aller au Dashboard"],
+        [["D","Dashboard"],["B","Backlog QA"],["O","Opérations"],
          ["R","Rafraîchir le panel actif"],["K","Toggle Liste/Kanban (Backlog)"],
          ["?","Afficher/masquer cette aide"]]
         .map(function(s) {
