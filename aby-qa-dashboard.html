@@ -2964,6 +2964,7 @@
               <button class="btn btn-secondary" style="padding:6px 14px;font-size:12px;color:var(--red);border-color:rgba(255,59,92,.3)" onclick="rejectEnriched()">✕ Rejeter</button>
               <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-push-enrichment" onclick="pushEnrichedToJira('enrichment')" style="display:none">📤 Pousser enrichissement → Jira</button>
               <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-push-test" onclick="pushEnrichedToJira('test')" style="display:none">🧪 Créer ticket TEST → Jira</button>
+              <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-push-bug" onclick="pushEnrichedToJira('bug')" style="display:none">🐛 Créer Bug → Jira</button>
               <button class="btn btn-primary" style="padding:6px 16px;font-size:12px" id="btn-approve-legacy" onclick="approveEnriched()">✅ Valider → Jira</button>
             </div>
           </div>
@@ -4757,6 +4758,11 @@ sseBus.on("bus-event", function(data) {
   // Session expired
   if (evt === "session:expired") {
     showToast("Session Playwright expirée — renouveler dans Paramètres", "⚠️");
+  }
+  // Bug detected locally — refresh enriched list
+  if (evt === "bug:detected") {
+    loadEnrichedList();
+    showToast("Bug détecté : " + (data.summary || data.key || "").substring(0, 60), "🐛");
   }
   // Test completed notification + update plan step if applicable
   if (evt === "test:completed" || evt === "test:api-completed" || evt === "test:mobile-completed") {
@@ -11058,7 +11064,7 @@ function selectEnriched(key) {
       };
       document.getElementById("editor-status").textContent = statusMap[data.status] || "⏳ " + (data.status || "En attente");
       document.getElementById("editor-actions").style.display = "flex";
-      updateEditorPushButtons(data.status);
+      updateEditorPushButtons(data.status, data.type);
 
       // Bandeau stratégie IA
       var stratBar = document.getElementById("editor-strategy-bar");
@@ -11169,16 +11175,20 @@ function importFromJira(keyOverride) {
     });
 }
 
-function updateEditorPushButtons(status) {
+function updateEditorPushButtons(status, ticketType) {
   var btnEnrich = document.getElementById("btn-push-enrichment");
   var btnTest   = document.getElementById("btn-push-test");
+  var btnBug    = document.getElementById("btn-push-bug");
   var btnLegacy = document.getElementById("btn-approve-legacy");
   if (!btnEnrich || !btnTest || !btnLegacy) return;
   // Hide all push buttons by default
   btnEnrich.style.display = "none";
   btnTest.style.display   = "none";
+  if (btnBug) btnBug.style.display = "none";
   btnLegacy.style.display = "none";
-  if (status === "enriched-ready") {
+  if (ticketType === "Bug" && (status === "pending" || status === "enriched-ready")) {
+    if (btnBug) btnBug.style.display = "inline-flex";
+  } else if (status === "enriched-ready") {
     btnEnrich.style.display = "inline-flex";
   } else if (status === "test-ready") {
     btnTest.style.display = "inline-flex";
@@ -11191,7 +11201,7 @@ function updateEditorPushButtons(status) {
 function pushEnrichedToJira(pushType) {
   if (!currentEnrichedKey) return;
   saveEdits();
-  var label = pushType === "enrichment" ? "enrichissement" : "ticket TEST";
+  var label = pushType === "bug" ? "Bug" : pushType === "enrichment" ? "enrichissement" : "ticket TEST";
   if (!confirm("Pousser " + label + " vers Jira pour " + currentEnrichedKey + " ?")) return;
   var keyToPush = currentEnrichedKey;
   setTimeout(function() {
@@ -11199,8 +11209,10 @@ function pushEnrichedToJira(pushType) {
       .then(function(data) {
         var s = document.getElementById("editor-status");
         if (data.ok) {
-          if (s) s.textContent = pushType === "test" ? "✅🧪 Ticket TEST créé dans Jira" : "✅ Enrichissement poussé dans Jira";
-          showToast(pushType === "test" ? "Ticket TEST créé : " + (data.testKey || "") : "Enrichissement poussé dans Jira", pushType === "test" ? "🧪" : "📤");
+          var successMsg = pushType === "bug" ? "🐛 Bug créé dans Jira : " + (data.bugKey || "") :
+                           pushType === "test" ? "✅🧪 Ticket TEST créé dans Jira" : "✅ Enrichissement poussé dans Jira";
+          if (s) s.textContent = successMsg;
+          showToast(pushType === "bug" ? "Bug créé : " + (data.bugKey || "") : pushType === "test" ? "Ticket TEST créé : " + (data.testKey || "") : "Enrichissement poussé dans Jira", pushType === "bug" ? "🐛" : pushType === "test" ? "🧪" : "📤");
           currentEnrichedKey = null;
           currentEnrichedStatus = null;
           enrichedAttachments = [];

@@ -3592,7 +3592,7 @@ var server = http.createServer(function(req, res) {
   }
 
   // ── POST /api/enriched/:key/push — Pousser un ticket enrichi vers Jira ────
-  if (method === "POST" && url.match(/^\/api\/enriched\/[A-Z]+-\d+\/push$/)) {
+  if (method === "POST" && url.match(/^\/api\/enriched\/[A-Za-z0-9_-]+\/push$/)) {
     var pushKey = url.split("/")[3];
     var enrichedFile = path.join(BASE_DIR, "inbox", "enriched", pushKey + ".json");
     if (!fs.existsSync(enrichedFile)) {
@@ -3667,6 +3667,55 @@ var server = http.createServer(function(req, res) {
           }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, key: pushKey, testKey: testKey || null, action: "test-created" }));
+
+        } else if (pushType === "bug") {
+          // Créer le ticket Bug dans Jira depuis le bug local
+          if (!enrichedData.enrichedMarkdown) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: false, error: "Pas de contenu pour le bug " + pushKey }));
+            return;
+          }
+          var bugDesc = enrichedData.enrichedMarkdown || enrichedData.originalMarkdown || "";
+          var bugPriority = enrichedData.priority === "High" ? "High" : "Medium";
+          var bugLabels = enrichedData.labels || ["pw-direct", "qa-auto"];
+          var bugFields = {
+            project: { key: CFG.jira.project },
+            issuetype: { name: "Bug" },
+            summary: enrichedData.summary || "BUG - " + pushKey,
+            description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: String(bugDesc).substring(0, 30000) }] }] },
+            priority: { name: bugPriority },
+            labels: bugLabels
+          };
+          // Lier au ticket source si disponible
+          var jiraResult = await jiraApiCall("POST", "/rest/api/3/issue", { fields: bugFields });
+          var bugJiraKey = (jiraResult.data && jiraResult.data.key) ? jiraResult.data.key : null;
+          if (bugJiraKey) {
+            // Lier le bug au ticket source
+            if (enrichedData.sourceKey) {
+              try {
+                await jiraApiCall("POST", "/rest/api/3/issueLink", {
+                  type: { name: "Blocks" },
+                  inwardIssue: { key: enrichedData.sourceKey },
+                  outwardIssue: { key: bugJiraKey }
+                });
+              } catch(linkErr) { console.error("[PUSH] Lien bug→source KO :", linkErr.message); }
+            }
+            // Attacher le screenshot si dispo
+            if (enrichedData.screenshot) {
+              var screenshotPath = path.join(BASE_DIR, "screenshots", enrichedData.screenshot);
+              if (fs.existsSync(screenshotPath)) {
+                try { attachFileToJira(bugJiraKey, screenshotPath); } catch(e2) {}
+              }
+            }
+            enrichedData.jiraBugKey = bugJiraKey;
+            enrichedData.status = "pushed";
+            enrichedData.pushedAt = new Date().toISOString();
+            fs.writeFileSync(enrichedFile, JSON.stringify(enrichedData, null, 2));
+            console.log("[PUSH] " + pushKey + " — Bug créé dans Jira : " + bugJiraKey);
+            bus.publish("jira:updated", { key: pushKey, field: "bug", action: "bug-created", bugKey: bugJiraKey });
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, key: pushKey, bugKey: bugJiraKey || null, action: "bug-created" }));
 
         } else {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -4238,6 +4287,13 @@ server.listen(PORT, "0.0.0.0", function() {
         (evt.fail || 0) > 0 ? "fail" : "pass",
         { pass: evt.pass, fail: evt.fail, total: evt.total, env: evt.env, type: evt.type, reportPath: evt.reportPath });
     } catch(e) { console.error("[BUS] Erreur drupal:completed :", e.message); }
+  });
+
+  // bug:detected → notification dashboard (bug local créé, en attente de revue)
+  bus.on("bug:detected", function(evt) {
+    try {
+      console.log("[BUS] bug:detected → " + evt.key + " — " + (evt.summary || "").substring(0, 60));
+    } catch(e) { console.error("[BUS] Erreur bug:detected :", e.message); }
   });
 
   // session:expired → log alerte

@@ -1501,13 +1501,19 @@ async function runScenarios(targets, envName) {
   return results;
 }
 
-async function createBugJira(result, mode) {
-  if (DRY_RUN) { console.log("  [DRY_RUN] Bug Jira ignoré : " + result.label); return null; }
+async function createBugLocal(result, mode) {
+  if (DRY_RUN) { console.log("  [DRY_RUN] Bug ignoré : " + result.label); return null; }
   // Ne JAMAIS créer de bug pour un blocage Cloudflare
   if (result.status === "BLOCKED" || result.failType === "CLOUDFLARE_BLOCKED") {
     console.log("  [BUG] Ignoré — blocage Cloudflare (pas un vrai bug) : " + result.label);
     return null;
   }
+  // Ignorer les problèmes de config (session expirée, 404 sur tous les envs)
+  if (result.failType === "SESSION_EXPIRED") {
+    console.log("  [BUG] Ignoré — session expirée (config, pas un bug) : " + result.label);
+    return null;
+  }
+
   var date = new Date().toLocaleString("fr-FR");
   var stepsSummary = (result.steps||[]).map(function(s) {
     return (s.status==="PASS"?"[OK]":"[FAIL]") + " " + s.label + " — " + (s.detail||"").substring(0,80);
@@ -1518,72 +1524,116 @@ async function createBugJira(result, mode) {
 
   // Exceptions JS (page errors)
   if (result.jsExceptions && result.jsExceptions.length) {
-    devSection += "h3. ⚡ Exceptions JavaScript\n";
+    devSection += "### Exceptions JavaScript\n";
     result.jsExceptions.forEach(function(ex, i) {
-      devSection += "*Exception " + (i+1) + "* : " + ex.message + "\n";
-      if (ex.stack) devSection += "{noformat:title=Stack trace}\n" + ex.stack + "\n{noformat}\n";
+      devSection += "**Exception " + (i+1) + "** : " + ex.message + "\n";
+      if (ex.stack) devSection += "```\n" + ex.stack + "\n```\n";
     });
     devSection += "\n";
   }
 
   // Erreurs console avec localisation fichier:ligne:col
   if (result.consoleErrors && result.consoleErrors.length) {
-    devSection += "h3. 🖥️ Erreurs Console\n{noformat}\n";
+    devSection += "### Erreurs Console\n```\n";
     result.consoleErrors.forEach(function(ce) {
       var loc = ce.file ? (ce.file + (ce.line != null ? ":" + ce.line : "") + (ce.col != null ? ":" + ce.col : "")) : "";
       devSection += (loc ? "[" + loc + "] " : "") + ce.text + "\n";
     });
-    devSection += "{noformat}\n\n";
+    devSection += "```\n\n";
   }
 
   // Requêtes réseau KO
   if (result.networkFails && result.networkFails.length) {
-    devSection += "h3. 🌐 Requêtes Réseau KO\n{noformat}\n";
+    devSection += "### Requêtes Réseau KO\n```\n";
     result.networkFails.forEach(function(nf) {
       devSection += nf.method + "  " + nf.status + "  " + nf.url + "\n";
     });
-    devSection += "{noformat}\n\n";
+    devSection += "```\n\n";
   }
 
   // Contexte DOM des éléments en échec
   if (result.domSnippets && result.domSnippets.length) {
-    devSection += "h3. 🔍 Contexte DOM — Éléments en échec\n";
+    devSection += "### Contexte DOM — Éléments en échec\n";
     result.domSnippets.forEach(function(ds) {
-      devSection += "*" + ds.label + "* — sélecteur : {{" + ds.selector + "}}\n";
-      devSection += "Visible : " + (ds.snippet.visible ? "oui" : "*non — élément absent/caché*") + "\n";
-      devSection += "{noformat:title=outerHTML}\n" + ds.snippet.outerHTML + "\n{noformat}\n";
+      devSection += "**" + ds.label + "** — sélecteur : `" + ds.selector + "`\n";
+      devSection += "Visible : " + (ds.snippet.visible ? "oui" : "**non — élément absent/caché**") + "\n";
+      devSection += "```html\n" + ds.snippet.outerHTML + "\n```\n";
     });
     devSection += "\n";
   }
 
-  var desc = "h3. Résumé\n*Mode* : "+mode.toUpperCase()+" | *URL* : "+result.url+" | *Env* : "+result.env+"\n\n" +
-    "h3. Étant donné\nTest Playwright Direct lancé sur "+result.url+"\n\n" +
-    "h3. Résultat obtenu\n"+(result.issues||[]).join("\n")+"\n\n" +
-    "h3. Résultat attendu\nToutes les étapes en PASS\n\n" +
-    "h3. Étapes de contrôle\n{noformat}\n"+stepsSummary+"\n{noformat}\n\n" +
+  var bugSummary = "BUG - " + (KEY ? "[" + KEY + "] " : "") + result.label + " - " + (result.issues||[]).slice(0,2).join(", ");
+  var markdown = "## Résumé\n**Mode** : " + mode.toUpperCase() + " | **URL** : " + result.url + " | **Env** : " + result.env + "\n\n" +
+    "## Résultat obtenu\n" + (result.issues||[]).join("\n") + "\n\n" +
+    "## Résultat attendu\nToutes les étapes en PASS\n\n" +
+    "## Étapes de contrôle\n```\n" + stepsSummary + "\n```\n\n" +
     (devSection || "") +
-    "h3. Environnement\n*Env* : "+result.env+" | *Browser* : "+result.browser+" | *Device* : "+result.device+" | *Date* : "+date+"\n\n" +
-    "h3. Impact\n*Page* : "+result.label+" | *Sévérité* : "+(result.issues.length>2?"Majeur":"Mineur")+"\n\n" +
+    "## Environnement\n**Env** : " + result.env + " | **Browser** : " + result.browser + " | **Device** : " + result.device + " | **Date** : " + date + "\n\n" +
+    "## Impact\n**Page** : " + result.label + " | **Sévérité** : " + (result.issues.length > 2 ? "Majeur" : "Mineur") + "\n\n" +
     "_Généré automatiquement — test Playwright_";
+
+  // Sauvegarder localement dans inbox/enriched (pas de push Jira)
+  var bugKey = "BUG-" + (KEY || "PW") + "-" + Date.now().toString(36);
+  var ENRICHED_DIR = path.join(__dirname, "inbox", "enriched");
+  if (!fs.existsSync(ENRICHED_DIR)) fs.mkdirSync(ENRICHED_DIR, { recursive: true });
+
+  // Anti-doublon : vérifier si un bug similaire existe déjà (même URL + même env + pending)
   try {
-    var bug = await jiraRequest("POST", "/rest/api/2/issue", {
-      fields: {
-        project: { key: CFG.jira.project }, issuetype: { name: "Bug" },
-        summary: "[PW-DIRECT]["+mode.toUpperCase()+"] FAIL — " + result.label,
-        description: desc, priority: { name: result.issues.length>2?"High":"Medium" },
-        labels: ["pw-direct", mode, result.env, "qa-auto"]
-      }
+    var existingFiles = fs.readdirSync(ENRICHED_DIR).filter(function(f) { return f.endsWith(".json"); });
+    var duplicate = existingFiles.some(function(f) {
+      try {
+        var d = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
+        return d.type === "Bug" && d.bugUrl === result.url && d.bugEnv === result.env &&
+          (d.status === "pending" || d.status === "enriched-ready");
+      } catch(e) { return false; }
     });
-    if (bug.key) {
-      console.log("  [BUG] " + bug.key + " — " + result.label);
-      if (result.screenshot && fs.existsSync(result.screenshot)) {
-        await uploadAttachment(bug.key, result.screenshot);
-        console.log("  [PJ]  Screenshot sur " + bug.key);
-      }
-      return bug.key;
+    if (duplicate) {
+      console.log("  [BUG] Doublon ignoré — bug similaire déjà en attente pour " + result.url + " (" + result.env + ")");
+      return null;
     }
-  } catch(e) { console.log("  [WARN] Bug KO : " + e.message.substring(0,60)); }
-  return null;
+  } catch(e) { /* ignore */ }
+
+  var bugData = {
+    key:               bugKey,
+    type:              "Bug",
+    summary:           bugSummary,
+    originalMarkdown:  markdown,
+    enrichedMarkdown:  markdown,
+    status:            "pending",
+    sourceKey:         KEY || null,
+    bugUrl:            result.url,
+    bugEnv:            result.env,
+    bugMode:           mode,
+    failType:          result.failType || null,
+    priority:          result.issues.length > 2 ? "High" : "Medium",
+    labels:            ["pw-direct", mode, result.env, "qa-auto"],
+    issues:            result.issues || [],
+    screenshot:        result.screenshot ? path.basename(result.screenshot) : null,
+    testResult:        {
+      steps:          (result.steps||[]).map(function(s) { return { label: s.label, status: s.status, detail: (s.detail||"").substring(0,200) }; }),
+      jsExceptions:   (result.jsExceptions||[]).length,
+      consoleErrors:  (result.consoleErrors||[]).length,
+      networkFails:   (result.networkFails||[]).length
+    },
+    createdAt:         new Date().toISOString()
+  };
+
+  fs.writeFileSync(path.join(ENRICHED_DIR, bugKey + ".json"), JSON.stringify(bugData, null, 2), "utf8");
+  console.log("  [BUG LOCAL] " + bugKey + " — " + result.label + " (en attente de revue)");
+
+  // Notifier le dashboard via BUS_EVENT
+  console.log("BUS_EVENT:" + JSON.stringify({
+    event: "bug:detected",
+    key: bugKey,
+    sourceKey: KEY || null,
+    summary: bugSummary,
+    url: result.url,
+    env: result.env,
+    failType: result.failType || null,
+    priority: bugData.priority
+  }));
+
+  return bugKey;
 }
 
 // ── CSS print professionnel (thème clair pour PDF) ──────────────────────────
@@ -2526,7 +2576,7 @@ async function main() {
   if (fails.length > 0 && !NO_JIRA_PUSH) {
     console.log("\n[BUGS] " + fails.length + " FAIL(s)...");
     for (var i = 0; i < fails.length; i++) {
-      var k = await createBugJira(fails[i], MODE);
+      var k = await createBugLocal(fails[i], MODE);
       if (k) bugKeys.push(k);
       // Émettre le log de test pour chaque FAIL (capturé par agent-server.js)
       if (fails[i].status === "FAIL") {
