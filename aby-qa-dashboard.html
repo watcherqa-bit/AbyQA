@@ -1328,9 +1328,9 @@
         <span class="nav-badge new nav-text" id="badge-backlog" style="display:none">0</span>
       </div>
 
-      <div class="nav-item" onclick="showPanel('outils')" title="Outils QA — matrice, audit, drupal, opérations">
-        <div class="icon">🧰</div>
-        <span class="nav-text">Outils</span>
+      <div class="nav-item" onclick="showPanel('tests')" title="Tests — Web, API, Mobile, CSS, Données" data-panel="tests">
+        <div class="icon">🧪</div>
+        <span class="nav-text">Tests</span>
       </div>
 
       <div class="nav-item" onclick="showPanel('chat')" title="Chat Aby — assistant QA contextuel">
@@ -1362,9 +1362,6 @@
       <div class="mega-tab" onclick="showSubTab('pipeline','pipeline')" data-subtab="pipeline">
         <span class="tab-icon">🔗</span> Pipeline Jira
       </div>
-      <div class="mega-tab" onclick="showSubTab('pipeline','playwright-direct')" data-subtab="playwright-direct">
-        <span class="tab-icon">🎭</span> Tests
-      </div>
       <div class="mega-tab" onclick="showSubTab('pipeline','reports')" data-subtab="reports">
         <span class="tab-icon">📄</span> Rapports
       </div>
@@ -1376,22 +1373,22 @@
       </div>
     </div>
 
-    <!-- TAB BAR — OUTILS -->
-    <div class="mega-tabs" id="tabs-outils">
-      <div class="mega-tab active" onclick="showSubTab('outils','css')" data-subtab="css">
+    <!-- TAB BAR — TESTS -->
+    <div class="mega-tabs" id="tabs-tests">
+      <div class="mega-tab active" onclick="showSubTab('tests','playwright-direct')" data-subtab="playwright-direct">
+        <span class="tab-icon">🌐</span> Tests Web
+      </div>
+      <div class="mega-tab" onclick="showSubTab('tests','css')" data-subtab="css">
         <span class="tab-icon">🎨</span> Audit CSS
       </div>
-      <div class="mega-tab" onclick="showSubTab('outils','drupal')" data-subtab="drupal">
-        <span class="tab-icon">🧪</span> Drupal
+      <div class="mega-tab" onclick="showSubTab('tests','postman')" data-subtab="postman">
+        <span class="tab-icon">🔌</span> Tests API
       </div>
-      <div class="mega-tab" onclick="showSubTab('outils','operations')" data-subtab="operations">
-        <span class="tab-icon">⚡</span> Opérations
+      <div class="mega-tab" onclick="showSubTab('tests','appium')" data-subtab="appium">
+        <span class="tab-icon">📱</span> Tests Mobile
       </div>
-      <div class="mega-tab" onclick="showSubTab('outils','postman')" data-subtab="postman">
-        <span class="tab-icon">📮</span> Postman
-      </div>
-      <div class="mega-tab" onclick="showSubTab('outils','appium')" data-subtab="appium">
-        <span class="tab-icon">📱</span> Appium
+      <div class="mega-tab" onclick="showSubTab('tests','drupal')" data-subtab="drupal">
+        <span class="tab-icon">🧪</span> Données de test
       </div>
     </div>
 
@@ -2599,8 +2596,8 @@
     <div class="panel" id="panel-playwright-direct">
       <div class="panel-header">
         <div>
-          <div class="panel-title">Playwright <span>Direct</span></div>
-          <div class="panel-desc">Tests API · UI · Correctif · TNR — avec validation par étape avant création Jira</div>
+          <div class="panel-title">Tests <span>Web</span></div>
+          <div class="panel-desc">E2E · UI · Correctif · TNR — Playwright avec validation par étape avant création Jira</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <label class="check-pill" style="margin:0" id="pwdDryRunPill">
@@ -4256,8 +4253,8 @@
     <div class="panel" id="panel-postman">
       <div class="panel-header">
         <div>
-          <div class="panel-title">Postman <span>API</span></div>
-          <div class="panel-desc">Tests API via Postman/Newman — generer, executer, consulter les rapports</div>
+          <div class="panel-title">Tests <span>API</span></div>
+          <div class="panel-desc">Tests API via Newman/Postman — générer, exécuter, consulter les rapports</div>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-primary" onclick="postmanGenerate()">🤖 Generer collection</button>
@@ -4298,7 +4295,7 @@
     <div class="panel" id="panel-appium">
       <div class="panel-header">
         <div>
-          <div class="panel-title">Appium <span>Mobile</span></div>
+          <div class="panel-title">Tests <span>Mobile</span></div>
           <div class="panel-desc">Tests mobile via Appium/WebDriverIO — Android, iOS</div>
         </div>
         <div style="display:flex;gap:8px">
@@ -4920,15 +4917,15 @@ function loadReports() {
 // ── GROUPES DE PANELS (mega-panels avec onglets) ──
 var PANEL_GROUPS = {
   pipeline: {
-    tabs: ["backlog", "enriched", "pipeline", "playwright-direct", "reports", "logs", "release-qa"],
+    tabs: ["backlog", "enriched", "pipeline", "reports", "logs", "release-qa"],
     defaultTab: "backlog"
   },
-  outils: {
-    tabs: ["css", "drupal", "operations", "postman", "appium"],
-    defaultTab: "css"
+  tests: {
+    tabs: ["playwright-direct", "css", "postman", "appium", "drupal"],
+    defaultTab: "playwright-direct"
   }
 };
-var _activeSubTab = { pipeline: "backlog", outils: "css" };
+var _activeSubTab = { pipeline: "backlog", tests: "playwright-direct" };
 
 // Trouver le groupe parent d'un sub-panel
 function findParentGroup(subId) {
