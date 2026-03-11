@@ -125,6 +125,17 @@ module.exports = {
     fixVersion: get("XRAY_FIX_VERSION", "v1.25.0")
   },
 
+  // Email (SMTP via nodemailer)
+  email: {
+    host:     get("SMTP_HOST", ""),
+    port:     parseInt(get("SMTP_PORT", "587")),
+    secure:   get("SMTP_SECURE", "false") === "true",
+    user:     get("SMTP_USER", ""),
+    pass:     get("SMTP_PASS", ""),
+    from:     get("SMTP_FROM", "AbyQA <abyqa@safrangroup.com>"),
+    enabled:  function() { return !!get("SMTP_HOST", ""); }
+  },
+
   // Chemins
   paths: {
     reports:     path.join(__dirname, get("REPORTS_DIR",     "reports")),

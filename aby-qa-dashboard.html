@@ -3141,6 +3141,7 @@
           <button onclick="copySelectedReportLinks()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text2);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">📋 Copier les liens</button>
           <button onclick="attachSelectedToJira()" style="background:rgba(0,102,204,.12);border:1px solid rgba(0,102,204,.3);color:#4da6ff;border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">🔗 Attacher à Jira</button>
           <button onclick="deleteSelectedReports()" style="background:rgba(255,59,92,.12);border:1px solid rgba(255,59,92,.35);color:var(--red);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">🗑️ Supprimer</button>
+          <button onclick="emailSelectedReport()" style="background:rgba(59,111,255,.12);border:1px solid rgba(59,111,255,.3);color:var(--blue);border-radius:6px;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600">📧 Envoyer par mail</button>
         </div>
       </div>
 
@@ -3745,6 +3746,37 @@
           </div>
         </div>
       </div>
+      <!-- Email / Notifications -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">NOTIFICATIONS EMAIL</div>
+        <div id="email-smtp-status" style="font-size:11px;color:var(--text3);margin-bottom:12px">SMTP : vérification...</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="cfg-email-alerts" style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+            <span style="font-size:13px;color:var(--text)">Alertes auto par mail</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text2);width:110px;flex-shrink:0">Seuil alerte</span>
+            <select id="cfg-email-severity" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;flex:1">
+              <option value="CRITICAL">CRITICAL uniquement</option>
+              <option value="MAJOR">MAJOR et CRITICAL</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text2);width:110px;flex-shrink:0">Alertes vers</span>
+            <input type="text" id="cfg-email-recipients" placeholder="qa@safran.com, dev@safran.com" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;flex:1;font-family:var(--mono)">
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text2);width:110px;flex-shrink:0">Contributeurs</span>
+            <input type="text" id="cfg-email-contributeurs" placeholder="equipe@safran.com (rapports release)" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 10px;font-size:12px;flex:1;font-family:var(--mono)">
+          </div>
+          <div>
+            <span style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px">Template mail release (optionnel, variables : {{version}}, {{date}}, {{totalTickets}}, {{passCount}}, {{failCount}}, {{coverage}}, {{scoreIA}}, {{bugs}}, {{riskTickets}})</span>
+            <textarea id="cfg-email-template" rows="4" placeholder="Laisser vide pour utiliser le template par défaut" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:8px 10px;font-size:12px;width:100%;box-sizing:border-box;font-family:var(--mono);resize:vertical"></textarea>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <!-- ── CHAT IA (Aby) ── -->
@@ -9504,6 +9536,25 @@ function loadSettingsPanel() {
       // Version courante
       var cfgRel = document.getElementById("cfg-latest-release");
       if (cfgRel) cfgRel.value = s.currentRelease || "v1.25.0";
+      // Email settings
+      var em = s.email || {};
+      var cfgAlerts = document.getElementById("cfg-email-alerts");
+      var cfgSev    = document.getElementById("cfg-email-severity");
+      var cfgRecip  = document.getElementById("cfg-email-recipients");
+      var cfgContrib = document.getElementById("cfg-email-contributeurs");
+      var cfgTpl    = document.getElementById("cfg-email-template");
+      if (cfgAlerts) cfgAlerts.checked = em.alertsEnabled !== false;
+      if (cfgSev) cfgSev.value = em.alertSeverity || "CRITICAL";
+      if (cfgRecip) cfgRecip.value = em.recipients || "";
+      if (cfgContrib) cfgContrib.value = em.contributeurs || "";
+      if (cfgTpl) cfgTpl.value = em.releaseTemplate || "";
+      // SMTP status check
+      fetch("/api/email/status").then(function(r){return r.json()}).then(function(st){
+        var el = document.getElementById("email-smtp-status");
+        if (el) el.innerHTML = st.enabled
+          ? '<span style="color:var(--green)">SMTP : ' + escHtml(st.host) + ' — connecté</span>'
+          : '<span style="color:var(--orange)">SMTP : non configuré (ajoutez SMTP_HOST dans .env)</span>';
+      }).catch(function(){});
       // Session cards
       loadSessionCards();
     })
@@ -9593,7 +9644,14 @@ function saveSettingsPanel() {
       enabled:     !!(polEnabled && polEnabled.checked),
       intervalMin: parseInt((polInterval && polInterval.value) || "5", 10)
     },
-    currentRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0"
+    currentRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0",
+    email: {
+      alertsEnabled: !!(document.getElementById("cfg-email-alerts") && document.getElementById("cfg-email-alerts").checked),
+      alertSeverity: (document.getElementById("cfg-email-severity") && document.getElementById("cfg-email-severity").value) || "CRITICAL",
+      recipients: (document.getElementById("cfg-email-recipients") && document.getElementById("cfg-email-recipients").value.trim()) || "",
+      contributeurs: (document.getElementById("cfg-email-contributeurs") && document.getElementById("cfg-email-contributeurs").value.trim()) || "",
+      releaseTemplate: (document.getElementById("cfg-email-template") && document.getElementById("cfg-email-template").value) || ""
+    }
   };
 
   fetch("/api/settings", { method:"PUT", headers:{"Content-Type":"application/json"}, body:JSON.stringify(s) })
@@ -11896,6 +11954,27 @@ function deleteSelectedReports() {
         }
       });
   });
+}
+
+function emailSelectedReport() {
+  if (!selectedReports.size) { showToast("Sélectionnez un rapport", "⚠️"); return; }
+  var filename = Array.from(selectedReports)[0];
+  var report = _reportsList ? _reportsList.find(function(r) { return r.filename === filename; }) : null;
+  var to = prompt("Destinataire(s) (virgule séparés) :", "");
+  if (!to) return;
+  showToast("Envoi en cours...", "📧");
+  apiPost("/api/email/send-report", {
+    to: to,
+    reportPath: filename,
+    pdfPath: filename.replace(/\.html$/, ".pdf"),
+    version: (report && report.version) || ""
+  }).then(function(data) {
+    if (data.ok) {
+      showToast("Rapport envoyé par mail", "📧");
+    } else {
+      showToast("Erreur : " + (data.error || ""), "❌");
+    }
+  }).catch(function(e) { showToast("Erreur envoi : " + e.message, "❌"); });
 }
 
 function closeCompareModal() {

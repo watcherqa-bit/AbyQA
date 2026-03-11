@@ -66,6 +66,8 @@ CFG.paths.init();
 
 // â"€â"€ SINGLETON LEAD QA IA â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 const leadQA = require("./agent-lead-qa");
+var mailer = null;
+try { mailer = require("./agent-mailer"); } catch(e) { console.log("[SERVER] agent-mailer non disponible:", e.message); }
 
 // â"€â"€ CLIENT ANTHROPIC (chat) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 var _chatAnthropicClient = null;
@@ -3730,6 +3732,85 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── POST /api/email/send-report — Envoyer un rapport par mail ──────────────
+  if (method === "POST" && url === "/api/email/send-report") {
+    var emailChunks = [];
+    req.on("data", function(c) { emailChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        if (!mailer) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: "Module mailer non disponible" })); return; }
+        var body = JSON.parse(Buffer.concat(emailChunks).toString());
+        var settings = {};
+        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        var to = body.to || (settings.email && settings.email.contributeurs) || "";
+        if (!to) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "Aucun destinataire (configurez email.contributeurs dans Paramètres)" })); return; }
+
+        // Chercher le rapport
+        var reportFile = body.reportPath ? path.join(CFG.paths.reports, body.reportPath) : null;
+        var pdfFile = body.pdfPath ? path.join(CFG.paths.reports, body.pdfPath) : null;
+        if (reportFile && !pdfFile) {
+          var possiblePdf = reportFile.replace(/\.html$/, ".pdf");
+          if (fs.existsSync(possiblePdf)) pdfFile = possiblePdf;
+        }
+
+        // Charger la synthèse release si version fournie
+        var synthesis = body.synthesis || {};
+        if (body.version && !body.synthesis) {
+          var synthFile = path.join(CFG.paths.reports, "synthesis-" + body.version + ".json");
+          if (fs.existsSync(synthFile)) {
+            try { synthesis = JSON.parse(fs.readFileSync(synthFile, "utf8")); } catch(e) {}
+          }
+        }
+
+        var template = (settings.email && settings.email.releaseTemplate) || null;
+        var info = await mailer.sendReleaseReport({
+          to: to,
+          version: body.version || settings.currentRelease || "?",
+          synthesis: synthesis,
+          reportPath: reportFile,
+          pdfPath: pdfFile,
+          template: template
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, messageId: info ? info.messageId : null }));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── POST /api/email/send-alert — Envoyer une alerte par mail ──────────────
+  if (method === "POST" && url === "/api/email/send-alert") {
+    var alertChunks = [];
+    req.on("data", function(c) { alertChunks.push(c); });
+    req.on("end", async function() {
+      try {
+        if (!mailer) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: "Module mailer non disponible" })); return; }
+        var body = JSON.parse(Buffer.concat(alertChunks).toString());
+        var settings = {};
+        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        var to = body.to || (settings.email && settings.email.recipients) || "";
+        if (!to) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "Aucun destinataire" })); return; }
+        var info = await mailer.sendAlert(to, body.diagnostic || body);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, messageId: info ? info.messageId : null }));
+      } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // ── GET /api/email/status — Vérifier si SMTP est configuré ────────────────
+  if (method === "GET" && url === "/api/email/status") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ enabled: !!(mailer && CFG.email.enabled()), host: CFG.email.host || null }));
+    return;
+  }
+
   // ── GET /api/bus/history — Derniers événements du bus inter-agents ────────
   if (method === "GET" && url.startsWith("/api/bus/history")) {
     var busN = parseInt((url.split("?n=")[1]) || "50", 10);
@@ -4196,6 +4277,20 @@ server.listen(PORT, "0.0.0.0", function() {
             data.lastDiagnostic = diag;
             fs.writeFileSync(enrichedFile, JSON.stringify(data, null, 2), "utf8");
           } catch(e) { console.error("[DIAG] Erreur save:", e.message); }
+        }
+        // Auto-alerte mail si sévérité critique
+        if (mailer && (diag.severity === "CRITICAL" || diag.severity === "MAJOR")) {
+          try {
+            var emailSettings = {};
+            try { emailSettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).email || {}; } catch(e2) {}
+            if (emailSettings.alertsEnabled && emailSettings.recipients) {
+              var minSev = emailSettings.alertSeverity || "CRITICAL";
+              var shouldSend = minSev === "MAJOR" || (minSev === "CRITICAL" && diag.severity === "CRITICAL");
+              if (shouldSend) {
+                mailer.sendAlert(emailSettings.recipients, Object.assign({ key: evt.key }, diag));
+              }
+            }
+          } catch(e2) { console.error("[DIAG] Erreur alerte mail:", e2.message); }
         }
         // Publier le diagnostic sur le bus → SSE dashboard
         bus.publish("diagnostic:ready", {
