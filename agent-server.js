@@ -68,6 +68,7 @@ CFG.paths.init();
 const leadQA = require("./agent-lead-qa");
 var mailer = null;
 try { mailer = require("./agent-mailer"); } catch(e) { console.log("[SERVER] agent-mailer non disponible:", e.message); }
+var purge = require("./agent-purge");
 
 // â"€â"€ CLIENT ANTHROPIC (chat) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 var _chatAnthropicClient = null;
@@ -3811,6 +3812,22 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/purge/preview — Aperçu de ce qui serait purgé ──────────────
+  if (method === "GET" && url === "/api/purge/preview") {
+    var prev = purge.preview();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(prev));
+    return;
+  }
+
+  // ── POST /api/purge/run — Lancer la purge ─────────────────────────────────
+  if (method === "POST" && url === "/api/purge/run") {
+    var purgeReport = purge.run();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(purgeReport));
+    return;
+  }
+
   // ── GET /api/bus/history — Derniers événements du bus inter-agents ────────
   if (method === "GET" && url.startsWith("/api/bus/history")) {
     var busN = parseInt((url.split("?n=")[1]) || "50", 10);
@@ -4216,6 +4233,26 @@ server.listen(PORT, "0.0.0.0", function() {
     }
   } catch(e) {
     console.log("  [CYCLE] Erreur dÃ©marrage cron : " + e.message);
+  }
+
+  // ── Purge auto quotidienne (si activée) ─────────────────────────────────────
+  if (startupSettings.purge && startupSettings.purge.enabled !== false) {
+    // Purge toutes les 24h (première exécution après 1h pour laisser le serveur démarrer)
+    setTimeout(function() {
+      try {
+        var report = purge.run();
+        console.log("[PURGE] Auto — " + report.totalDeleted + " fichiers supprimés");
+      } catch(e) { console.error("[PURGE] Erreur auto:", e.message); }
+    }, 60 * 60 * 1000);
+    setInterval(function() {
+      try {
+        var report = purge.run();
+        console.log("[PURGE] Auto — " + report.totalDeleted + " fichiers supprimés");
+      } catch(e) { console.error("[PURGE] Erreur auto:", e.message); }
+    }, 24 * 60 * 60 * 1000);
+    console.log("  🗑️ Purge auto : active (rétention " + (startupSettings.purge.retentionDays || 30) + "j)");
+  } else {
+    console.log("  🗑️ Purge auto : désactivée");
   }
 
   // ── EVENT BUS — Bridge SSE + câblage réactif inter-agents ──────────────────

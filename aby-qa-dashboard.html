@@ -3746,6 +3746,26 @@
           </div>
         </div>
       </div>
+      <!-- Purge auto -->
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
+        <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">PURGE AUTOMATIQUE</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer">
+            <input type="checkbox" id="cfg-purge-enabled" checked style="accent-color:var(--cyan);width:15px;height:15px;flex-shrink:0">
+            <span style="font-size:13px;color:var(--text)">Nettoyer automatiquement les fichiers anciens (quotidien)</span>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span style="font-size:12px;color:var(--text2);width:110px;flex-shrink:0">Rétention</span>
+            <input type="number" id="cfg-purge-days" value="30" min="7" max="365" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 10px;font-size:12px;width:60px;font-family:var(--mono)">
+            <span style="font-size:11px;color:var(--text3)">jours (screenshots, rapports, cache, logs)</span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:6px">
+            <button onclick="purgePreview()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer">Aperçu</button>
+            <button onclick="purgeRun()" style="background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);color:#ef4444;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer">Purger maintenant</button>
+          </div>
+          <div id="purge-result" style="display:none;font-size:12px;color:var(--text2);background:var(--bg3);border-radius:6px;padding:10px;margin-top:4px;font-family:var(--mono);white-space:pre-wrap"></div>
+        </div>
+      </div>
       <!-- Retry automatique -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:14px">RETRY AUTOMATIQUE</div>
@@ -9566,6 +9586,12 @@ function loadSettingsPanel() {
       // Version courante
       var cfgRel = document.getElementById("cfg-latest-release");
       if (cfgRel) cfgRel.value = s.currentRelease || "v1.25.0";
+      // Purge settings
+      var pg = s.purge || {};
+      var cfgPurgeEnabled = document.getElementById("cfg-purge-enabled");
+      var cfgPurgeDays    = document.getElementById("cfg-purge-days");
+      if (cfgPurgeEnabled) cfgPurgeEnabled.checked = pg.enabled !== false;
+      if (cfgPurgeDays) cfgPurgeDays.value = pg.retentionDays || 30;
       // Retry settings
       var rt = s.retry || {};
       var cfgRetryEnabled = document.getElementById("cfg-retry-enabled");
@@ -9595,6 +9621,36 @@ function loadSettingsPanel() {
       loadSessionCards();
     })
     .catch(function() {});
+}
+
+function purgePreview() {
+  var el = document.getElementById("purge-result");
+  if (el) { el.style.display = "block"; el.textContent = "Analyse en cours..."; }
+  fetch("/api/purge/preview").then(function(r){return r.json()}).then(function(d) {
+    if (!d.targets || d.targets.length === 0) {
+      if (el) el.textContent = "Aucun fichier éligible à la purge.";
+      return;
+    }
+    var txt = "Fichiers éligibles : " + d.totalEligible + "\n";
+    d.targets.forEach(function(t) {
+      txt += "  " + t.dir + " : " + t.eligible + " fichiers (" + t.sizeMB + " MB, >" + t.retentionDays + "j)\n";
+    });
+    if (el) el.textContent = txt;
+  }).catch(function(e) { if (el) el.textContent = "Erreur : " + e.message; });
+}
+function purgeRun() {
+  if (!confirm("Supprimer les fichiers anciens ? Cette action est irréversible.")) return;
+  var el = document.getElementById("purge-result");
+  if (el) { el.style.display = "block"; el.textContent = "Purge en cours..."; }
+  fetch("/api/purge/run", {method:"POST"}).then(function(r){return r.json()}).then(function(d) {
+    var txt = "Purge terminée — " + d.totalDeleted + " fichiers supprimés, " + d.totalSkipped + " conservés\n";
+    d.targets.forEach(function(t) {
+      if (t.deleted > 0) txt += "  " + t.dir + " : " + t.deleted + " supprimés\n";
+    });
+    if (d.totalErrors > 0) txt += "  Erreurs : " + d.totalErrors;
+    if (el) el.textContent = txt;
+    showToast("Purge : " + d.totalDeleted + " fichiers supprimés", "🗑️");
+  }).catch(function(e) { if (el) el.textContent = "Erreur : " + e.message; });
 }
 
 function resetSettingsPanel() {
@@ -9681,6 +9737,10 @@ function saveSettingsPanel() {
       intervalMin: parseInt((polInterval && polInterval.value) || "5", 10)
     },
     currentRelease: (cfgRel && cfgRel.value.trim()) || "v1.25.0",
+    purge: {
+      enabled: !!(document.getElementById("cfg-purge-enabled") && document.getElementById("cfg-purge-enabled").checked),
+      retentionDays: parseInt((document.getElementById("cfg-purge-days") && document.getElementById("cfg-purge-days").value) || "30", 10)
+    },
     retry: {
       enabled: !!(document.getElementById("cfg-retry-enabled") && document.getElementById("cfg-retry-enabled").checked),
       maxPerTicket: parseInt((document.getElementById("cfg-retry-max") && document.getElementById("cfg-retry-max").value) || "1", 10)
