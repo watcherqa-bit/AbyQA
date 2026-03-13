@@ -655,7 +655,7 @@
     background: rgba(59,111,255,.05);
   }
 
-  /* ── SOURCE TILES ────────────────────────────────────────── */
+  /* ── SOURCE TILES (legacy — kept for any remaining usage) ── */
   .source-tile {
     border: 1px solid var(--border2);
     border-radius: 12px;
@@ -672,6 +672,80 @@
   .source-tile .source-label { font-size: 12px; font-weight: 700; color: var(--text); }
   .source-tile .source-hint  { font-size: 10px; color: var(--text3); margin-top: 3px; font-family: var(--mono); }
   .source-tile.active .source-label { color: var(--blue); }
+
+  /* ── SMART INPUT ────────────────────────────────────────── */
+  .smart-input-card {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .smart-input-card:focus-within { border-color: var(--blue); }
+  .smart-input-textarea {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 16px;
+    resize: none;
+    outline: none;
+    line-height: 1.6;
+    box-sizing: border-box;
+  }
+  .smart-input-textarea::placeholder { color: var(--text3); }
+  .smart-input-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .smart-input-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border2);
+    color: var(--text3);
+    background: transparent;
+    transition: all .25s;
+    white-space: nowrap;
+  }
+  .smart-input-badge[data-type="url"]      { color: var(--cyan);   border-color: rgba(0,212,255,.35);  background: rgba(0,212,255,.08); }
+  .smart-input-badge[data-type="jira-key"] { color: var(--blue);   border-color: rgba(59,111,255,.35); background: rgba(59,111,255,.08); }
+  .smart-input-badge[data-type="enriched"] { color: var(--green);  border-color: rgba(0,232,122,.35);  background: rgba(0,232,122,.08); }
+  .smart-input-badge[data-type="xml"]      { color: var(--orange); border-color: rgba(255,149,0,.35);  background: rgba(255,149,0,.08); }
+  .smart-input-badge[data-type="spec"]     { color: var(--purple); border-color: rgba(168,85,247,.35); background: rgba(168,85,247,.08); }
+  .smart-input-badge[data-type="text"]     { color: var(--text2);  border-color: var(--border2);       background: rgba(255,255,255,.04); }
+  .smart-input-badge[data-type="bug"]      { color: var(--red);    border-color: rgba(255,59,92,.35);  background: rgba(255,59,92,.08); }
+  .smart-input-file-info {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 11px;
+    color: var(--green);
+    font-family: var(--mono);
+    border-top: 1px solid var(--border);
+    background: rgba(0,232,122,.04);
+  }
+  .smart-input-file-info.visible { display: flex; }
+  .smart-input-ticket-info {
+    display: none;
+    padding: 10px 14px;
+    font-size: 12px;
+    border-top: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .smart-input-ticket-info.visible { display: block; }
 
   /* ── CHECK PILLS ─────────────────────────────────────────── */
   .check-pill {
@@ -1871,162 +1945,37 @@
         </div>
       </div>
 
-      <!-- ÉTAPE 1 : SOURCE -->
+      <!-- ÉTAPE 1 : SOURCE (Smart Input) -->
       <div class="form-card">
-        <div class="form-card-title">📥 ÉTAPE 1 — SOURCE DU TICKET</div>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:4px" id="sourceGrid">
-          <div class="source-tile active" id="src-xml" onclick="selectSource('xml')">
-            <div class="source-icon">📄</div>
-            <div class="source-label">US Jira</div>
-            <div class="source-hint">Export XML</div>
+        <div class="form-card-title">📥 SOURCE</div>
+        <div class="smart-input-card" id="pipe-smart-card">
+          <textarea class="smart-input-textarea" id="pipe-smart-input" rows="4"
+            placeholder="Colle ici ta source…&#10;• URL(s) : https://sophie.safran-group.com/fr&#10;• Clé Jira : SAFWBST-2624&#10;• Texte libre : Tester le formulaire de contact&#10;• Ou glisse un fichier XML / PDF"
+            oninput="pipeDetectSource()"
+            onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();previewPipeline()}"></textarea>
+          <div class="smart-input-file-info" id="pipe-smart-file-info">
+            <span id="pipe-smart-file-name"></span>
+            <button onclick="pipeClearFile()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:auto">✕ Retirer</button>
           </div>
-          <div class="source-tile" id="src-spec" onclick="selectSource('spec')">
-            <div class="source-icon">📑</div>
-            <div class="source-label">Spec / PDF</div>
-            <div class="source-hint">Document texte</div>
+          <div class="smart-input-ticket-info" id="pipe-smart-ticket-info">
+            <div id="pipe-smart-ticket-title" style="font-weight:600"></div>
+            <div id="pipe-smart-ticket-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:3px"></div>
           </div>
-          <div class="source-tile" id="src-manual" onclick="selectSource('manual')">
-            <div class="source-icon">✏️</div>
-            <div class="source-label">Formule manuelle</div>
-            <div class="source-hint">Étant donné…</div>
-          </div>
-          <div class="source-tile" id="src-bug" onclick="selectSource('bug')">
-            <div class="source-icon">🐛</div>
-            <div class="source-label">Correctif bug</div>
-            <div class="source-hint">Clé Jira existant</div>
-          </div>
-          <div class="source-tile" id="src-command" onclick="selectSource('command')">
-            <div class="source-icon">🤖</div>
-            <div class="source-label">Commande IA</div>
-            <div class="source-hint">Saisie libre</div>
+          <div class="smart-input-footer">
+            <div class="smart-input-badge" id="pipe-smart-badge" data-type="">En attente</div>
+            <button class="chat-tool-btn" onclick="document.getElementById('pipe-smart-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
+            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira">🎫 Ticket</button>
+            <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
+            <input type="file" id="pipe-smart-file-input" accept=".xml,.rss,.pdf,.txt,.md,.docx,.csv,.html,.json" style="display:none" onchange="pipeHandleFile(this)">
+            <div style="flex:1"></div>
+            <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → prévisualiser</span>
           </div>
         </div>
-
-        <!-- Zone XML -->
-        <div id="zone-xml" class="source-zone" style="margin-top:16px">
-          <div class="upload-zone" id="xmlZone">
-            <input type="file" accept=".xml,.rss" id="xmlFile" onchange="handleXML(this)">
-            <div class="upload-icon">📄</div>
-            <div class="upload-text"><strong>Cliquer ou glisser</strong> un export XML Jira</div>
-            <div class="upload-hint">Depuis Jira → ••• → Exporter → XML</div>
-          </div>
-
-          <!-- Derniers imports XML -->
-          <div id="pipe-recent-imports" style="margin-top:12px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-              <div style="font-family:var(--mono);font-size:9px;color:var(--text3);letter-spacing:.1em">DERNIERS IMPORTS</div>
-              <button onclick="clearXMLImports()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:9px;font-family:var(--mono);padding:0" title="Effacer l'historique">✕ Effacer</button>
-            </div>
-            <div id="pipe-imports-list">
-              <div style="color:var(--text3);font-size:11px;text-align:center;padding:10px 0">Aucun import récent</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone Spec -->
-        <div id="zone-spec" class="source-zone" style="display:none;margin-top:16px">
-          <div class="upload-zone" id="specZone">
-            <input type="file" accept=".pdf,.txt,.md,.docx" id="specFile" onchange="handleSpec(this)">
-            <div class="upload-icon">📑</div>
-            <div class="upload-text"><strong>Cliquer ou glisser</strong> une spec (PDF, TXT, MD)</div>
-            <div class="upload-hint">L'IA analyse et génère les tickets correspondants</div>
-          </div>
-          <div style="margin-top:12px">
-            <label>Titre du ticket <span style="color:var(--text3);font-size:10px">(obligatoire)</span></label>
-            <input type="text" id="spec-title" placeholder="Ex: Tests de la page Homepage après refonte visuelle">
-          </div>
-        </div>
-
-        <!-- Zone Formule manuelle -->
-        <div id="zone-manual" class="source-zone" style="display:none;margin-top:16px">
-          <div style="display:flex;flex-direction:column;gap:12px">
-            <div>
-              <label style="display:flex;align-items:center;gap:8px">
-                <span style="background:rgba(59,111,255,.15);color:var(--blue);font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;white-space:nowrap">Étant donné</span>
-                <span style="font-size:11px;color:var(--text3)">le contexte initial</span>
-              </label>
-              <textarea id="manual-given" rows="2" placeholder="Ex: qu'un visiteur accède à la homepage sur desktop Chrome…"></textarea>
-            </div>
-            <div>
-              <label style="display:flex;align-items:center;gap:8px">
-                <span style="background:rgba(0,232,122,.15);color:var(--green);font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;white-space:nowrap">Lorsque</span>
-                <span style="font-size:11px;color:var(--text3)">l'action déclenchante</span>
-              </label>
-              <textarea id="manual-when" rows="2" placeholder="Ex: la page est entièrement chargée et le CSS v1.25 est déployé…"></textarea>
-            </div>
-            <div>
-              <label style="display:flex;align-items:center;gap:8px">
-                <span style="background:rgba(255,189,46,.15);color:var(--orange);font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;white-space:nowrap">Alors</span>
-                <span style="font-size:11px;color:var(--text3)">le résultat attendu</span>
-              </label>
-              <textarea id="manual-then" rows="2" placeholder="Ex: aucune régression visuelle n'est constatée par rapport à la prod…"></textarea>
-            </div>
-            <div class="form-row">
-              <div>
-                <label>Titre du ticket</label>
-                <input type="text" id="manual-title" placeholder="Ex: Vérification CSS après mise à jour du process">
-              </div>
-              <div>
-                <label>Type de ticket à générer</label>
-                <select id="manual-type">
-                  <option value="test">🎫 Ticket TEST</option>
-                  <option value="bug">🐛 Ticket BUG</option>
-                  <option value="us">📋 User Story</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Zone Bug existant -->
-        <div id="zone-bug" class="source-zone" style="display:none;margin-top:16px">
-          <div class="form-row">
-            <div>
-              <label>Clé du ticket Bug Jira</label>
-              <div style="display:flex;gap:8px">
-                <input type="text" id="bug-key" placeholder="Ex: SAFWBST-2624" style="flex:1">
-                <button class="btn btn-secondary" onclick="loadBugTicket()" style="flex-shrink:0">🔍 Charger</button>
-              </div>
-            </div>
-            <div>
-              <label>Action</label>
-              <select id="bug-action">
-                <option value="create-test">Créer ticket TEST à partir du bug</option>
-                <option value="update-bug">Ajouter résultat attendu / obtenu</option>
-                <option value="close-bug">Marquer corrigé + créer TEST vérif</option>
-              </select>
-            </div>
-          </div>
-          <div id="bugLoaded" style="display:none;margin-top:12px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:12px 16px">
-            <div style="font-size:12px;font-weight:600;color:var(--text)" id="bugLoadedTitle"></div>
-            <div style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:4px" id="bugLoadedMeta"></div>
-          </div>
-        </div>
-
-        <!-- Zone Commande IA -->
-        <div id="zone-command" class="source-zone" style="display:none;margin-top:16px">
-          <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;overflow:hidden">
-            <textarea id="ops-input" rows="5"
-              placeholder="Décris ta demande…&#10;Ex: &quot;Teste la page news sur Sophie en Chromium&quot;&#10;    &quot;Crée un ticket bug formulaire contact SAFWBST-123&quot;&#10;    &quot;Lance un audit CSS sur Paulo&quot;&#10;&#10;Ctrl+Entrée pour analyser"
-              style="width:100%;background:transparent;border:none;color:var(--text);font-family:inherit;font-size:14px;padding:16px;resize:none;outline:none;line-height:1.6;box-sizing:border-box"
-              onkeydown="opsInputKeydown(event)"></textarea>
-            <div id="ops-context-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 8px;min-height:0"></div>
-            <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--bg3)">
-              <button class="chat-tool-btn" onclick="document.getElementById('ops-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
-              <button class="chat-tool-btn" onclick="document.getElementById('ops-screenshot-input').click()" title="Screenshot">🖼 Screenshot</button>
-              <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira">🎫 Ticket</button>
-              <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement en direct" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
-              <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
-              <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
-              <div style="flex:1"></div>
-              <button id="ops-send-btn" class="btn btn-primary" onclick="opsAnalyze()" style="padding:8px 22px;font-size:13px">🔍 Analyser</button>
-            </div>
-          </div>
-          <!-- Tickets référencés -->
-          <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
-          <!-- Picker enrichis -->
-          <div id="ops-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:240px;overflow-y:auto;margin-top:10px"></div>
-        </div>
+        <!-- Hidden refs for backward compat -->
+        <div id="ops-tickets-loaded" style="display:flex;flex-direction:column;gap:8px;margin-top:10px"></div>
+        <div id="ops-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:240px;overflow-y:auto;margin-top:10px"></div>
+        <input type="file" id="ops-file-input" accept=".xml,.pdf,.csv,.txt,.html,.json" style="display:none" onchange="opsAttachFile(this)">
+        <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
       </div>
 
       <!-- ÉTAPE 2 : CONFIG -->
@@ -2873,93 +2822,34 @@
         </div>
       </div>
 
-      <!-- SOURCE TILES -->
+      <!-- SOURCE (Smart Input) -->
       <div class="form-card">
-        <div class="form-card-title">📥 SOURCE DE LA CIBLE</div>
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px">
-          <div class="source-tile active" id="pwd-src-url" onclick="selectPWDSource('url')">
-            <div class="source-icon">🔗</div>
-            <div class="source-label">URL(s)</div>
-            <div class="source-hint">Saisie directe</div>
+        <div class="form-card-title">📥 CIBLE DU TEST</div>
+        <div class="smart-input-card" id="pwd-smart-card">
+          <textarea class="smart-input-textarea" id="pwd-smart-input" rows="3"
+            placeholder="Colle ici ta cible…&#10;• URL(s) : https://sophie.safran-group.com/fr&#10;• Clé Jira : SAFWBST-2706&#10;• Texte : Tester le parcours login&#10;• Ou glisse un fichier XML"
+            oninput="pwdDetectSource()"
+            onkeydown="if(event.ctrlKey&&event.key==='Enter'){event.preventDefault();launchPWDTest()}"></textarea>
+          <div class="smart-input-file-info" id="pwd-smart-file-info">
+            <span id="pwd-smart-file-name"></span>
+            <button onclick="pwdClearFile()" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px;margin-left:auto">✕ Retirer</button>
           </div>
-          <div class="source-tile" id="pwd-src-jira-key" onclick="selectPWDSource('jira-key')">
-            <div class="source-icon">🎫</div>
-            <div class="source-label">Clé Jira</div>
-            <div class="source-hint">Ticket existant</div>
+          <div class="smart-input-ticket-info" id="pwd-smart-ticket-info">
+            <div id="pwd-smart-ticket-title" style="font-weight:600"></div>
+            <div id="pwd-smart-ticket-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:3px"></div>
           </div>
-          <div class="source-tile" id="pwd-src-enriched" onclick="selectPWDSource('enriched')">
-            <div class="source-icon">📂</div>
-            <div class="source-label">Enrichi</div>
-            <div class="source-hint">Tests déjà générés</div>
-          </div>
-          <div class="source-tile" id="pwd-src-xml" onclick="selectPWDSource('xml')">
-            <div class="source-icon">📄</div>
-            <div class="source-label">XML Jira</div>
-            <div class="source-hint">Export Jira</div>
-          </div>
-          <div class="source-tile" id="pwd-src-text" onclick="selectPWDSource('text')">
-            <div class="source-icon">💬</div>
-            <div class="source-label">Texte libre</div>
-            <div class="source-hint">Description naturelle</div>
+          <div id="pwd-smart-enriched-summary" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,232,122,.03)"></div>
+          <div class="smart-input-footer">
+            <div class="smart-input-badge" id="pwd-smart-badge" data-type="">En attente</div>
+            <button class="chat-tool-btn" onclick="document.getElementById('pwd-smart-file-input').click()" title="Fichier XML">📎 Fichier</button>
+            <button class="chat-tool-btn" onclick="openEnrichedPickerPWD()" title="Choisir un ticket enrichi">📂 Enrichis</button>
+            <input type="file" id="pwd-smart-file-input" accept=".xml,.rss" style="display:none" onchange="pwdHandleFile(this)">
+            <div style="flex:1"></div>
+            <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → lancer</span>
           </div>
         </div>
-
-        <!-- Zone URL -->
-        <div id="pwd-zone-url">
-          <label style="display:flex;align-items:center;gap:8px">
-            URL(s) à tester
-            <span style="color:var(--text3);font-size:10px">Sépare plusieurs URLs par une virgule</span>
-            <button onclick="openTicketUrlPicker('pwd-urls','full')" style="margin-left:auto;background:rgba(0,120,255,.1);border:1px solid rgba(0,120,255,.3);color:var(--blue);border-radius:5px;padding:3px 10px;cursor:pointer;font-size:11px;white-space:nowrap">📎 Depuis ticket</button>
-          </label>
-          <textarea id="pwd-urls" rows="2" placeholder="https://sophie.safran-group.com/fr&#10;https://sophie.safran-group.com/fr/news, https://sophie.safran-group.com/fr/contact"></textarea>
-        </div>
-
-        <!-- Zone Clé Jira -->
-        <div id="pwd-zone-jira-key" style="display:none">
-          <label>Clé du ticket Jira</label>
-          <div style="display:flex;gap:8px">
-            <input type="text" id="pwd-jira-key" placeholder="Ex: SAFWBST-2706" style="flex:1" oninput="this.value=this.value.toUpperCase();validateJiraInput(this)">
-            <button class="btn btn-secondary" onclick="checkPWDTicket()">🔍 Vérifier</button>
-          </div>
-          <div id="pwd-ticket-info" style="display:none;margin-top:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 14px">
-            <div id="pwd-ticket-title" style="font-size:13px;font-weight:600"></div>
-            <div id="pwd-ticket-meta" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:3px"></div>
-          </div>
-        </div>
-
-        <!-- Zone Enrichi -->
-        <div id="pwd-zone-enriched" style="display:none">
-          <label>Clé du ticket enrichi</label>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input type="text" id="pwd-enriched-key" placeholder="Ex: SAFWBST-2699"
-              style="flex:1;text-transform:uppercase"
-              oninput="this.value=this.value.toUpperCase()"
-              onkeydown="if(event.key==='Enter')loadEnrichedForPlaywright(this.value.trim())">
-            <button class="btn btn-secondary" onclick="loadEnrichedForPlaywright(document.getElementById('pwd-enriched-key').value.trim())">📂 Charger</button>
-            <button class="btn btn-secondary" onclick="openEnrichedPickerPWD()" title="Choisir parmi les tickets enrichis">☰</button>
-          </div>
-          <!-- Picker liste enrichis -->
-          <div id="pwd-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:220px;overflow-y:auto;margin-bottom:10px"></div>
-          <!-- Résumé du ticket chargé -->
-          <div id="pwd-enriched-summary" style="display:none"></div>
-        </div>
-
-        <!-- Zone XML -->
-        <div id="pwd-zone-xml" style="display:none">
-          <label>Fichier XML Jira</label>
-          <div class="upload-zone" id="pwdXmlZone">
-            <input type="file" accept=".xml,.rss" onchange="handlePWDXml(this)">
-            <div class="upload-icon">📄</div>
-            <div class="upload-text"><strong>Dépose ou clique</strong> pour charger le XML</div>
-            <div class="upload-hint">.xml · .rss</div>
-          </div>
-        </div>
-
-        <!-- Zone Texte libre -->
-        <div id="pwd-zone-text" style="display:none">
-          <label>Description de ce que tu veux tester</label>
-          <textarea id="pwd-text" rows="3" placeholder="Ex: Tester le parcours login — email valide, redirection dashboard, erreur si mauvais mdp. Vérifier les pages News et Contact."></textarea>
-        </div>
+        <!-- Hidden refs for backward compat -->
+        <div id="pwd-enriched-picker" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;max-height:220px;overflow-y:auto;margin-top:10px"></div>
       </div>
 
       <!-- CONFIG : ENV / DEVICES / BROWSERS -->
@@ -5342,54 +5232,120 @@ function renderRecentImports() {
 // ── SÉLECTION SOURCE ──────────────────────────────────────────────────────────
 function selectSource(src) {
   currentSource = src;
-  // Toggle tiles
-  document.querySelectorAll(".source-tile").forEach(function(t) { t.classList.remove("active"); });
-  var tile = document.getElementById("src-" + src);
-  if (tile) tile.classList.add("active");
-  // Toggle zones
-  ["xml","spec","manual","bug","command"].forEach(function(z) {
-    var el = document.getElementById("zone-" + z);
-    if (el) el.style.display = z === src ? "block" : "none";
-  });
-  // Afficher le stepper IA quand source = command
-  var stepper = document.getElementById("ops-stepper");
-  if (stepper) stepper.style.display = src === "command" ? "flex" : "none";
-  log("logPipeline", "Source sélectionnée : " + src, "log-dim");
+  // Update smart badge
+  var badge = document.getElementById("pipe-smart-badge");
+  if (badge) {
+    var labels = { xml:"XML Jira", spec:"Spec / PDF", manual:"Texte libre", bug:"Clé Jira", command:"Commande IA", "jira-key":"Clé Jira", text:"Texte libre", url:"URL(s)" };
+    badge.textContent = labels[src] || src;
+    badge.setAttribute("data-type", src === "bug" ? "jira-key" : src === "manual" ? "text" : src === "command" ? "text" : src);
+  }
+  log("logPipeline", "Source détectée : " + src, "log-dim");
 }
 
-function handleSpec(input) {
-  specFile = input.files[0];
-  if (!specFile) return;
-  var zone = document.getElementById("specZone");
-  if (zone) {
-    zone.style.borderColor = "var(--green)";
-    zone.querySelector(".upload-text").innerHTML = "<strong style='color:var(--green)'>✓ " + specFile.name + "</strong>";
-    zone.querySelector(".upload-hint").textContent = (specFile.size/1024).toFixed(1) + " KB";
-  }
-  log("logPipeline", "Spec chargée : " + specFile.name, "log-info");
+// ── SMART INPUT : PIPELINE ──────────────────────────────────────────────────
+var _pipeSmartFile = null;
+var _pipeSmartDebounce = null;
+
+function detectSourceType(text) {
+  text = (text || "").trim();
+  if (!text) return null;
+  // XML content
+  if (/^<\?xml/i.test(text) || /^<rss/i.test(text) || /^<feed/i.test(text)) return "xml";
+  // Jira key(s) — one or multiple
+  if (/^[A-Z][A-Z0-9]+-\d+(\s*[,;\n]\s*[A-Z][A-Z0-9]+-\d+)*\s*$/i.test(text)) return "jira-key";
+  // URL(s)
+  var lines = text.split(/[\n,]+/).filter(function(l) { return l.trim(); });
+  if (lines.length > 0 && lines.every(function(l) { return /^https?:\/\//i.test(l.trim()); })) return "url";
+  // Default: free text
+  return "text";
 }
+
+function pipeDetectSource() {
+  clearTimeout(_pipeSmartDebounce);
+  _pipeSmartDebounce = setTimeout(function() {
+    var input = document.getElementById("pipe-smart-input");
+    var text = input ? input.value : "";
+    // File takes priority
+    if (_pipeSmartFile) return;
+    var type = detectSourceType(text);
+    if (!type) {
+      selectSource("command");
+      var badge = document.getElementById("pipe-smart-badge");
+      if (badge) { badge.textContent = "En attente"; badge.setAttribute("data-type", ""); }
+      return;
+    }
+    // Map to pipeline source types
+    if (type === "jira-key") {
+      selectSource("bug");
+      // Auto-fetch ticket info
+      var key = text.trim().toUpperCase().split(/[\s,;\n]+/)[0];
+      _pipeFetchTicketInfo(key);
+    } else if (type === "url") {
+      selectSource("command"); // URLs go through IA command
+      currentSource = "url";
+      var badge2 = document.getElementById("pipe-smart-badge");
+      if (badge2) { badge2.textContent = "URL(s)"; badge2.setAttribute("data-type", "url"); }
+    } else {
+      selectSource("command");
+      currentSource = "text";
+      var badge3 = document.getElementById("pipe-smart-badge");
+      if (badge3) { badge3.textContent = "Texte libre"; badge3.setAttribute("data-type", "text"); }
+    }
+  }, 300);
+}
+
+function _pipeFetchTicketInfo(key) {
+  var info = document.getElementById("pipe-smart-ticket-info");
+  if (!info) return;
+  api("/api/jira-ticket/" + key).then(function(data) {
+    if (!data || data.error) { info.classList.remove("visible"); return; }
+    var title = document.getElementById("pipe-smart-ticket-title");
+    var meta = document.getElementById("pipe-smart-ticket-meta");
+    if (title) title.textContent = data.summary || key;
+    if (meta) meta.textContent = (data.status || "") + " · " + (data.issuetype || "");
+    info.classList.add("visible");
+    loadedBugKey = key;
+    loadedBugData = data;
+  }).catch(function() {
+    loadedBugKey = key;
+    info.classList.remove("visible");
+  });
+}
+
+function pipeHandleFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  _pipeSmartFile = file;
+  var ext = file.name.split(".").pop().toLowerCase();
+  var type = (ext === "xml" || ext === "rss") ? "xml" : "spec";
+  if (type === "xml") { xmlFile = file; } else { specFile = file; }
+  selectSource(type);
+  var fileInfo = document.getElementById("pipe-smart-file-info");
+  var fileName = document.getElementById("pipe-smart-file-name");
+  if (fileInfo) fileInfo.classList.add("visible");
+  if (fileName) fileName.textContent = "📎 " + file.name + " (" + (file.size/1024).toFixed(1) + " KB)";
+  log("logPipeline", "Fichier chargé : " + file.name, "log-info");
+}
+
+function pipeClearFile() {
+  _pipeSmartFile = null;
+  xmlFile = null;
+  specFile = null;
+  var fileInfo = document.getElementById("pipe-smart-file-info");
+  if (fileInfo) fileInfo.classList.remove("visible");
+  pipeDetectSource();
+}
+
+// Legacy compat
+function handleSpec(input) { pipeHandleFile(input); }
+function handleXML(input) { pipeHandleFile(input); }
 
 function loadBugTicket() {
-  var key = document.getElementById("bug-key").value.trim().toUpperCase();
+  var rawVal = (document.getElementById("pipe-smart-input") || {}).value || "";
+  var keyMatch = rawVal.trim().toUpperCase().match(/[A-Z][A-Z0-9]+-\d+/);
+  var key = keyMatch ? keyMatch[0] : "";
   if (!key) { showToast("Saisis une clé Jira", "⚠️"); return; }
-  api("/api/jira-ticket/" + key)
-    .then(function(data) {
-      if (data.error) { showToast("Ticket introuvable", "❌"); return; }
-      loadedBugKey = key;
-      loadedBugData = data;
-      var el = document.getElementById("bugLoaded");
-      if (el) {
-        el.style.display = "block";
-        document.getElementById("bugLoadedTitle").textContent = key + " — " + data.summary;
-        var wfB = wfInfo(data.status || "");
-        document.getElementById("bugLoadedMeta").innerHTML = (data.type || "") + ' · <span style="color:' + wfB.color + ';font-weight:600">' + wfB.label + '</span>' + (wfB.isQA ? ' 🔬' : "");
-      }
-      showToast("Ticket chargé : " + key, "✅");
-    })
-    .catch(function() {
-      loadedBugKey = key;
-      showToast("Clé enregistrée : " + key, "✅");
-    });
+  _pipeFetchTicketInfo(key);
 }
 
 // ── CONFIG HELPERS ────────────────────────────────────────────────────────────
@@ -5511,16 +5467,28 @@ function runPlaywrightAuto() {
 var pendingPayload = null; // stocke le payload validé en prévisualisation
 
 function previewPipeline() {
-  // Valider la source selon le mode actif
-  if (currentSource === "xml" && !xmlFile) { showToast("Charge un fichier XML", "⚠️"); return; }
-  if (currentSource === "spec" && !specFile && !document.getElementById("spec-title").value.trim()) { showToast("Charge une spec ou saisit un titre", "⚠️"); return; }
-  if (currentSource === "manual") {
-    var g=document.getElementById("manual-given").value.trim();
-    var w=document.getElementById("manual-when").value.trim();
-    var t=document.getElementById("manual-then").value.trim();
-    if (!g&&!w&&!t) { showToast("Remplis au moins un champ Étant donné / Lorsque / Alors", "⚠️"); return; }
+  var smartText = (document.getElementById("pipe-smart-input") || {}).value || "";
+  smartText = smartText.trim();
+
+  // Sync smart input → legacy variables based on detected source
+  if (currentSource === "xml" && !xmlFile && !_pipeSmartFile) { showToast("Charge un fichier XML via 📎", "⚠️"); return; }
+  if (currentSource === "spec" && !specFile && !_pipeSmartFile) { showToast("Charge un fichier spec via 📎", "⚠️"); return; }
+  if (currentSource === "bug" || currentSource === "jira-key") {
+    var detectedKey = smartText.toUpperCase().split(/[\s,;\n]+/)[0];
+    if (!detectedKey || !/^[A-Z]+-\d+$/.test(detectedKey)) { showToast("Saisis une clé Jira valide", "⚠️"); return; }
+    loadedBugKey = detectedKey;
   }
-  if (currentSource === "bug" && !loadedBugKey) { showToast("Charge un ticket Bug d'abord", "⚠️"); return; }
+  if ((currentSource === "text" || currentSource === "command" || currentSource === "url") && !smartText) {
+    showToast("Saisis une demande ou des URLs", "⚠️"); return;
+  }
+
+  // Populate legacy fields for backward compat with buildAndShowPreview
+  if (currentSource === "bug") {
+    var bugKeyEl = document.getElementById("bug-key");
+    if (bugKeyEl) bugKeyEl.value = loadedBugKey;
+  }
+  // Store smart text for command/text/manual modes
+  window._pipeSmartText = smartText;
 
   // Valider la configuration
   var envs = getSelectedEnvs();
@@ -5630,41 +5598,24 @@ function buildAndShowPreview(xmlParsed) {
     }
   }
 
-  else if (src === "manual") {
-    var given = document.getElementById("manual-given").value.trim();
-    var when  = document.getElementById("manual-when").value.trim();
-    var then  = document.getElementById("manual-then").value.trim();
-    var mTitle= document.getElementById("manual-title").value.trim() || "Ticket QA — Formule manuelle";
-    var mType = document.getElementById("manual-type").value;
-    var typeLabels = { test:"TEST", bug:"BUG", us:"User Story" };
-    var typeColors = { test:"#3b6fff", bug:"#ff5f56", us:"#a855f7" };
-
-    // Générer AC depuis Étant donné / Lorsque / Alors
-    var autoAC = (given && when && then)
-      ? 'AC1 - Étant donné ' + given.substring(0,80) + '\n       Lorsque ' + when.substring(0,80) + '\n       Alors ' + then.substring(0,80) + '\nAC2 - \nAC3 - '
-      : 'AC1 - \nAC2 - \nAC3 - ';
-    var autoCoverage = mType === 'test'
-      ? '• Cas nominal : ' + (then||'résultat attendu') + '\n• Cas limite\n• Cas d\'erreur'
-      : '• Cas nominal\n• Cas aux limites\n• Cas d\'erreur\n• Cas de sécurité';
-
+  else if (src === "manual" || src === "text" || src === "command" || src === "url") {
+    // Smart input: tout passe par le texte libre → l'IA génère les tickets
+    var smartTxt = window._pipeSmartText || "";
+    var mTitle = smartTxt.split("\n")[0].substring(0, 80) || "Demande IA";
     tickets.push({
-      type:mType, color:typeColors[mType]||'#3b6fff',
-      key:'(nouveau)',
-      title:typeLabels[mType]+' — '+mTitle,
+      type:"test", color:"#3b6fff",
+      key:"(généré par l'IA)",
+      title:"TEST — " + mTitle,
       fields:[
-        { label:'Étant donné', key:'given', editable:true, value:given },
-        { label:'Lorsque',     key:'when',  editable:true, value:when  },
-        { label:'Alors',       key:'then',  editable:true, value:then  },
-        { label:'Critères d\'acceptation', key:'ac_manual', editable:true, value:autoAC },
-        { label:'Couverture de test',       key:'cov_manual',editable:true, value:autoCoverage },
-        { label:'Titre',   key:'title', editable:true, value:mTitle },
-        { label:'Release', key:'rel',   editable:false, value:release }
+        { label:"Demande", key:"demand", editable:true, value:smartTxt },
+        { label:"Instructions", key:"test_instr", editable:true, value:instructions },
+        { label:"Release", key:"rel", editable:false, value:release }
       ]
     });
   }
 
   else if (src === "spec") {
-    var specTitle = document.getElementById("spec-title").value.trim() || (specFile?specFile.name:"Spec");
+    var specTitle = specFile ? specFile.name : "Spec";
     tickets.push({
       type:"us", color:"#a855f7",
       key:"(nouveau)",
@@ -5690,7 +5641,7 @@ function buildAndShowPreview(xmlParsed) {
   }
 
   else if (src === "bug") {
-    var bugAction = document.getElementById("bug-action").value;
+    var bugAction = (document.getElementById("bug-action") || {}).value || "create-test";
     var bugTitle  = loadedBugData ? loadedBugData.summary : loadedBugKey;
     var actionMap = {
       "create-test":"Créer un ticket TEST à partir du bug",
@@ -6914,7 +6865,7 @@ function opsGetConfig() {
 }
 
 function opsAnalyze() {
-  var text = ((document.getElementById('ops-input') || {}).value || '').trim();
+  var text = ((document.getElementById('pipe-smart-input') || {}).value || '').trim();
   if (!text && !opsContext.length && !opsTickets.length) {
     showToast('Décris ta demande ou joint un fichier', '⚠️'); return;
   }
@@ -7108,7 +7059,7 @@ function opsReset() {
   _opsProgressState = { total: 0, done: 0, pass: 0, fail: 0, running: false };
   opsLastIntent = null;
   opsSetStep(1);
-  var input = document.getElementById('ops-input');
+  var input = document.getElementById('pipe-smart-input');
   if (input) input.focus();
 }
 
@@ -8031,7 +7982,7 @@ function opsLaunchPlaywright(testKey) {
   showPanel('playwright-direct');
   var srcJira = document.getElementById('pwd-src-jira-key');
   if (srcJira) srcJira.click();
-  var pwdTicketInput = document.getElementById('pwd-jira-key');
+  var pwdTicketInput = document.getElementById('pwd-smart-input');
   if (pwdTicketInput) {
     pwdTicketInput.value = testKey;
     pwdTicketInput.dispatchEvent(new Event('input'));
@@ -8092,7 +8043,7 @@ function opsLaunchPlaywrightDirect(inline) {
   var srcJira = document.getElementById('pwd-src-jira-key');
   if (srcJira) srcJira.click();
 
-  var pwdInput = document.getElementById('pwd-jira-key');
+  var pwdInput = document.getElementById('pwd-smart-input');
   if (pwdInput) {
     pwdInput.value = ticket.key;
     pwdInput.dispatchEvent(new Event('input'));
@@ -9113,7 +9064,7 @@ function injectInspectContext() {
   (s.inputs  || []).slice(0, 8).forEach(function(i)  { lines.push('input ' + i.type + ' → ' + i.selector + (i.label ? ' (' + i.label + ')' : '')); });
   (s.buttons || []).slice(0, 6).forEach(function(b)  { lines.push('button → ' + b.selector + ' "' + b.text + '"'); });
   (s.forms   || []).slice(0, 3).forEach(function(f)  { lines.push('form → ' + f.selector + (f.action ? ' action=' + f.action : '')); });
-  var ta = document.getElementById('ops-input');
+  var ta = document.getElementById('pipe-smart-input');
   if (ta) {
     ta.value = (ta.value ? ta.value + '\n\n' : '') + lines.join('\n');
     ta.focus();
@@ -9191,7 +9142,7 @@ function loadFromTestQueue(key) {
 
       // Source → Jira key (prefer the generated jiraKey, fallback to sourceKey)
       selectPWDSource("jira-key");
-      var keyInput = document.getElementById("pwd-jira-key");
+      var keyInput = document.getElementById("pwd-smart-input");
       if (keyInput) keyInput.value = item.jiraKey || item.sourceKey || key;
 
       // Mode playwright depuis la stratégie
@@ -9257,22 +9208,111 @@ function selectPWDMode(mode) {
 // ── SOURCE ────────────────────────────────────────────────────────────────────
 function selectPWDSource(src) {
   pwdSource = src;
-  ["url","jira-key","enriched","xml","text"].forEach(function(s) {
-    var tile = document.getElementById("pwd-src-" + s);
-    var zone = document.getElementById("pwd-zone-" + s);
-    if (tile) {
-      if (s === src) {
-        tile.classList.add("active");
-        tile.style.borderColor = "var(--cyan)";
-      } else {
-        tile.classList.remove("active");
-        tile.style.borderColor = "var(--border2)";
-        tile.style.background  = "var(--bg3)";
-      }
+  // Update smart badge
+  var badge = document.getElementById("pwd-smart-badge");
+  if (badge) {
+    var labels = { url:"URL(s)", "jira-key":"Clé Jira", enriched:"Enrichi", xml:"XML Jira", text:"Texte libre" };
+    badge.textContent = labels[src] || src;
+    badge.setAttribute("data-type", src);
+  }
+}
+
+// ── SMART INPUT : PLAYWRIGHT DIRECT ─────────────────────────────────────────
+var _pwdSmartFile = null;
+var _pwdSmartDebounce = null;
+
+function pwdDetectSource() {
+  clearTimeout(_pwdSmartDebounce);
+  _pwdSmartDebounce = setTimeout(function() {
+    var input = document.getElementById("pwd-smart-input");
+    var text = input ? input.value : "";
+    if (_pwdSmartFile) return; // file takes priority
+    var type = detectSourceType(text);
+    if (!type) {
+      selectPWDSource("url");
+      var badge = document.getElementById("pwd-smart-badge");
+      if (badge) { badge.textContent = "En attente"; badge.setAttribute("data-type", ""); }
+      var ticketInfo = document.getElementById("pwd-smart-ticket-info");
+      if (ticketInfo) ticketInfo.classList.remove("visible");
+      return;
     }
-    if (zone) zone.style.display = s === src ? "block" : "none";
+    selectPWDSource(type === "jira-key" ? "jira-key" : type);
+    if (type === "jira-key") {
+      var key = text.trim().toUpperCase().split(/[\s,;\n]+/)[0];
+      _pwdFetchTicketInfo(key);
+    } else {
+      var ticketInfo2 = document.getElementById("pwd-smart-ticket-info");
+      if (ticketInfo2) ticketInfo2.classList.remove("visible");
+    }
+  }, 300);
+}
+
+function _pwdFetchTicketInfo(key) {
+  var info = document.getElementById("pwd-smart-ticket-info");
+  if (!info) return;
+  // Check if enriched version exists
+  api("/api/enriched/" + key).then(function(data) {
+    if (data && data.key && !data.error) {
+      selectPWDSource("enriched");
+      var summary = document.getElementById("pwd-smart-enriched-summary");
+      if (summary) {
+        var tests = data.proposedTests || [];
+        summary.style.display = "block";
+        summary.innerHTML = '<div style="font-size:11px;font-weight:600;color:var(--green)">Ticket enrichi trouvé — ' + tests.length + ' test(s) proposé(s)</div>';
+      }
+      if (data.testUrls && data.testUrls.length) {
+        var input = document.getElementById("pwd-smart-input");
+        if (input && !input.value.match(/https?:\/\//i)) {
+          input.value = key + "\n" + data.testUrls.join("\n");
+        }
+      }
+      window._pwdEnrichedData = data;
+      return;
+    }
+    throw new Error("not enriched");
+  }).catch(function() {
+    // Fallback: regular Jira ticket
+    window._pwdEnrichedData = null;
+    var summary = document.getElementById("pwd-smart-enriched-summary");
+    if (summary) summary.style.display = "none";
+    selectPWDSource("jira-key");
+    api("/api/jira-ticket/" + key).then(function(data) {
+      if (!data || data.error) { info.classList.remove("visible"); return; }
+      var title = document.getElementById("pwd-smart-ticket-title");
+      var meta = document.getElementById("pwd-smart-ticket-meta");
+      if (title) title.textContent = data.summary || key;
+      var wf = typeof wfInfo === "function" ? wfInfo(data.status || "") : {};
+      if (meta) meta.textContent = (wf.label || data.status || "") + " · " + (data.issuetype || "");
+      info.classList.add("visible");
+      // Auto-detect mode
+      var autoMode = wf.phase === "rejected" ? "fix" : wf.phase === "fix" ? "fix" : wf.isQA ? "ui" : null;
+      if (autoMode) selectPWDMode(autoMode);
+    }).catch(function() { info.classList.remove("visible"); });
   });
 }
+
+function pwdHandleFile(input) {
+  var file = input.files[0];
+  if (!file) return;
+  _pwdSmartFile = file;
+  pwdXmlFile = file;
+  selectPWDSource("xml");
+  var fileInfo = document.getElementById("pwd-smart-file-info");
+  var fileName = document.getElementById("pwd-smart-file-name");
+  if (fileInfo) fileInfo.classList.add("visible");
+  if (fileName) fileName.textContent = "📎 " + file.name + " (" + (file.size/1024).toFixed(1) + " KB)";
+}
+
+function pwdClearFile() {
+  _pwdSmartFile = null;
+  pwdXmlFile = null;
+  var fileInfo = document.getElementById("pwd-smart-file-info");
+  if (fileInfo) fileInfo.classList.remove("visible");
+  pwdDetectSource();
+}
+
+// Legacy compat
+function handlePWDXml(input) { pwdHandleFile(input); }
 
 // ── ENRICHI → PLAYWRIGHT DIRECT ───────────────────────────────────────────────
 function openEnrichedPickerPWD() {
@@ -9308,11 +9348,11 @@ function loadEnrichedForPlaywright(key) {
   if (!key) return;
   var picker = document.getElementById("pwd-enriched-picker");
   if (picker) picker.style.display = "none";
-  var summary = document.getElementById("pwd-enriched-summary");
+  var summary = document.getElementById("pwd-smart-enriched-summary");
   if (summary) { summary.style.display = "block"; summary.innerHTML = '<div style="font-size:11px;color:var(--text3)">Chargement de ' + key + '...</div>'; }
   fetch("/api/enriched/" + key).then(function(r){return r.json();}).then(function(t) {
     if (!t || !t.key) { showToast("Ticket enrichi introuvable : " + key, "❌"); return; }
-    var keyInput = document.getElementById("pwd-enriched-key");
+    var keyInput = document.getElementById("pwd-smart-input");
     if (keyInput) keyInput.value = t.key;
 
     var proposed = t.proposedTests || [];
@@ -9325,7 +9365,7 @@ function loadEnrichedForPlaywright(key) {
       selectPWDSource('url');
       pwdSource = 'enriched'; // garder la source enriched visible
       selectPWDSource('enriched');
-      var urlsEl = document.getElementById("pwd-urls");
+      var urlsEl = document.getElementById("pwd-smart-input");
       if (urlsEl) { urlsEl.value = t.testUrls.join("\n"); }
     }
 
@@ -9395,14 +9435,14 @@ function loadEnrichedForPlaywright(key) {
 function pwdRunFromEnriched(key, urlsCsv) {
   // Remplir les URLs + instructions + lancer
   if (urlsCsv) {
-    var urlsEl = document.getElementById("pwd-urls");
+    var urlsEl = document.getElementById("pwd-smart-input");
     if (urlsEl) urlsEl.value = urlsCsv.split(",").filter(Boolean).join("\n");
   }
   // Mettre la clé pour l'associer au rapport
-  var keyEl = document.getElementById("pwd-jira-key");
+  var keyEl = document.getElementById("pwd-smart-input");
   if (keyEl) keyEl.value = key;
   // Passer en mode url (ou jira-key si pas d'URLs)
-  var urlsEl2 = document.getElementById("pwd-urls");
+  var urlsEl2 = document.getElementById("pwd-smart-input");
   if (urlsEl2 && urlsEl2.value.trim()) {
     pwdSource = "url";
   } else {
@@ -9425,32 +9465,12 @@ function handlePWDXml(input) {
 }
 
 function checkPWDTicket() {
-  var key = document.getElementById("pwd-jira-key") ? document.getElementById("pwd-jira-key").value.trim().toUpperCase() : "";
+  var rawVal = document.getElementById("pwd-smart-input") ? document.getElementById("pwd-smart-input").value.trim().toUpperCase() : "";
+  // Extract first Jira key from the input
+  var keyMatch = rawVal.match(/[A-Z][A-Z0-9]+-\d+/);
+  var key = keyMatch ? keyMatch[0] : "";
   if (!key) { showToast("Saisis une clé Jira", "⚠️"); return; }
-  fetch(SERVER + "/api/jira-ticket/" + key)
-    .then(function(r) { return r.json(); })
-    .then(function(data) {
-      var info = document.getElementById("pwd-ticket-info");
-      if (data.error || !data.summary) { showToast("Ticket introuvable", "❌"); return; }
-      var wf = wfInfo(data.status || "");
-      if (info) {
-        info.style.display = "block";
-        document.getElementById("pwd-ticket-title").textContent = key + " — " + data.summary;
-        var metaEl = document.getElementById("pwd-ticket-meta");
-        if (metaEl) metaEl.innerHTML = (data.type||"") + ' · <span style="color:' + wf.color + ';font-weight:600">' + wf.label + '</span>' + (wf.isQA ? ' <span style="color:#f97316;font-size:10px">🔬 QA</span>' : "");
-      }
-      // Auto-select du mode selon la phase workflow
-      var autoMode = wf.phase === "rejected" ? "fix" :
-                     wf.phase === "fix"       ? "fix" :
-                     wf.isQA                  ? "ui"  : null;
-      if (autoMode) {
-        selectPWDMode(autoMode);
-        showToast("Mode auto-détecté : " + autoMode.toUpperCase() + " (" + wf.label + ")", "🎯");
-      } else {
-        showToast("Ticket trouvé : " + key, "✅");
-      }
-    })
-    .catch(function() { showToast("Serveur inaccessible", "🔴"); });
+  _pwdFetchTicketInfo(key);
 }
 
 // ── RÉSUMÉ CONFIG — lit depuis window.QA_SETTINGS (chargé via /api/settings) ──
@@ -9854,7 +9874,7 @@ function handleQAReady(data) {
 function openInPlaywright(key) {
   showPanel("playwright-direct");
   selectPWDSource("jira-key");
-  var keyInput = document.getElementById("pwd-jira-key");
+  var keyInput = document.getElementById("pwd-smart-input");
   if (keyInput) { keyInput.value = key; validateJiraInput(keyInput); }
   checkPWDTicket();
 }
@@ -10562,18 +10582,15 @@ function launchPWDTest() {
   if (!browsers.length)      { showToast("Sélectionne au moins un navigateur", "⚠️"); return; }
   if (!devices.length)       { showToast("Sélectionne au moins un device", "⚠️"); return; }
 
+  // Lire le smart input
+  var smartText = (document.getElementById("pwd-smart-input") || {}).value || "";
+  smartText = smartText.trim();
+
   // Validation source
-  if (pwdSource === "url" || pwdSource === "enriched") {
-    var urlsRaw = document.getElementById("pwd-urls") ? document.getElementById("pwd-urls").value.trim() : "";
-    if (!urlsRaw && pwdSource === "url") { showToast("Saisis au moins une URL", "⚠️"); return; }
-  } else if (pwdSource === "jira-key") {
-    var key = document.getElementById("pwd-jira-key") ? document.getElementById("pwd-jira-key").value.trim() : "";
-    if (!key) { showToast("Saisis une clé Jira", "⚠️"); return; }
-  } else if (pwdSource === "xml" && !pwdXmlFile) {
-    showToast("Charge un fichier XML", "⚠️"); return;
-  } else if (pwdSource === "text") {
-    var txt = document.getElementById("pwd-text") ? document.getElementById("pwd-text").value.trim() : "";
-    if (!txt) { showToast("Décris ce que tu veux tester", "⚠️"); return; }
+  if (pwdSource === "xml" && !pwdXmlFile) {
+    showToast("Charge un fichier XML via 📎", "⚠️"); return;
+  } else if (!smartText && !pwdXmlFile) {
+    showToast("Saisis une cible (URL, clé Jira, ou description)", "⚠️"); return;
   }
 
   clearLog("logPWDirect");
@@ -10609,50 +10626,39 @@ function launchPWDTest() {
 
   var fd = null;
 
-  if (pwdSource === "url" || pwdSource === "enriched") {
-    var rawPwdUrls = document.getElementById("pwd-urls").value.trim();
-    // Si "enriched" sans URLs → basculer en jira-key avec la clé enrichie
-    if (pwdSource === "enriched" && !rawPwdUrls) {
-      var eKey = document.getElementById("pwd-enriched-key") ? document.getElementById("pwd-enriched-key").value.trim() : "";
-      if (eKey) { params.source = "jira-key"; params.key = eKey; callAgent(params); return; }
-    }
-    // Décoder les entités HTML (avec ou sans ; final) avant envoi
-    params.urls = rawPwdUrls
-      .replace(/&[a-z0-9]+;?/gi, function(e) {
-        var map = { "&amp;":"&","&lt;":"","&gt;":"","&quot;":"","&#39;":"","&apos;":"" };
-        var key = e.replace(/;$/, "").toLowerCase() + ";";
-        return map[key] !== undefined ? map[key] : "";
-      })
-      .replace(/['"[\]<>]/g, "")
-      .replace(/\n/g, ",")
-      .split(",")
-      .map(function(u) {
-        u = u.trim();
-        // Pipe "path|full_url" → garder la partie URL complète
-        if (u.includes("|")) {
-          var parts = u.split("|").map(function(p){return p.trim();});
-          u = parts.find(function(p){return /^https?:\/\//i.test(p);}) || parts[0];
-        }
-        return u.replace(/[,.\s]+$/, ""); // nettoyer ponctuation finale
-      })
-      .filter(Boolean).join(",");
+  // Extract data from smart input based on detected source
+  var smartLines = smartText.split(/[\n,]+/).map(function(l) { return l.trim(); }).filter(Boolean);
+  var smartUrls = smartLines.filter(function(l) { return /^https?:\/\//i.test(l); });
+  var smartKeys = smartLines.filter(function(l) { return /^[A-Z][A-Z0-9]+-\d+$/i.test(l); });
+
+  if (pwdSource === "url" || (pwdSource === "enriched" && smartUrls.length)) {
+    // Décoder les entités HTML avant envoi
+    params.urls = smartUrls.map(function(u) {
+      return u.replace(/&amp;/gi, "&").replace(/['"[\]<>]/g, "").replace(/[,.\s]+$/, "");
+    }).filter(Boolean).join(",");
     // En mode enrichi, associer la clé au rapport
-    if (pwdSource === "enriched") {
-      var eKeyRun = document.getElementById("pwd-enriched-key") ? document.getElementById("pwd-enriched-key").value.trim() : "";
-      if (eKeyRun) params.key = eKeyRun;
+    if (pwdSource === "enriched" && smartKeys.length) {
+      params.key = smartKeys[0].toUpperCase();
       params.source = "url";
     }
     callAgent(params);
+  } else if (pwdSource === "enriched" && smartKeys.length) {
+    // Enrichi sans URLs → basculer en jira-key
+    params.source = "jira-key";
+    params.key = smartKeys[0].toUpperCase();
+    callAgent(params);
   } else if (pwdSource === "jira-key") {
-    params.key = document.getElementById("pwd-jira-key").value.trim().toUpperCase();
+    params.key = smartKeys.length ? smartKeys[0].toUpperCase() : smartText.toUpperCase();
     callAgent(params);
   } else if (pwdSource === "xml" && pwdXmlFile) {
     fd = new FormData();
     Object.keys(params).forEach(function(k) { fd.append(k, params[k]); });
     fd.append("xmlFile", pwdXmlFile, pwdXmlFile.name);
     callAgent({}, fd);
-  } else if (pwdSource === "text") {
-    params.text = document.getElementById("pwd-text").value.trim();
+  } else {
+    // text / free text
+    params.source = "text";
+    params.text = smartText;
     callAgent(params);
   }
 
@@ -13740,7 +13746,7 @@ function launchPlanStep(ticketKey, stepOrder) {
         setTimeout(function() {
           if (typeof selectPWDMode === "function") selectPWDMode(mode);
           if (typeof selectPWDSource === "function") selectPWDSource("jira-key");
-          var jiraInput = document.getElementById("pwd-jira-key");
+          var jiraInput = document.getElementById("pwd-smart-input");
           if (jiraInput) { jiraInput.value = ticketKey; }
           // Injecter le label comme instruction
           var instrField = document.getElementById("pwd-instructions");
