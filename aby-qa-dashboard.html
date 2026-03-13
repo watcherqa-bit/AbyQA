@@ -1978,72 +1978,84 @@
         <input type="file" id="ops-screenshot-input" accept="image/*" style="display:none" onchange="opsAttachScreenshot(this)">
       </div>
 
-      <!-- ÉTAPE 2 : CONFIG -->
-      <div class="form-card">
-        <div class="form-card-title">⚙️ ÉTAPE 2 — CONFIGURATION</div>
-        <div class="form-row">
-          <div>
-            <label>Release</label>
-            <input type="text" id="pipe-release" value="v1.25.0" placeholder="v1.25.0">
+      <!-- ÉTAPE 2 : CONFIG IA -->
+      <div class="form-card" id="pipe-config-card">
+        <div class="form-card-title">⚙️ CONFIG</div>
+
+        <!-- Résumé compact (visible par défaut) -->
+        <div id="pipe-config-summary">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <div class="smart-input-badge" id="pipe-config-mode-badge" data-type="enriched" style="font-size:11px;padding:4px 12px">🤖 Auto-config</div>
+            <span id="pipe-config-source-hint" style="font-size:11px;color:var(--text3)">Depuis les paramètres globaux</span>
           </div>
-          <div>
-            <label>
-              Écraser ticket existant
-              <span style="color:var(--text3);font-size:10px;font-weight:400;margin-left:6px">(optionnel)</span>
-            </label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input type="text" id="pipe-force-key" placeholder="Ex: SAFWBST-2706"
-                style="flex:1;font-family:var(--mono);font-size:12px;text-transform:uppercase"
-                oninput="this.value=this.value.toUpperCase();updateForceKeyBadge(this.value)">
-              <div id="forceKeyBadge" style="font-size:11px;color:var(--text3);white-space:nowrap">—</div>
+          <div id="configSummary" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:11px;font-family:var(--mono);color:var(--text2);display:flex;gap:16px;flex-wrap:wrap">
+            <span id="sumEnvs">🌍 Sophie</span>
+            <span id="sumDevices">🖥️ Desktop HD</span>
+            <span id="sumBrowsers">🟢 Chromium</span>
+            <span id="sumType">🤖 Auto</span>
+            <span id="sumRelease">📦 v1.25.0</span>
+            <span id="sumMatrix" style="color:var(--blue)">→ 1 combinaison</span>
+          </div>
+          <button onclick="togglePipeConfig()" id="pipe-config-toggle" style="background:none;border:none;color:var(--blue);cursor:pointer;font-size:11px;font-family:var(--mono);margin-top:10px;padding:0">▾ Modifier la config</button>
+        </div>
+
+        <!-- Détails dépliables (masqués par défaut) -->
+        <div id="pipe-config-details" style="display:none;margin-top:12px">
+          <div class="form-row">
+            <div>
+              <label>Release</label>
+              <input type="text" id="pipe-release" value="v1.25.0" placeholder="v1.25.0" oninput="updatePipeConfigSummary()">
             </div>
-            <div style="font-size:10px;color:var(--text3);margin-top:4px">
-              Laisse vide = recherche automatique · Renseigne une clé = écrase ce ticket directement
+            <div>
+              <label>
+                Écraser ticket existant
+                <span style="color:var(--text3);font-size:10px;font-weight:400;margin-left:6px">(optionnel)</span>
+              </label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <input type="text" id="pipe-force-key" placeholder="Ex: SAFWBST-2706"
+                  style="flex:1;font-family:var(--mono);font-size:12px;text-transform:uppercase"
+                  oninput="this.value=this.value.toUpperCase();updateForceKeyBadge(this.value)">
+                <div id="forceKeyBadge" style="font-size:11px;color:var(--text3);white-space:nowrap">—</div>
+              </div>
+            </div>
+            <div>
+              <label>Type de test</label>
+              <select id="pipe-testtype" onchange="updatePipeConfigSummary()">
+                <option value="auto">🤖 Automatique (Playwright)</option>
+                <option value="manual">✋ Manuel</option>
+              </select>
             </div>
           </div>
-          <div>
-            <label>Type de test</label>
-            <select id="pipe-testtype" onchange="updatePlaywrightBtn()">
-              <option value="auto">🤖 Automatique (Playwright)</option>
-              <option value="manual">✋ Manuel</option>
-            </select>
+          <div class="form-row full">
+            <label>Environnements</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+              <label class="check-pill"><input type="checkbox" id="env-sophie" checked onchange="updatePipeConfigSummary()"><span>🟡 Sophie</span></label>
+              <label class="check-pill"><input type="checkbox" id="env-paulo" onchange="updatePipeConfigSummary()"><span>🟠 Paulo</span></label>
+              <label class="check-pill"><input type="checkbox" id="env-prod" onchange="updatePipeConfigSummary()"><span>🔵 Prod</span></label>
+            </div>
           </div>
-        </div>
-        <div class="form-row full">
-          <label>Environnements <span style="color:var(--text3);font-size:10px;margin-left:6px">(multi-sélection)</span></label>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-            <label class="check-pill"><input type="checkbox" id="env-sophie" checked onchange="updatePlaywrightBtn()"><span>🟡 Sophie</span></label>
-            <label class="check-pill"><input type="checkbox" id="env-paulo" onchange="updatePlaywrightBtn()"><span>🟠 Paulo</span></label>
-            <label class="check-pill"><input type="checkbox" id="env-prod" onchange="updatePlaywrightBtn()"><span>🔵 Prod</span></label>
+          <div class="form-row full">
+            <label>Devices</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+              <label class="check-pill"><input type="checkbox" id="dev-desktop-hd" checked onchange="updatePipeConfigSummary()"><span>🖥️ Desktop 1920×1080</span></label>
+              <label class="check-pill"><input type="checkbox" id="dev-tablet" onchange="updatePipeConfigSummary()"><span>📱 iPad 768×1024</span></label>
+              <label class="check-pill"><input type="checkbox" id="dev-iphone" onchange="updatePipeConfigSummary()"><span>📱 iPhone 375×812</span></label>
+              <label class="check-pill"><input type="checkbox" id="dev-samsung" onchange="updatePipeConfigSummary()"><span>📱 Samsung 360×800</span></label>
+            </div>
           </div>
-        </div>
-        <div class="form-row full">
-          <label>Devices <span style="color:var(--text3);font-size:10px;margin-left:6px">(multi-sélection)</span></label>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-            <label class="check-pill"><input type="checkbox" id="dev-desktop-hd" checked><span>🖥️ Desktop 1920×1080</span></label>
-            <label class="check-pill"><input type="checkbox" id="dev-tablet"><span>📱 iPad 768×1024</span></label>
-            <label class="check-pill"><input type="checkbox" id="dev-iphone"><span>📱 iPhone 375×812</span></label>
-            <label class="check-pill"><input type="checkbox" id="dev-samsung"><span>📱 Samsung 360×800</span></label>
+          <div class="form-row full" id="browser-section">
+            <label>Navigateurs</label>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
+              <label class="check-pill"><input type="checkbox" id="br-chromium" checked onchange="updatePipeConfigSummary()"><span>🟢 Chromium</span></label>
+              <label class="check-pill"><input type="checkbox" id="br-firefox" onchange="updatePipeConfigSummary()"><span>🦊 Firefox</span></label>
+              <label class="check-pill"><input type="checkbox" id="br-webkit" onchange="updatePipeConfigSummary()"><span>🍎 WebKit</span></label>
+            </div>
           </div>
-        </div>
-        <div class="form-row full" id="browser-section">
-          <label>Navigateurs <span style="color:var(--text3);font-size:10px;margin-left:6px">(Playwright)</span></label>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-            <label class="check-pill"><input type="checkbox" id="br-chromium" checked><span>🟢 Chromium</span></label>
-            <label class="check-pill"><input type="checkbox" id="br-firefox"><span>🦊 Firefox</span></label>
-            <label class="check-pill"><input type="checkbox" id="br-webkit"><span>🍎 WebKit</span></label>
+          <div class="form-row full">
+            <label>Instructions complémentaires <span style="color:var(--text3);font-size:10px;margin-left:6px">(optionnel)</span></label>
+            <textarea id="pipe-instructions" rows="2" placeholder="Ex: Vérifier Barlow sur pages KO — Ne pas tester le footer…"></textarea>
           </div>
-        </div>
-        <div class="form-row full">
-          <label>Instructions complémentaires <span style="color:var(--text3);font-size:10px;margin-left:6px">(optionnel — ajoutées à tous les tickets)</span></label>
-          <textarea id="pipe-instructions" rows="2" placeholder="Ex: Vérifier Barlow sur pages KO — Ne pas tester le footer — Comparer uniquement desktop vs prod…"></textarea>
-        </div>
-        <div id="configSummary" style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:11px;font-family:var(--mono);color:var(--text2);display:flex;gap:16px;flex-wrap:wrap">
-          <span id="sumEnvs">🌍 Sophie</span>
-          <span id="sumDevices">🖥️ Desktop HD</span>
-          <span id="sumBrowsers">🟢 Chromium</span>
-          <span id="sumType">🤖 Auto</span>
-          <span id="sumMatrix" style="color:var(--blue)">→ 1 combinaison</span>
+          <button onclick="togglePipeConfig()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;font-family:var(--mono);margin-top:8px;padding:0">▴ Réduire</button>
         </div>
       </div>
 
@@ -5285,11 +5297,13 @@ function pipeDetectSource() {
       currentSource = "url";
       var badge2 = document.getElementById("pipe-smart-badge");
       if (badge2) { badge2.textContent = "URL(s)"; badge2.setAttribute("data-type", "url"); }
+      autoConfigFromSource("url", null);
     } else {
       selectSource("command");
       currentSource = "text";
       var badge3 = document.getElementById("pipe-smart-badge");
       if (badge3) { badge3.textContent = "Texte libre"; badge3.setAttribute("data-type", "text"); }
+      autoConfigFromSource("text", null);
     }
   }, 300);
 }
@@ -5306,9 +5320,12 @@ function _pipeFetchTicketInfo(key) {
     info.classList.add("visible");
     loadedBugKey = key;
     loadedBugData = data;
+    // Auto-config depuis le ticket
+    autoConfigFromSource("bug", data);
   }).catch(function() {
     loadedBugKey = key;
     info.classList.remove("visible");
+    autoConfigFromSource("bug", null);
   });
 }
 
@@ -5325,6 +5342,7 @@ function pipeHandleFile(input) {
   if (fileInfo) fileInfo.classList.add("visible");
   if (fileName) fileName.textContent = "📎 " + file.name + " (" + (file.size/1024).toFixed(1) + " KB)";
   log("logPipeline", "Fichier chargé : " + file.name, "log-info");
+  autoConfigFromSource(type, null);
 }
 
 function pipeClearFile() {
@@ -5339,6 +5357,147 @@ function pipeClearFile() {
 // Legacy compat
 function handleSpec(input) { pipeHandleFile(input); }
 function handleXML(input) { pipeHandleFile(input); }
+
+// ── CONFIG IA : auto-config depuis contexte ──────────────────────────────────
+var _pipeConfigManual = false;
+
+function togglePipeConfig() {
+  var details = document.getElementById("pipe-config-details");
+  var toggle  = document.getElementById("pipe-config-toggle");
+  if (!details) return;
+  var isHidden = details.style.display === "none";
+  details.style.display = isHidden ? "block" : "none";
+  if (toggle) toggle.textContent = isHidden ? "▴ Réduire" : "▾ Modifier la config";
+  if (isHidden) _pipeConfigManual = true;
+}
+
+function autoConfigFromSource(sourceType, ticketData) {
+  // Ne pas overrider si l'utilisateur a ouvert le panel manuellement
+  if (_pipeConfigManual) { updatePipeConfigSummary(); return; }
+
+  var s = window.QA_SETTINGS || {};
+  var envMap     = { sophie:"env-sophie", paulo:"env-paulo", prod:"env-prod" };
+  var deviceMap  = { "desktop-hd":"dev-desktop-hd", "tablet-ipad":"dev-tablet", "mobile-iphone":"dev-iphone", "mobile-samsung":"dev-samsung" };
+  var browserMap = { chromium:"br-chromium", firefox:"br-firefox", webkit:"br-webkit" };
+
+  // 1. Defaults depuis settings.json
+  var envs     = (s.envs || ["sophie"]);
+  var browsers = (s.browsers || ["chromium"]);
+  var devices  = ["desktop-hd"]; // default compact
+  var testType = "auto";
+  var release  = s.currentRelease || "v1.25.0";
+  var reason   = "Paramètres globaux";
+
+  // 2. Enrichir depuis le contexte ticket
+  if (ticketData) {
+    var labels  = (ticketData.labels || []).map(function(l) { return l.toLowerCase(); });
+    var summary = (ticketData.summary || "").toLowerCase();
+    var desc    = (ticketData.description || "").toLowerCase();
+    var allText = summary + " " + desc + " " + labels.join(" ");
+
+    // Release depuis labels
+    var releaseLabel = labels.find(function(l) { return /^v\d+\.\d+/.test(l); });
+    if (releaseLabel) release = releaseLabel;
+
+    // Mobile mentionné → ajouter devices mobiles
+    if (allText.match(/mobile|iphone|samsung|android|responsive|tablette|ipad/)) {
+      devices = ["desktop-hd", "dev-tablet", "dev-iphone"];
+      reason = "Mobile détecté dans le ticket";
+    }
+
+    // Cross-browser mentionné → activer tous les navigateurs
+    if (allText.match(/cross.?browser|firefox|webkit|safari|tous.?les.?navigateurs/)) {
+      browsers = ["chromium", "firefox", "webkit"];
+      reason = "Cross-browser détecté";
+    }
+
+    // Bug/correctif → mode fix, 1 seul env
+    var isFixPhase = ticketData.status && (function() {
+      var wf = typeof wfInfo === "function" ? wfInfo(ticketData.status) : {};
+      return wf.phase === "fix" || wf.phase === "rejected";
+    })();
+    if (sourceType === "bug" || sourceType === "jira-key" && isFixPhase) {
+      testType = "auto";
+      envs = ["sophie"]; // fix = tester sur staging uniquement
+      reason = "Correctif — test ciblé sur Sophie";
+    }
+
+    // Enrichi avec strategy → utiliser la stratégie IA
+    if (ticketData.strategy) {
+      var stratType = (ticketData.strategy.type || "").toLowerCase();
+      if (stratType === "api") testType = "auto";
+      if (stratType.match(/css|visual/)) browsers = ["chromium", "firefox", "webkit"];
+      if (ticketData.strategy.devices) devices = ticketData.strategy.devices;
+      reason = "Stratégie IA : " + (ticketData.strategy.type || "auto");
+    }
+  }
+
+  // 3. Enrichir depuis le texte brut (smart input)
+  var smartText = ((document.getElementById("pipe-smart-input") || {}).value || "").toLowerCase();
+  if (smartText.match(/firefox/)) { if (browsers.indexOf("firefox") === -1) browsers.push("firefox"); reason = "Firefox mentionné"; }
+  if (smartText.match(/webkit|safari/)) { if (browsers.indexOf("webkit") === -1) browsers.push("webkit"); reason = "WebKit mentionné"; }
+  if (smartText.match(/mobile|iphone|samsung/)) {
+    if (devices.indexOf("dev-iphone") === -1) devices.push("dev-iphone");
+    reason = "Mobile mentionné";
+  }
+  if (smartText.match(/paulo/)) { if (envs.indexOf("paulo") === -1) envs.push("paulo"); }
+  if (smartText.match(/prod/)) { if (envs.indexOf("prod") === -1) envs.push("prod"); }
+  if (smartText.match(/manuel|manual/)) testType = "manual";
+
+  // 4. Appliquer aux checkboxes
+  Object.keys(envMap).forEach(function(e) {
+    var cb = document.getElementById(envMap[e]);
+    if (cb) cb.checked = envs.indexOf(e) !== -1;
+  });
+  Object.keys(deviceMap).forEach(function(d) {
+    var cb = document.getElementById(deviceMap[d]);
+    if (cb) cb.checked = devices.indexOf(d) !== -1;
+  });
+  Object.keys(browserMap).forEach(function(b) {
+    var cb = document.getElementById(browserMap[b]);
+    if (cb) cb.checked = browsers.indexOf(b) !== -1;
+  });
+  var ttSelect = document.getElementById("pipe-testtype");
+  if (ttSelect) ttSelect.value = testType;
+  var relInput = document.getElementById("pipe-release");
+  if (relInput) relInput.value = release;
+
+  // 5. Mettre à jour le badge et le résumé
+  var badge = document.getElementById("pipe-config-mode-badge");
+  var hint  = document.getElementById("pipe-config-source-hint");
+  if (badge) { badge.textContent = "🤖 Auto-config"; badge.setAttribute("data-type", "enriched"); }
+  if (hint)  hint.textContent = reason;
+
+  updatePipeConfigSummary();
+}
+
+function updatePipeConfigSummary() {
+  var envs     = getSelectedEnvs();
+  var devices  = getSelectedDevices();
+  var browsers = getSelectedBrowsers();
+  var isAuto   = getTestType() === "auto";
+  var combos   = envs.length * devices.length * browsers.length;
+  var release  = (document.getElementById("pipe-release") || {}).value || "";
+  var envNames = { sophie:"Sophie", paulo:"Paulo", prod:"Prod" };
+  var el;
+  el = document.getElementById("sumEnvs");     if(el) el.textContent = "🌍 " + envs.map(function(e){return envNames[e]||e;}).join(" + ");
+  el = document.getElementById("sumDevices");   if(el) el.textContent = "📱 " + devices.map(function(d){return d.name;}).join(" + ");
+  el = document.getElementById("sumBrowsers");  if(el) el.textContent = "🌐 " + browsers.join(" + ");
+  el = document.getElementById("sumType");      if(el) el.textContent = isAuto ? "🤖 Auto" : "✋ Manuel";
+  el = document.getElementById("sumRelease");   if(el) el.textContent = "📦 " + release;
+  el = document.getElementById("sumMatrix");    if(el) { el.textContent = "→ " + combos + " combinaison" + (combos>1?"s":""); el.style.color = combos>6?"var(--orange)":"var(--blue)"; }
+
+  // Si modifié manuellement, changer le badge
+  if (_pipeConfigManual) {
+    var badge = document.getElementById("pipe-config-mode-badge");
+    var hint  = document.getElementById("pipe-config-source-hint");
+    if (badge) { badge.textContent = "✏️ Config manuelle"; badge.setAttribute("data-type", "text"); }
+    if (hint)  hint.textContent = "Modifié par l'utilisateur";
+  }
+
+  // Legacy compat
+  updatePlaywrightBtn();
+}
 
 function loadBugTicket() {
   var rawVal = (document.getElementById("pipe-smart-input") || {}).value || "";
@@ -5419,13 +5578,6 @@ function updatePlaywrightBtn() {
   var browsers = getSelectedBrowsers();
   var isAuto   = getTestType() === "auto";
   var combos   = envs.length * devices.length * browsers.length;
-  var envNames = { sophie:"Sophie", paulo:"Paulo", prod:"Prod" };
-  var el;
-  el = document.getElementById("sumEnvs");    if(el) el.textContent = "🌍 " + envs.map(function(e){return envNames[e];}).join(" + ");
-  el = document.getElementById("sumDevices"); if(el) el.textContent = "📱 " + devices.map(function(d){return d.name;}).join(" + ");
-  el = document.getElementById("sumBrowsers");if(el) el.textContent = "🌐 " + browsers.join(" + ");
-  el = document.getElementById("sumType");    if(el) el.textContent = isAuto ? "🤖 Auto" : "✋ Manuel";
-  el = document.getElementById("sumMatrix");  if(el) { el.textContent = "→ " + combos + " combinaison" + (combos>1?"s":""); el.style.color = combos>6?"var(--orange)":"var(--blue)"; }
   var btn = document.getElementById("btnPlaywright");
   if (!btn) return;
   if (isAuto) {
@@ -5437,9 +5589,9 @@ function updatePlaywrightBtn() {
     btn.disabled=true; btn.style.opacity=".35"; btn.style.cursor="not-allowed";
     btn.style.background="var(--bg3)"; btn.style.borderColor="var(--border)"; btn.style.color="var(--text3)";
     btn.innerHTML = "🎭 Playwright <span style=\"font-size:10px;opacity:.7\">(test manuel — non automatisable)</span>";
-    btn.title = "Ce type de test nécessite une intervention humaine. Choisir une source XML ou Jira pour activer le mode Auto.";
+    btn.title = "Ce type de test nécessite une intervention humaine.";
   }
-  el = document.getElementById("browser-section"); if(el) el.style.opacity = isAuto?"1":".4";
+  var el = document.getElementById("browser-section"); if(el) el.style.opacity = isAuto?"1":".4";
 }
 
 // ── PLAYWRIGHT DIRECT ─────────────────────────────────────────────────────────
@@ -6622,6 +6774,7 @@ document.addEventListener("DOMContentLoaded", function() {
   connectSSE();
   loadReports();
   loadSidebarSettings(); // Restaurer navigateurs/devices depuis /api/settings
+  setTimeout(function() { autoConfigFromSource(null, null); }, 500); // Init config résumé après chargement settings
   initFormPersistence(); // Restaurer saisies formulaires depuis localStorage
   initExpandableInputs(); // Double-clic pour agrandir les inputs
   initPollingStatus();   // Afficher le badge poller si actif
