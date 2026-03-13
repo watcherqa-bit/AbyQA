@@ -525,7 +525,7 @@ async function workflowBacklog(ticket) {
     try {
       var bus = require("./agent-bus");
       bus.publish("ticket:enriched", { key: key, summary: summary, type: "Story", enrichedPath: filepath, analysis: { score: review.score } });
-    } catch(e) { /* bus optionnel */ }
+    } catch(e) { console.error("  [WARN] Bus:", e.message); }
 
     // Enrichissement terminé — prêt pour validation dans le dashboard
     // Le push Jira se fera manuellement via POST /api/enriched/:key/push
@@ -649,7 +649,7 @@ async function workflowUS(ticket) {
     try {
       var bus = require("./agent-bus");
       bus.publish("test:generated", { key: key, testKey: key + "-test", summary: testResult.title, csvPath: csvFilepath, testPath: testFilepath, strategy: strategy.decision, testPlan: strategy.testPlan || [] });
-    } catch(e) { /* bus optionnel */ }
+    } catch(e) { console.error("  [WARN] Bus:", e.message); }
 
     // 7. Si automatisable → lancer Playwright
     var pwResult = null;

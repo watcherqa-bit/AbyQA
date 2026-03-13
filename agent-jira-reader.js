@@ -18,14 +18,12 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && process.platform !== "win32") {
 
 const fs       = require("fs");
 const path     = require("path");
-const http     = require("http");
 const { chromium } = require("playwright");
 const CFG = require("./config"); CFG.paths.init();
 
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const REPORTS_DIR     = CFG.paths.reports;
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
-const OLLAMA_MODEL    = CFG.ollama.model;
 
 const ENVS = {
   sophie: CFG.envs.sophie,
@@ -149,25 +147,7 @@ function parseXML(xmlContent) {
   return ticket;
 }
 
-// ── OLLAMA ────────────────────────────────────────────────────────────────────
-function callOllama(prompt) {
-  return new Promise(function(resolve) {
-    var body = JSON.stringify({ model: OLLAMA_MODEL, prompt: prompt, stream: false });
-    var req  = http.request({
-      hostname: CFG.ollama.host, port: CFG.ollama.port, path: "/api/generate", method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
-    }, function(res) {
-      var data = "";
-      res.on("data", function(c) { data += c; });
-      res.on("end", function() {
-        try { resolve(JSON.parse(data).response || ""); }
-        catch (e) { resolve(""); }
-      });
-    });
-    req.on("error", function() { resolve(""); });
-    req.write(body); req.end();
-  });
-}
+// callOllama supprimé — utiliser agent-lead-qa.js pour tous les appels LLM
 
 // ── GENERER CAS DE TEST CSV (format Xray) ────────────────────────────────────
 function generateCSV(ticket) {
@@ -375,6 +355,7 @@ async function runPlaywrightOnKO(ticket, envName) {
   console.log("\n[PLAYWRIGHT] Test automatique sur " + ticket.koItems.length + " pages KO...");
 
   var browser = await chromium.launch({ headless: true });
+  try {
   var page    = await browser.newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -449,8 +430,10 @@ async function runPlaywrightOnKO(ticket, envName) {
     await page.waitForTimeout(500);
   }
 
-  await browser.close();
   return playwrightResults;
+  } finally {
+    await browser.close().catch(function(e) { console.error("[WARN] browser.close:", e.message); });
+  }
 }
 
 // ── RAPPORT PLAYWRIGHT ────────────────────────────────────────────────────────

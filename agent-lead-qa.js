@@ -1622,6 +1622,8 @@ module.exports = {
   // Postman & Appium
   generatePostmanCollection,
   generateAppiumScript,
+  // LLM bas niveau
+  ask,
   // Modèles
   MODEL_FAST,
   MODEL_QUALITY

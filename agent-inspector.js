@@ -85,7 +85,9 @@ async function inspect() {
     if (httpUser) ctxOpts.httpCredentials = { username: httpUser, password: httpPass };
   }
 
-  var browser = await chromium.launch({
+  var browser;
+  try {
+  browser = await chromium.launch({
     headless: true,
     args: ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
   });
@@ -188,8 +190,6 @@ async function inspect() {
     return { forms: [], inputs: [], buttons: [], links: [], headings: [], meta: {} };
   });
 
-  await browser.close();
-
   var result = {
     ok:         true,
     cached:     false,
@@ -209,6 +209,10 @@ async function inspect() {
   console.log("[inspector] ✅ " + title);
   console.log("[inspector] " + s.inputs.length + " inputs · " + s.buttons.length + " boutons · " + s.links.length + " liens · " + s.headings.length + " titres");
   console.log("INSPECTOR_RESULT:" + JSON.stringify(result));
+
+  } finally {
+    if (browser) await browser.close().catch(function(e) { console.error("[WARN] browser.close:", e.message); });
+  }
 }
 
 inspect().catch(function(e) {

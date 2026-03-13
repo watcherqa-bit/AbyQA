@@ -57,7 +57,7 @@ function purgeDir(dirPath, retentionDays, filterFn) {
       // Filtre custom
       if (filterFn) {
         var content = "";
-        try { content = fs.readFileSync(fp, "utf8"); } catch(e) {}
+        try { content = fs.readFileSync(fp, "utf8"); } catch(e) { /* fichier inaccessible — non bloquant */ }
         if (!filterFn(fp, content)) { result.skipped++; return; }
       }
 
@@ -163,9 +163,9 @@ function preview(settings) {
             count++;
             totalSize += stat.size;
           }
-        } catch(e) {}
+        } catch(e) { /* fichier inaccessible — non bloquant */ }
       });
-    } catch(e) {}
+    } catch(e) { /* fichier inaccessible — non bloquant */ }
     if (count > 0) {
       preview.targets.push({ dir: target.dir, label: target.label, eligible: count, sizeMB: Math.round(totalSize / 1024 / 1024 * 10) / 10, retentionDays: days });
       preview.totalEligible += count;

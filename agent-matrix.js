@@ -148,7 +148,7 @@ function loadEnrichedData() {
     try {
       var data = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
       if (data.key) enriched[data.key] = data;
-    } catch(e) { /* skip */ }
+    } catch(e) { console.error("  [WARN] Lecture enriched:", e.message); }
   });
   return enriched;
 }
@@ -619,7 +619,7 @@ async function generate(version, outputFile) {
   try {
     var bus = require("./agent-bus");
     bus.publish("matrix:generated", { version: version, file: outPath, tickets: tickets.length, quality: synthesis.quality, coverage: synthesis.coverage });
-  } catch(e) { /* bus optionnel */ }
+  } catch(e) { console.error("  [WARN] Bus:", e.message); }
 
   return { ok: true, file: outPath, synthesis: synthesis };
 }

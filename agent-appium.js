@@ -19,21 +19,8 @@ var SCREENSHOTS_DIR = CFG.paths.screenshots;
 
 if (!fs.existsSync(SCRIPTS_DIR)) fs.mkdirSync(SCRIPTS_DIR, { recursive: true });
 
-// -- PARSE ARGUMENTS --------------------------------------------------------
-function parseArgs() {
-  var args = {};
-  process.argv.slice(2).forEach(function(a) {
-    if (a.startsWith("--")) {
-      var idx = a.indexOf("=");
-      if (idx > -1) {
-        args[a.substring(2, idx)] = a.substring(idx + 1);
-      } else {
-        args[a.substring(2)] = true;
-      }
-    }
-  });
-  return args;
-}
+// -- PARSE ARGUMENTS (centralisé dans lib/cli-args.js) ----------------------
+var parseArgs = require("./lib/cli-args").parseArgs;
 
 // -- CONFIGURATIONS APPIUM PAR DEFAUT ---------------------------------------
 var DEVICE_CONFIGS = {
@@ -250,7 +237,7 @@ async function runScript(scriptPath, platform, opts) {
       verdict: "ERROR"
     };
     var errorReportPath = path.join(REPORTS_DIR, reportId + ".json");
-    try { fs.writeFileSync(errorReportPath, JSON.stringify(errorReport, null, 2), "utf8"); } catch(e2) {}
+    try { fs.writeFileSync(errorReportPath, JSON.stringify(errorReport, null, 2), "utf8"); } catch(e2) { console.error("  [WARN] Écriture rapport erreur:", e2.message); }
 
     throw e;
 
@@ -311,7 +298,7 @@ async function main() {
       var text = args.text || "";
       var ticketData = null;
       if (args.ticket) {
-        try { ticketData = JSON.parse(fs.readFileSync(args.ticket, "utf8")); } catch(e) {}
+        try { ticketData = JSON.parse(fs.readFileSync(args.ticket, "utf8")); } catch(e) { console.error("  [WARN] Lecture ticket:", e.message); }
       }
 
       if (!text && !ticketData) {

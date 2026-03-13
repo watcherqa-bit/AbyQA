@@ -16,7 +16,6 @@ if (!process.env.PLAYWRIGHT_BROWSERS_PATH && process.platform !== "win32") {
 
 const fs       = require("fs");
 const path     = require("path");
-const http     = require("http");
 const readline = require("readline");
 const { chromium } = require("playwright");
 
@@ -26,7 +25,7 @@ const ISTQB           = require("./istqb-knowledge");
 CFG.paths.init();
 const SCREENSHOTS_DIR = CFG.paths.screenshots;
 const REPORTS_DIR     = CFG.paths.reports;
-const OLLAMA_MODEL    = CFG.ollama.model;
+var leadQA; try { leadQA = require("./agent-lead-qa"); } catch(e) { leadQA = null; }
 
 const ENVS = {
   sophie: {
@@ -285,24 +284,12 @@ function extractTopic(userRequest) {
     .trim() || "Safran aeronautique";
 }
 
-// ── OLLAMA ────────────────────────────────────────────────────────────────────
-function callOllama(prompt) {
-  return new Promise(function(resolve, reject) {
-    var body = JSON.stringify({ model: OLLAMA_MODEL, prompt: prompt, stream: false, options: { temperature: 0.7 } });
-    var req  = http.request({
-      hostname: CFG.ollama.host, port: CFG.ollama.port, path: "/api/generate", method: "POST",
-      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) }
-    }, function(res) {
-      var data = "";
-      res.on("data", function(c) { data += c; });
-      res.on("end", function() {
-        try { resolve(JSON.parse(data).response || ""); }
-        catch (e) { reject(e); }
-      });
-    });
-    req.on("error", reject);
-    req.write(body); req.end();
-  });
+// ── LLM (via agent-lead-qa.js — Claude API avec fallback Ollama) ─────────────
+async function callLLM(prompt) {
+  if (leadQA && leadQA.ask) {
+    return await leadQA.ask(prompt, leadQA.MODEL_FAST);
+  }
+  throw new Error("LLM indisponible — agent-lead-qa.js non chargé");
 }
 
 function extractJSON(text) {
@@ -333,9 +320,9 @@ async function generateContent(typeConfig, topic, count) {
     "```\n" +
     "Generate exactly " + count + " item(s).";
 
-  console.log("[INFO] Generation du contenu via Ollama...");
+  console.log("[INFO] Generation du contenu via Claude API...");
   try {
-    var response = await callOllama(prompt);
+    var response = await callLLM(prompt);
     var data     = extractJSON(response);
     return data.items || [];
   } catch (e) {
@@ -395,7 +382,7 @@ async function login(page, env) {
   }
 
   await page.waitForTimeout(3000);
-  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function() {});
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function(e) { console.error("  [WARN] Drupal:", e.message); });
 
   console.log("");
   console.log("==================================================");
@@ -408,7 +395,7 @@ async function login(page, env) {
   await waitForEnter("\n  >> ENTREE quand tu es dans le BO...\n");
 
   await page.waitForTimeout(2000);
-  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function() {});
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function(e) { console.error("  [WARN] Drupal:", e.message); });
   console.log("  [OK] URL : " + page.url() + "\n");
 }
 
@@ -427,7 +414,7 @@ async function fillField(page, fieldConfig, value) {
 
     if (fieldConfig.type === "select") {
       // Essayer de selectionner la premiere option valide
-      await page.selectOption(fieldConfig.sel, { index: 1 }).catch(function() {});
+      await page.selectOption(fieldConfig.sel, { index: 1 }).catch(function(e) { console.error("  [WARN] Drupal:", e.message); });
       return true;
     }
 
@@ -549,7 +536,7 @@ async function createContent(page, env, typeKey, typeConfig, item, index) {
       return els.filter(function(o) { return o.value && o.value !== ""; }).map(function(o) { return o.value; }).slice(0, 1);
     }).catch(function() { return []; });
     if (firstCompOpt.length > 0) {
-      await page.selectOption("select[name*='company'], select[id*='company']", firstCompOpt[0]).catch(function() {});
+      await page.selectOption("select[name*='company'], select[id*='company']", firstCompOpt[0]).catch(function(e) { console.error("  [WARN] Drupal:", e.message); });
       console.log("    [OK] Company -> premiere option : " + firstCompOpt[0]);
       fieldsOK++;
       companyDone = true;
@@ -646,7 +633,7 @@ async function createContent(page, env, typeKey, typeConfig, item, index) {
     }
   }
 
-  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function() {});
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(function(e) { console.error("  [WARN] Drupal:", e.message); });
   await page.waitForTimeout(1500);
 
   var finalUrl = page.url();

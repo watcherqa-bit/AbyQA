@@ -364,6 +364,7 @@ function runAgent(agentId, cmd, args, clientId, isDryRun, opts) {
   });
   proc.on("error", function(e) {
     clearTimeout(killTimer);
+    delete runningProcs[agentId];
     delete agentLocks[agentId];
     sendSSE(clientId, { type: "err", agent: agentId, line: "Erreur spawn : " + e.message });
     sendSSE(clientId, { type: "done", agent: agentId, code: 1 });
@@ -422,7 +423,7 @@ function triggerAutoDebug(agentId, logs, clientId) {
                 fileInfo: fileInfo, diagnosis: diagnosis };
     sendSSE(clientId, evt);
     if (clientId !== "default") sendSSE("default", evt);
-  }).catch(function() {});
+  }).catch(function(e) { console.error("[WARN]", e.message); });
 }
 
 function parseMultipart(body, boundary) {
@@ -1837,7 +1838,7 @@ var server = http.createServer(function(req, res) {
             if (params.browsers) cssArgs.push("--browsers=" + params.browsers);
             if (params.devices) {
               var devsTmpFile = path.join(BASE_DIR, "uploads", ".css-devices-tmp.json");
-              try { fs.writeFileSync(devsTmpFile, params.devices, "utf8"); cssArgs.push("--devices-file=" + devsTmpFile); } catch(e2) {}
+              try { fs.writeFileSync(devsTmpFile, params.devices, "utf8"); cssArgs.push("--devices-file=" + devsTmpFile); } catch(e2) { console.error("[WARN]", e2.message); }
             }
             if (params.urls) {
               // Ã‰crire les URLs dans un fichier temporaire pour Ã©viter toute
@@ -1852,7 +1853,7 @@ var server = http.createServer(function(req, res) {
                 .replace(/['"[\]<>]/g, "")  // caractÃ¨res non valides dans les paths
                 .trim();
               if (cleanUrlsTmp) {
-                try { fs.writeFileSync(urlsTmpFile, cleanUrlsTmp, "utf8"); } catch(e2) {}
+                try { fs.writeFileSync(urlsTmpFile, cleanUrlsTmp, "utf8"); } catch(e2) { console.error("[WARN]", e2.message); }
                 cssArgs.push("--urls-file=" + urlsTmpFile);
               }
             }
@@ -1861,6 +1862,22 @@ var server = http.createServer(function(req, res) {
             break;
           case "playwright":
             runAgent(agent, "node", ["agent-playwright-direct.js", "--mode=ui", "--source=text", "--text=" + (params.demand || "Tester la page d'accueil"), "--envs=" + (params.env || "sophie")], clientId);
+            break;
+          case "playwright-autopilot":
+            var apArgs = [
+              "agent-playwright-mcp.js",
+              "--env=" + (params.env || "sophie"),
+              "--objective=" + (params.objective || params.demand || "Explorer et tester la page"),
+              "--max-steps=" + (params.maxSteps || 30),
+              "--model=" + (params.model || "fast")
+            ];
+            if (params.ticketKey) apArgs.push("--key=" + params.ticketKey);
+            if (params.urls) {
+              var urlsTmpAP = path.join(BASE_DIR, "uploads", "autopilot-urls-" + Date.now() + ".txt");
+              try { fs.writeFileSync(urlsTmpAP, params.urls, "utf8"); } catch(e2) { console.error("[WARN]", e2.message); }
+              apArgs.push("--urls-file=" + urlsTmpAP);
+            }
+            runAgent(agent, "node", apArgs, clientId);
             break;
           case "xray-pipeline":
             if (!params.xmlPath) { sendSSE(clientId, { type: "err", agent: agent, line: "Fichier XML manquant" }); break; }
@@ -1948,7 +1965,7 @@ var server = http.createServer(function(req, res) {
                 .replace(/['"[\]<>]/g, "")
                 .trim();
               if (cleanPdUrls) {
-                try { fs.writeFileSync(pdUrlsTmpFile, cleanPdUrls, "utf8"); } catch(e2) {}
+                try { fs.writeFileSync(pdUrlsTmpFile, cleanPdUrls, "utf8"); } catch(e2) { console.error("[WARN]", e2.message); }
                 pdArgs.push("--urls-file=" + pdUrlsTmpFile);
               }
             }
@@ -2326,7 +2343,7 @@ var server = http.createServer(function(req, res) {
               // Compter les lignes de tableau (pages)
               if (l.match(/^\|\s*[a-z]+\s*\|/i)) pages++;
             });
-          } catch(e2) {}
+          } catch(e2) { console.error("[WARN]", e2.message); }
           // DÃ©terminer le statut global : OK si tous les scores >= 80%
           var scoreValues = Object.values ? Object.values(scores) : Object.keys(scores).map(function(k){return scores[k];});
           var minScore    = scoreValues.length ? Math.min.apply(null, scoreValues) : 0;
@@ -2891,7 +2908,7 @@ var server = http.createServer(function(req, res) {
                     reportContent: reportContent.substring(0, 5000),
                     diagnostic: diag
                   });
-                }).catch(function() {});
+                }).catch(function(e) { console.error("[WARN]", e.message); });
               }
 
               sendSSE("default", {
@@ -3610,7 +3627,7 @@ var server = http.createServer(function(req, res) {
       try {
         var enrichedData = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
         var pushType = "enrichment"; // default
-        try { var pushBody = JSON.parse(Buffer.concat(pushChunks).toString()); pushType = pushBody.type || "enrichment"; } catch(e) {}
+        try { var pushBody = JSON.parse(Buffer.concat(pushChunks).toString()); pushType = pushBody.type || "enrichment"; } catch(e) { console.error("[WARN]", e.message); }
 
         if (pushType === "enrichment") {
           // Push enrichissement US vers Jira (mise à jour description)
@@ -3708,7 +3725,7 @@ var server = http.createServer(function(req, res) {
             if (enrichedData.screenshot) {
               var screenshotPath = path.join(BASE_DIR, "screenshots", enrichedData.screenshot);
               if (fs.existsSync(screenshotPath)) {
-                try { attachFileToJira(bugJiraKey, screenshotPath); } catch(e2) {}
+                try { attachFileToJira(bugJiraKey, screenshotPath); } catch(e2) { console.error("[WARN]", e2.message); }
               }
             }
             enrichedData.jiraBugKey = bugJiraKey;
@@ -3773,9 +3790,9 @@ var server = http.createServer(function(req, res) {
               if (data.diagnostics) {
                 data.diagnostics.forEach(function(d) { allDiags.push(Object.assign({}, d, {key: t.key})); });
               }
-            } catch(e) {}
+            } catch(e) { console.error("[WARN]", e.message); }
           });
-        } catch(e) {}
+        } catch(e) { console.error("[WARN]", e.message); }
 
         var result = await pdfReport.generate({
           version: version,
@@ -3803,7 +3820,7 @@ var server = http.createServer(function(req, res) {
         if (!mailer) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: "Module mailer non disponible" })); return; }
         var body = JSON.parse(Buffer.concat(emailChunks).toString());
         var settings = {};
-        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) { console.error("[WARN]", e.message); }
         var to = body.to || (settings.email && settings.email.contributeurs) || "";
         if (!to) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "Aucun destinataire (configurez email.contributeurs dans Paramètres)" })); return; }
 
@@ -3820,7 +3837,7 @@ var server = http.createServer(function(req, res) {
         if (body.version && !body.synthesis) {
           var synthFile = path.join(CFG.paths.reports, "synthesis-" + body.version + ".json");
           if (fs.existsSync(synthFile)) {
-            try { synthesis = JSON.parse(fs.readFileSync(synthFile, "utf8")); } catch(e) {}
+            try { synthesis = JSON.parse(fs.readFileSync(synthFile, "utf8")); } catch(e) { console.error("[WARN]", e.message); }
           }
         }
 
@@ -3852,7 +3869,7 @@ var server = http.createServer(function(req, res) {
         if (!mailer) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: "Module mailer non disponible" })); return; }
         var body = JSON.parse(Buffer.concat(alertChunks).toString());
         var settings = {};
-        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) {}
+        try { settings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")); } catch(e) { console.error("[WARN]", e.message); }
         var to = body.to || (settings.email && settings.email.recipients) || "";
         if (!to) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "Aucun destinataire" })); return; }
         var info = await mailer.sendAlert(to, body.diagnostic || body);
@@ -3887,9 +3904,9 @@ var server = http.createServer(function(req, res) {
               allDiags.push(Object.assign({}, d, { key: data.key || f.replace(".json",""), summary: data.summary || "" }));
             });
           }
-        } catch(e) {}
+        } catch(e) { console.error("[WARN]", e.message); }
       });
-    } catch(e) {}
+    } catch(e) { console.error("[WARN]", e.message); }
     // Trier par date desc
     allDiags.sort(function(a, b) { return (b._at || "").localeCompare(a._at || ""); });
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -4384,7 +4401,7 @@ server.listen(PORT, "0.0.0.0", function() {
       try {
         var eData = JSON.parse(fs.readFileSync(enrichedFile, "utf8"));
         context.ticketSummary = eData.summary || "";
-      } catch(e) {}
+      } catch(e) { console.error("[WARN]", e.message); }
     }
     leadQA.analyzeTestResult(tool, evt, context)
       .then(function(diag) {
@@ -4408,7 +4425,7 @@ server.listen(PORT, "0.0.0.0", function() {
         if (mailer && (diag.severity === "CRITICAL" || diag.severity === "MAJOR")) {
           try {
             var emailSettings = {};
-            try { emailSettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).email || {}; } catch(e2) {}
+            try { emailSettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).email || {}; } catch(e2) { console.error("[WARN]", e2.message); }
             if (emailSettings.alertsEnabled && emailSettings.recipients) {
               var minSev = emailSettings.alertSeverity || "CRITICAL";
               var shouldSend = minSev === "MAJOR" || (minSev === "CRITICAL" && diag.severity === "CRITICAL");
@@ -4429,7 +4446,7 @@ server.listen(PORT, "0.0.0.0", function() {
         // Auto-retry si diagnostic recommande RERUN (1 seule fois par ticket+tool)
         if (diag.actionType === "RERUN" && evt.key && tool === "playwright") {
           var retrySettings = {};
-          try { retrySettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).retry || {}; } catch(e2) {}
+          try { retrySettings = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).retry || {}; } catch(e2) { console.error("[WARN]", e2.message); }
           if (retrySettings.enabled !== false) {
             var retryKey = evt.key + ":" + tool;
             if (!_diagRetried[retryKey]) {
@@ -4595,7 +4612,7 @@ server.listen(PORT, "0.0.0.0", function() {
       ];
       if (evt.urls) {
         var urlsTmpFile = path.join(BASE_DIR, "uploads", ".pw-retry-urls.txt");
-        try { fs.writeFileSync(urlsTmpFile, Array.isArray(evt.urls) ? evt.urls.join("\n") : String(evt.urls), "utf8"); } catch(e2) {}
+        try { fs.writeFileSync(urlsTmpFile, Array.isArray(evt.urls) ? evt.urls.join("\n") : String(evt.urls), "utf8"); } catch(e2) { console.error("[WARN]", e2.message); }
         retryArgs.push("--urls-file=" + urlsTmpFile);
       }
       runAgent("playwright-retry", "node", retryArgs, "default", false, {

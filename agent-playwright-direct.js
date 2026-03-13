@@ -55,7 +55,7 @@ if (URLS_FILE_ARG) {
   var tmpFile = URLS_FILE_ARG.replace("--urls-file=", "").trim();
   try {
     URLS_RAW = fs.readFileSync(tmpFile, "utf8").trim();
-    try { fs.unlinkSync(tmpFile); } catch(e) { /* fichier tmp absent */ }
+    try { fs.unlinkSync(tmpFile); } catch(e) { /* fichier tmp absent — non bloquant */ }
   } catch(e) { console.log("[WARN] Erreur lecture --urls-file : " + e.message); }
 }
 // Décoder les entités HTML résiduelles — gère &quot; ET &quot (sans ; final)
@@ -85,43 +85,11 @@ catch(e) { BROWSERS = ["chromium"]; }
 var BROWSER_MAP = { chromium: chromium, firefox: firefox, webkit: webkit, edge: chromium };
 var ENV_URL = CFG.envs[ENV_NAME] || CFG.envs.sophie;
 
-// ── VÉRIFICATION STORAGESTATE ──────────────────────────────────────────────
-// Les cookies Cloudflare expirent en ~24h. Vérifier l'âge du fichier auth.
-var STORAGE_STATE_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24h
+// ── VÉRIFICATION STORAGESTATE (centralisé dans lib/session-check.js) ─────────
+var checkStorageStateAge = require("./lib/session-check").checkStorageStateAge;
 
-function checkStorageStateAge(envName) {
-  var authFile = path.join(__dirname, "auth", envName + ".json");
-  if (!fs.existsSync(authFile)) {
-    return { ok: false, expired: true, absent: true, age: null, message: "Session absente pour " + envName + " — relancer login-save-state.js " + envName };
-  }
-  var stat = fs.statSync(authFile);
-  var ageMs = Date.now() - stat.mtimeMs;
-  if (ageMs > STORAGE_STATE_MAX_AGE_MS) {
-    var ageH = Math.round(ageMs / 3600000);
-    return { ok: false, expired: true, absent: false, age: ageH, message: "Session expirée (" + ageH + "h) pour " + envName + " — relancer login-save-state.js " + envName };
-  }
-  return { ok: true, expired: false, absent: false, age: Math.round(ageMs / 3600000) };
-}
-
-function jiraRequest(method, apiPath, body) {
-  return new Promise(function(resolve, reject) {
-    var auth    = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
-    var payload = body ? JSON.stringify(body) : null;
-    var options = {
-      hostname: CFG.jira.host, path: apiPath, method: method,
-      headers: { "Authorization": "Basic " + auth, "Content-Type": "application/json", "Accept": "application/json" }
-    };
-    if (payload) options.headers["Content-Length"] = Buffer.byteLength(payload);
-    var req = https.request(options, function(res) {
-      var data = "";
-      res.on("data", function(c) { data += c; });
-      res.on("end", function() { try { resolve(JSON.parse(data || "{}")); } catch(e) { resolve({}); } });
-    });
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
+// jiraRequest centralisé dans lib/jira-client.js
+var jiraRequest = require("./lib/jira-client").jiraRequest;
 
 /**
  * Convertit un document ADF (Atlassian Document Format) en texte markdown.
@@ -708,7 +676,7 @@ async function getUrlsFromJiraKey(key) {
           });
         });
       }
-    } catch(e) { /* pas de scénarios enrichis */ }
+    } catch(e) { console.error("  [WARN] Scénarios enrichis:", e.message); }
   }
 
   console.log("  [OK] " + urls.length + " URL(s) extraite(s) de " + key);
@@ -1173,7 +1141,7 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
         result.screenshot = path.join(SCREENSHOTS_DIR, cfShotName);
         await page.screenshot({ path: result.screenshot, fullPage: false });
       } catch(e) { console.error("  [SCREENSHOT] Erreur capture CF :", e.message); }
-      if (browser) await browser.close().catch(function(){});
+      if (browser) await browser.close().catch(function(e) { console.error("  [WARN] cleanup:", e.message); });
       return result;
     }
 
@@ -1189,7 +1157,7 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
           if (pos >= total) { clearInterval(timer); window.scrollTo(0, 0); resolve(); }
         }, 300);
       });
-    }).catch(function(){});
+    }).catch(function(e) { console.error("  [WARN] cleanup:", e.message); });
     await page.waitForTimeout(2500);
 
     // Étape HTTP
@@ -1325,7 +1293,7 @@ async function runTest(target, BT, device, browserName, mode, envNameOverride) {
       console.error("[ERREUR] screenshot " + (target.label || "") + " :", e.message || e);
     }
   }
-  if (browser) await browser.close().catch(function(){});
+  if (browser) await browser.close().catch(function(e) { console.error("  [WARN] cleanup:", e.message); });
   return result;
 }
 
@@ -1514,7 +1482,7 @@ async function runScenarios(targets, envName) {
       sr.error = "Erreur exécution : " + e.message.substring(0, 100);
       console.log("    -> FAIL — " + sr.error);
     } finally {
-      if (browser) await browser.close().catch(function(){});
+      if (browser) await browser.close().catch(function(e) { console.error("  [WARN] cleanup:", e.message); });
     }
     // Émettre progress PASS/FAIL/BLOCKED pour le dashboard
     var srStatus = sr.blocked ? "BLOCKED" : (sr.pass ? "PASS" : "FAIL");
@@ -1622,7 +1590,7 @@ async function createBugLocal(result, mode) {
       console.log("  [BUG] Doublon ignoré — bug similaire déjà en attente pour " + result.url + " (" + result.env + ")");
       return null;
     }
-  } catch(e) { /* ignore */ }
+  } catch(e) { console.error("  [WARN] Duplicate check:", e.message); }
 
   var bugData = {
     key:               bugKey,
@@ -1859,7 +1827,7 @@ function buildTicketContextHtml(ticketInfo) {
       var enriched = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
       if (enriched.enrichedMarkdown) desc = enriched.enrichedMarkdown;
       else if (enriched.originalMarkdown) desc = enriched.originalMarkdown;
-    } catch(e) { /* fallback sur description Jira brute */ }
+    } catch(e) { console.error("  [WARN] Enriched fallback:", e.message); }
   }
 
   // Sections connues à extraire (titres Jira / markdown)
@@ -2182,7 +2150,7 @@ async function convertHtmlToPdf(htmlPath) {
     console.log("[PDF] Erreur conversion : " + e.message.substring(0, 80));
     return null;
   } finally {
-    if (browser) await browser.close().catch(function(){});
+    if (browser) await browser.close().catch(function(e) { console.error("  [WARN] cleanup:", e.message); });
   }
 }
 

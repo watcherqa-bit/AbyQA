@@ -45,48 +45,8 @@ var testBrowsers = [];
 var testType     = "auto";
 var forceTestKey = null; // --force-key=SAFWBST-XXXX : écraser un ticket existant
 
-// ── HELPERS HTTP ──────────────────────────────────────────────────────────────
-function jiraRequest(method, apiPath, body, isMultipart, contentType) {
-  return new Promise(function(resolve, reject) {
-    var auth    = Buffer.from(CONFIG.jira.email + ":" + CONFIG.jira.token).toString("base64");
-    var ct      = contentType || "application/json";
-    var payload = body ? (typeof body === "string" ? body : JSON.stringify(body)) : null;
-
-    var headers = {
-      "Authorization": "Basic " + auth,
-      "Accept":        "application/json",
-      "Content-Type":  ct
-    };
-    if (payload) headers["Content-Length"] = Buffer.byteLength(payload);
-
-    var options = {
-      hostname: CONFIG.jira.host,
-      path:     apiPath,
-      method:   method,
-      headers:  headers
-    };
-
-    var req = https.request(options, function(res) {
-      var data = "";
-      res.on("data", function(c) { data += c; });
-      res.on("end", function() {
-        try {
-          var parsed = data ? JSON.parse(data) : {};
-          if (res.statusCode >= 400) {
-            reject(new Error("HTTP " + res.statusCode + " : " + data.substring(0, 200)));
-          } else {
-            resolve(parsed);
-          }
-        } catch (e) {
-          resolve(data);
-        }
-      });
-    });
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
+// ── HELPERS HTTP (centralisé dans lib/jira-client.js) ────────────────────────
+var jiraRequest = require("./lib/jira-client").jiraRequestCompat;
 
 // Upload binaire (screenshot, PDF, HTML)
 function mimeFromExt(fp) {
@@ -337,7 +297,7 @@ async function createXrayTests(ticket) {
     console.log("  [UPDATE" + forceLabel + "] Mise à jour de " + testKey + " — description, steps Xray");
     await jiraRequest("PUT", "/rest/api/2/issue/" + testKey, {
       fields: { summary: summary, description: description }
-    }).catch(function() {});
+    }).catch(function(e) { console.error("  [WARN] Jira API:", e.message); });
     console.log("  [OK] " + testKey + " mis a jour");
   } else {
     // CREER nouveau ticket Test
@@ -359,7 +319,7 @@ async function createXrayTests(ticket) {
       // Lier au ticket source
       await jiraRequest("POST", "/rest/api/2/issueLink", {
         type: { name: "Test" }, inwardIssue: { key: testKey }, outwardIssue: { key: ticket.key }
-      }).catch(function() {});
+      }).catch(function(e) { console.error("  [WARN] Jira API:", e.message); });
     } catch(e) {
       console.log("[ERREUR] " + e.message.substring(0, 100));
     }
@@ -426,7 +386,7 @@ async function createTestPlan(ticket, testKeys) {
     // Ajouter les tests au nouveau plan
     if (testKeys && testKeys.length > 0) {
       await jiraRequest("POST", "/rest/raven/1.0/api/testplan/" + plan.key + "/test", { add: testKeys })
-        .catch(function() {});
+        .catch(function(e) { console.error("  [WARN] Xray:", e.message); });
     }
     return plan.key;
   } catch(e) {
@@ -461,7 +421,7 @@ async function createTestExecution(ticket, testPlanKey, testKeys) {
         type:         { name: "Test" },
         inwardIssue:  { key: exec.key },
         outwardIssue: { key: testPlanKey }
-      }).catch(function() {});
+      }).catch(function(e) { console.error("  [WARN] Jira API:", e.message); });
     }
 
     return exec.key;
@@ -477,10 +437,10 @@ async function runPlaywright(ticket, createdTests, envName) {
   var envUrl = CONFIG.envs[envName] || CONFIG.envs.sophie;
 
   var browser = await chromium.launch({ headless: true });
+  var results = [];
+  try {
   var page    = await browser.newPage();
   await page.setViewportSize({ width: 1440, height: 900 });
-
-  var results = [];
 
   for (var i = 0; i < createdTests.length; i++) {
     var test = createdTests[i];
@@ -577,7 +537,9 @@ async function runPlaywright(ticket, createdTests, envName) {
     await new Promise(function(r) { setTimeout(r, 800); });
   }
 
-  await browser.close();
+  } finally {
+    await browser.close().catch(function(e) { console.error("  [WARN] browser.close:", e.message); });
+  }
   return results;
 }
 
@@ -615,7 +577,7 @@ async function updateXrayResults(execKey, results) {
       var r = results[i];
       if (r.screenshot && fs.existsSync(r.screenshot)) {
         process.stdout.write("  Upload preuve TC" + String(i+1).padStart(2,"0") + "... ");
-        await uploadAttachment(testKey, r.screenshot).catch(function() {});
+        await uploadAttachment(testKey, r.screenshot).catch(function(e) { console.error("  [WARN] Xray:", e.message); });
         console.log("[OK]");
       }
       await new Promise(function(res) { setTimeout(res, 300); });
@@ -627,7 +589,7 @@ async function updateXrayResults(execKey, results) {
     if (transitions.transitions) {
       var trans = transitions.transitions.find(function(t) { return t.name.toLowerCase().includes(globalStatus.toLowerCase()); });
       if (trans) {
-        await jiraRequest("POST", "/rest/api/2/issue/" + testKey + "/transitions", { transition: { id: trans.id } }).catch(function() {});
+        await jiraRequest("POST", "/rest/api/2/issue/" + testKey + "/transitions", { transition: { id: trans.id } }).catch(function(e) { console.error("  [WARN] Jira API:", e.message); });
         console.log("  Statut ticket : " + globalStatus);
       }
     }
@@ -711,7 +673,7 @@ async function createBugsForFails(ticket, results) {
 
       // Upload screenshot
       if (r.screenshot && fs.existsSync(r.screenshot)) {
-        await uploadAttachment(bug.key, r.screenshot).catch(function() {});
+        await uploadAttachment(bug.key, r.screenshot).catch(function(e) { console.error("  [WARN] Xray:", e.message); });
       }
 
       // Lier au ticket source
@@ -719,7 +681,7 @@ async function createBugsForFails(ticket, results) {
         type:         { name: "Blocks" },
         inwardIssue:  { key: bug.key },
         outwardIssue: { key: ticket.key }
-      }).catch(function() {});
+      }).catch(function(e) { console.error("  [WARN] Jira API:", e.message); });
 
       bugs.push({ key: bug.key, summary: summary });
     } catch (e) {
@@ -847,7 +809,7 @@ function buildXrayTicketContextHtml(ticket) {
       var enriched = JSON.parse(fs.readFileSync(enrichedPath, "utf8"));
       if (enriched.enrichedMarkdown) desc = enriched.enrichedMarkdown;
       else if (enriched.originalMarkdown) desc = enriched.originalMarkdown;
-    } catch(e) { /* fallback */ }
+    } catch(e) { console.error("  [WARN] Lecture enriched fallback:", e.message); }
   }
   if (!desc.trim()) return "";
 
@@ -1007,9 +969,10 @@ ${bugsSection}
  */
 async function convertHtmlToPdf(htmlPath) {
   var pdfPath = htmlPath.replace(/\.html$/, ".pdf");
+  var browser;
   try {
     console.log("[PDF] Conversion du rapport en PDF...");
-    var browser = await chromium.launch();
+    browser = await chromium.launch();
     var pg = await browser.newPage();
     await pg.goto("file:///" + htmlPath.replace(/\\/g, "/"), { waitUntil: "networkidle" });
 
@@ -1029,12 +992,13 @@ async function convertHtmlToPdf(htmlPath) {
       footerTemplate: footerHtml,
       margin: { top: "40px", bottom: "40px", left: "24px", right: "24px" }
     });
-    await browser.close();
     console.log("[PDF] " + path.basename(pdfPath));
     return pdfPath;
   } catch(e) {
     console.log("[PDF] Erreur conversion : " + e.message.substring(0, 80));
     return null;
+  } finally {
+    if (browser) await browser.close().catch(function(e) { console.error("[WARN] browser.close:", e.message); });
   }
 }
 

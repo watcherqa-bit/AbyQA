@@ -14,7 +14,7 @@ module.exports = function handle(method, url, req, res, ctx) {
   var _chatAnthropicClient = ctx._chatAnthropicClient;
   var CHAT_SYSTEM          = ctx.CHAT_SYSTEM;
 
-  // ── API : LLM Ollama (streaming SSE) ──────────────────────────────────────
+  // ── API : LLM Playground (streaming SSE via Claude API) ────────────────────
   if (method === "POST" && url === "/api/llm") {
     var llmChunks = [];
     req.on("data", function(c) { llmChunks.push(c); });
@@ -22,7 +22,7 @@ module.exports = function handle(method, url, req, res, ctx) {
       var body;
       try { body = JSON.parse(Buffer.concat(llmChunks).toString()); } catch(e) { body = {}; }
       var prompt      = body.prompt      || "";
-      var model       = body.model       || CFG.ollama.model;
+      var modelKey    = body.model       || "haiku";
       var system      = body.system      || "";
       var clientId    = body.clientId    || "llm-playground";
       var agentLabel  = body.agentId     || "llm-playground";
@@ -32,57 +32,45 @@ module.exports = function handle(method, url, req, res, ctx) {
         res.end(JSON.stringify({ ok: false, error: "prompt vide" }));
         return;
       }
+      if (!_chatAnthropicClient) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "ANTHROPIC_API_KEY non configurée" }));
+        return;
+      }
+
+      var MODEL = modelKey === "sonnet" ? "claude-sonnet-4-6" : "claude-haiku-4-5-20251001";
 
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+      res.end(JSON.stringify({ ok: true, model: MODEL }));
 
-      var messages = [];
-      if (system) messages.push({ role: "system", content: system });
-      messages.push({ role: "user", content: prompt });
-
-      var payload = JSON.stringify({ model: model, messages: messages, stream: true,
-        options: { temperature: 0.3 } });
       var t0 = Date.now();
       var tokenCount = 0;
 
       sendSSE(clientId, { type: "start", agent: agentLabel,
-        cmd: model + "  —  " + prompt.substring(0, 60) });
+        cmd: MODEL + "  —  " + prompt.substring(0, 60) });
 
-      var ollamaReq = http.request({
-        hostname: CFG.ollama.host, port: CFG.ollama.port,
-        path: "/api/chat", method: "POST",
-        headers: { "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(payload) }
-      }, function(ollamaRes) {
-        ollamaRes.on("data", function(chunk) {
-          chunk.toString().split("\n").filter(Boolean).forEach(function(line) {
-            try {
-              var tok = JSON.parse(line);
-              var text = tok.message && tok.message.content ? tok.message.content : "";
-              if (text) {
-                tokenCount++;
-                sendSSE(clientId, { type: "token", agent: agentLabel, token: text });
-              }
-              if (tok.done) {
-                var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-                var tps = elapsed > 0 ? (tokenCount / parseFloat(elapsed)).toFixed(1) : "?";
-                sendSSE(clientId, { type: "done", agent: agentLabel, code: 0,
-                  stats: { elapsed: elapsed, tokens: tokenCount, tps: tps, model: model } });
-              }
-            } catch(e) { console.error("[CHAT] Erreur parse Ollama token :", e.message); }
-          });
-        });
-        ollamaRes.on("error", function(e) {
-          sendSSE(clientId, { type: "err", agent: agentLabel,
-            line: "Ollama erreur : " + e.message });
-        });
+      var messages = [{ role: "user", content: prompt }];
+
+      var stream = _chatAnthropicClient.messages.stream({
+        model: MODEL,
+        max_tokens: 4096,
+        system: system || undefined,
+        messages: messages
       });
-      ollamaReq.on("error", function(e) {
+      stream.on("text", function(text) {
+        tokenCount++;
+        sendSSE(clientId, { type: "token", agent: agentLabel, token: text });
+      });
+      stream.on("finalMessage", function() {
+        var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        var tps = elapsed > 0 ? (tokenCount / parseFloat(elapsed)).toFixed(1) : "?";
+        sendSSE(clientId, { type: "done", agent: agentLabel, code: 0,
+          stats: { elapsed: elapsed, tokens: tokenCount, tps: tps, model: MODEL } });
+      });
+      stream.on("error", function(err) {
         sendSSE(clientId, { type: "err", agent: agentLabel,
-          line: "Ollama injoignable : " + e.message });
+          line: "Claude API erreur : " + err.message });
       });
-      ollamaReq.write(payload);
-      ollamaReq.end();
     });
     return true;
   }

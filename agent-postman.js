@@ -16,21 +16,8 @@ CFG.paths.init();
 const COLLECTIONS_DIR = CFG.paths.collections;
 const REPORTS_DIR     = CFG.paths.reports;
 
-// ── PARSE ARGUMENTS ─────────────────────────────────────────────────────────
-function parseArgs() {
-  var args = {};
-  process.argv.slice(2).forEach(function(a) {
-    if (a.startsWith("--")) {
-      var idx = a.indexOf("=");
-      if (idx > -1) {
-        args[a.substring(2, idx)] = a.substring(idx + 1);
-      } else {
-        args[a.substring(2)] = true;
-      }
-    }
-  });
-  return args;
-}
+// ── PARSE ARGUMENTS (centralisé dans lib/cli-args.js) ────────────────────────
+var parseArgs = require("./lib/cli-args").parseArgs;
 
 // ── CONSTRUIRE L'ENVIRONNEMENT POSTMAN ──────────────────────────────────────
 function buildEnvironment(envName) {

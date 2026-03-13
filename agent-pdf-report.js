@@ -131,9 +131,10 @@ async function generate(data) {
   console.log("[PDF] HTML généré → " + htmlPath);
 
   // Convert to PDF via Playwright
+  var browser;
   try {
     var pw = require("playwright");
-    var browser = await pw.chromium.launch({ headless: true });
+    browser = await pw.chromium.launch({ headless: true });
     var page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: "networkidle" });
     await page.pdf({
@@ -142,12 +143,13 @@ async function generate(data) {
       margin: { top: "10mm", bottom: "10mm", left: "10mm", right: "10mm" },
       printBackground: true
     });
-    await browser.close();
     console.log("[PDF] PDF généré → " + pdfPath);
   } catch(e) {
     console.error("[PDF] Erreur génération PDF (Playwright):", e.message);
     // Fallback: juste le HTML
     pdfPath = null;
+  } finally {
+    if (browser) await browser.close().catch(function(e) { console.error("[WARN] browser.close:", e.message); });
   }
 
   return { pdfPath: pdfPath, htmlPath: htmlPath };

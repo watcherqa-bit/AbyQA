@@ -12,42 +12,13 @@
 
 const fs    = require("fs");
 const path  = require("path");
-const https = require("https");
 const CFG   = require("./config");
 CFG.paths.init();
 
 const REPORTS_DIR = CFG.paths.reports;
 
-// ── HELPER JIRA ───────────────────────────────────────────────────────────────
-function jiraRequest(method, apiPath, body) {
-  return new Promise(function(resolve, reject) {
-    var auth    = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
-    var payload = body ? JSON.stringify(body) : null;
-    var options = {
-      hostname: CFG.jira.host,
-      path:     apiPath,
-      method:   method,
-      headers:  {
-        "Authorization": "Basic " + auth,
-        "Content-Type":  "application/json",
-        "Accept":        "application/json"
-      }
-    };
-    if (payload) options.headers["Content-Length"] = Buffer.byteLength(payload);
-
-    var req = https.request(options, function(res) {
-      var data = "";
-      res.on("data", function(c) { data += c; });
-      res.on("end", function() {
-        try { resolve(JSON.parse(data || "{}")); }
-        catch(e) { resolve({}); }
-      });
-    });
-    req.on("error", reject);
-    if (payload) req.write(payload);
-    req.end();
-  });
-}
+// ── HELPER JIRA (centralisé dans lib/jira-client.js) ─────────────────────────
+var jiraRequest = require("./lib/jira-client").jiraRequest;
 
 // ── RECUPERER LE TICKET ───────────────────────────────────────────────────────
 async function getTicket(key) {

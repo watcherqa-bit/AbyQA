@@ -787,7 +787,7 @@ async function main() {
           await page.setViewportSize({ width: vp.w, height: vp.h });
 
           // Accepter les cookies automatiquement si possible
-          page.on("dialog", function(dialog) { dialog.dismiss().catch(function() {}); });
+          page.on("dialog", function(dialog) { dialog.dismiss().catch(function(e) { /* dialog déjà fermé */ }); });
 
           for (var pi = 0; pi < PAGES_TO_AUDIT.length; pi++) {
             var pageConfig = PAGES_TO_AUDIT[pi];
