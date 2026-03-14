@@ -1394,14 +1394,15 @@
   }
   .plus-menu-btn:hover { border-color:var(--blue); color:var(--blue); background:var(--bg); transform:rotate(45deg); }
   .plus-menu-btn.active { border-color:var(--blue); color:var(--blue); transform:rotate(45deg); }
-  .plus-menu {
-    position:absolute; bottom:calc(100% + 8px); left:0;
+  #plus-menu-shared {
+    position:fixed;
     background:var(--bg2); border:1px solid var(--border2); border-radius:12px;
-    box-shadow:0 8px 32px rgba(0,0,0,.25); min-width:280px; z-index:999;
-    padding:6px 0; opacity:0; transform:translateY(8px) scale(.96);
-    transition:opacity .18s, transform .18s; pointer-events:none;
+    box-shadow:0 8px 32px rgba(0,0,0,.25); width:290px; z-index:10000;
+    padding:6px 0; opacity:0; transform:scale(.96);
+    transition:opacity .15s, transform .15s; pointer-events:none;
+    display:none;
   }
-  .plus-menu.open { opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+  #plus-menu-shared.open { opacity:1; transform:scale(1); pointer-events:auto; display:block; }
   .plus-menu-item {
     display:flex; align-items:center; gap:10px; padding:9px 16px;
     font-size:13px; color:var(--text); cursor:pointer; transition:background .12s;
@@ -2036,31 +2037,7 @@
           </div>
           <div class="smart-input-footer">
             <div class="smart-input-badge" id="pipe-smart-badge" data-type="">En attente</div>
-            <!-- Bouton + menu contextuel Pipeline -->
-            <div style="position:relative">
-              <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="togglePlusMenu('pipe-plus-menu', this)" title="Actions">+</button>
-              <div class="plus-menu" id="pipe-plus-menu" style="min-width:240px">
-                <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pipe-smart-file-input').click()">
-                  <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, PDF, CSV, spec</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('pipe-smart-input')">
-                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();opsPickTicket()">
-                  <span class="pm-icon">🎫</span><span class="pm-label">Ticket Jira</span><span class="pm-hint">Référencer un ticket</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();openInspectPanel()">
-                  <span class="pm-icon">🔍</span><span class="pm-label">Inspecter env</span><span class="pm-hint">Sophie, Paulo, Prod</span>
-                </button>
-                <div class="plus-menu-sep"></div>
-                <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
-                  <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">README, fichiers</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
-                  <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
-                </button>
-              </div>
-            </div>
+            <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="openPlusMenu(this,'pipe-smart-input')" title="Actions">+</button>
             <input type="file" id="pipe-smart-file-input" accept=".xml,.rss,.pdf,.txt,.md,.docx,.csv,.html,.json" style="display:none" onchange="pipeHandleFile(this)">
             <div style="flex:1"></div>
             <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → prévisualiser</span>
@@ -2948,28 +2925,7 @@
           <div id="pwd-smart-enriched-summary" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,232,122,.03)"></div>
           <div class="smart-input-footer">
             <div class="smart-input-badge" id="pwd-smart-badge" data-type="">En attente</div>
-            <!-- Bouton + menu contextuel Playwright -->
-            <div style="position:relative">
-              <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="togglePlusMenu('pwd-plus-menu', this)" title="Actions">+</button>
-              <div class="plus-menu" id="pwd-plus-menu" style="min-width:240px">
-                <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pwd-smart-file-input').click()">
-                  <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, RSS</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('pwd-smart-input')">
-                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();openEnrichedPickerPWD()">
-                  <span class="pm-icon">📂</span><span class="pm-label">Tickets enrichis</span><span class="pm-hint">Choisir un enrichi</span>
-                </button>
-                <div class="plus-menu-sep"></div>
-                <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
-                  <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">README, fichiers</span>
-                </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
-                  <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
-                </button>
-              </div>
-            </div>
+            <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="openPlusMenu(this,'pwd-smart-input')" title="Actions">+</button>
             <input type="file" id="pwd-smart-file-input" accept=".xml,.rss" style="display:none" onchange="pwdHandleFile(this)">
             <div style="flex:1"></div>
             <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → lancer</span>
@@ -4135,37 +4091,7 @@
       <div id="chat-input-area">
         <div style="display:flex;gap:8px;align-items:flex-end">
           <!-- Bouton + menu flottant -->
-          <div style="position:relative;flex-shrink:0">
-            <button class="plus-menu-btn" id="chat-plus-btn" onclick="togglePlusMenu('chat-plus-menu', this)" title="Actions">+</button>
-            <div class="plus-menu" id="chat-plus-menu">
-              <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('chat-file-input').click()">
-                <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichiers ou photos</span><span class="pm-hint">IMG, PDF, CSV, JSON</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture()">
-                <span class="pm-icon">📷</span><span class="pm-label">Prendre un screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openChatProjects()">
-                <span class="pm-icon">📁</span><span class="pm-label">Ajouter au projet</span><span class="pm-hint">Attacher au contexte ticket</span>
-              </button>
-              <div class="plus-menu-sep"></div>
-              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
-                <span class="pm-icon">🐙</span><span class="pm-label">Ajouter depuis GitHub</span><span class="pm-hint">README, fichiers d'un repo</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openJiraChatSearch()">
-                <span class="pm-icon">🔍</span><span class="pm-label">Rechercher</span><span class="pm-hint">Tickets, tests, enrichis</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
-                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span><span class="pm-hint">DuckDuckGo → injecter dans le chat</span>
-              </button>
-              <div class="plus-menu-sep"></div>
-              <button class="plus-menu-item" onclick="closePlusMenu();toggleStylePicker()">
-                <span class="pm-icon">🎨</span><span class="pm-label">Style de réponse</span><span class="pm-hint" id="style-hint-label">Concis</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openConnectorsModal()">
-                <span class="pm-icon">🔌</span><span class="pm-label">Connecteurs</span><span class="pm-hint">Jira, Xray, GitHub, SMTP</span>
-              </button>
-            </div>
-          </div>
+          <button class="plus-menu-btn" id="chat-plus-btn" onclick="openPlusMenu(this,'chat-input')" title="Actions" style="flex-shrink:0">+</button>
           <textarea id="chat-input" rows="3"
             placeholder="Posez votre question… (Entrée pour envoyer, Shift+Entrée pour saut de ligne)"
             onkeydown="chatInputKeydown(event)"></textarea>
@@ -4430,23 +4356,7 @@
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UNE COLLECTION</div>
         <div style="display:flex;gap:8px;align-items:flex-end">
-          <div style="position:relative;flex-shrink:0">
-            <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px" onclick="togglePlusMenu('postman-plus-menu', this)" title="Actions">+</button>
-            <div class="plus-menu" id="postman-plus-menu" style="min-width:240px">
-              <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('postman-prompt', 'url')">
-                <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL base</span><span class="pm-hint">URL de l'API</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('postman-prompt')">
-                <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
-                <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Specs API, OpenAPI</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
-                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
-              </button>
-            </div>
-          </div>
+          <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px;flex-shrink:0" onclick="openPlusMenu(this,'postman-prompt')" title="Actions">+</button>
           <textarea id="postman-prompt" rows="3" placeholder="Decris les endpoints a tester (ex: tester l'API /api/settings GET et PUT, verifier les codes retour 200/400/401...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
@@ -4491,23 +4401,7 @@
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UN SCRIPT</div>
         <div style="display:flex;gap:8px;align-items:flex-end">
-          <div style="position:relative;flex-shrink:0">
-            <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px" onclick="togglePlusMenu('appium-plus-menu', this)" title="Actions">+</button>
-            <div class="plus-menu" id="appium-plus-menu" style="min-width:240px">
-              <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('appium-prompt', 'url')">
-                <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL cible</span><span class="pm-hint">Page mobile à tester</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('appium-prompt')">
-                <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
-                <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Composants, specs</span>
-              </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
-                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
-              </button>
-            </div>
-          </div>
+          <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px;flex-shrink:0" onclick="openPlusMenu(this,'appium-prompt')" title="Actions">+</button>
           <textarea id="appium-prompt" rows="3" placeholder="Decris le test mobile (ex: ouvrir la page d'accueil sur Chrome Android, verifier le menu hamburger, tester le scroll...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
         </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
@@ -4550,6 +4444,36 @@
 <div id="toast">
   <span id="toastIcon">✅</span>
   <span id="toastMsg">Commande copiée</span>
+</div>
+
+<!-- ══ MENU + PARTAGÉ (unique, position:fixed, affiché dynamiquement) ══ -->
+<div id="plus-menu-shared">
+  <button class="plus-menu-item" data-action="files">
+    <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichiers ou photos</span><span class="pm-hint">IMG, PDF, CSV, JSON</span>
+  </button>
+  <button class="plus-menu-item" data-action="screenshot">
+    <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
+  </button>
+  <button class="plus-menu-item" data-action="project">
+    <span class="pm-icon">📁</span><span class="pm-label">Ajouter au projet</span><span class="pm-hint">Attacher au contexte ticket</span>
+  </button>
+  <div class="plus-menu-sep"></div>
+  <button class="plus-menu-item" data-action="github">
+    <span class="pm-icon">🐙</span><span class="pm-label">Ajouter depuis GitHub</span><span class="pm-hint">README, fichiers d'un repo</span>
+  </button>
+  <button class="plus-menu-item" data-action="search">
+    <span class="pm-icon">🔍</span><span class="pm-label">Rechercher</span><span class="pm-hint">Tickets, tests, enrichis</span>
+  </button>
+  <button class="plus-menu-item" data-action="web">
+    <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span><span class="pm-hint">DuckDuckGo → injecter</span>
+  </button>
+  <div class="plus-menu-sep"></div>
+  <button class="plus-menu-item" data-action="style">
+    <span class="pm-icon">🎨</span><span class="pm-label">Style de réponse</span><span class="pm-hint" id="style-hint-label">Concis</span>
+  </button>
+  <button class="plus-menu-item" data-action="connectors">
+    <span class="pm-icon">🔌</span><span class="pm-label">Connecteurs</span><span class="pm-hint">Jira, Xray, GitHub, SMTP</span>
+  </button>
 </div>
 
 <script>
@@ -14497,37 +14421,98 @@ function chatRemoveAttach(i) {
   renderChatAttachChips();
 }
 
-// ── Menu "+" flottant ────────────────────────────────────────────────────────
-var _activePlusMenu = null;
-var _activePlusBtn  = null;
+// ── Menu "+" partagé (position:fixed, composant unique) ─────────────────────
+var _plusMenuBtn    = null;   // bouton "+" qui a ouvert le menu
+var _plusMenuTarget = null;   // ID du textarea cible (null = chat)
 
-function togglePlusMenu(menuId, btn) {
-  var menu = document.getElementById(menuId);
+function openPlusMenu(btn, targetInputId) {
+  var menu = document.getElementById("plus-menu-shared");
   if (!menu) return;
-  var isOpen = menu.classList.contains("open");
+  var wasOpen = menu.classList.contains("open") && _plusMenuBtn === btn;
   closePlusMenu();
-  if (!isOpen) {
-    menu.classList.add("open");
-    btn.classList.add("active");
-    _activePlusMenu = menu;
-    _activePlusBtn  = btn;
-    setTimeout(function() { document.addEventListener("click", _closePlusOnOutside, true); }, 0);
-  }
+  if (wasOpen) return;
+
+  _plusMenuBtn    = btn;
+  _plusMenuTarget = targetInputId || null;
+  btn.classList.add("active");
+
+  // Positionner le menu au-dessus du bouton (position:fixed)
+  var rect = btn.getBoundingClientRect();
+  var menuH = 380; // hauteur estimée du menu
+  var top = rect.top - menuH - 8;
+  var left = rect.left;
+
+  // Si pas assez de place en haut → afficher en dessous
+  if (top < 8) top = rect.bottom + 8;
+  // Si déborde à droite
+  if (left + 290 > window.innerWidth) left = window.innerWidth - 298;
+  if (left < 8) left = 8;
+
+  menu.style.top  = top + "px";
+  menu.style.left = left + "px";
+  menu.classList.add("open");
+
+  setTimeout(function() {
+    document.addEventListener("click", _closePlusOnOutside, true);
+  }, 0);
 }
 
 function closePlusMenu() {
-  if (_activePlusMenu) { _activePlusMenu.classList.remove("open"); }
-  if (_activePlusBtn)  { _activePlusBtn.classList.remove("active"); }
-  _activePlusMenu = null;
-  _activePlusBtn  = null;
+  var menu = document.getElementById("plus-menu-shared");
+  if (menu) menu.classList.remove("open");
+  if (_plusMenuBtn) _plusMenuBtn.classList.remove("active");
+  _plusMenuBtn    = null;
   document.removeEventListener("click", _closePlusOnOutside, true);
 }
 
 function _closePlusOnOutside(e) {
-  if (_activePlusMenu && !_activePlusMenu.contains(e.target) && _activePlusBtn !== e.target) {
+  var menu = document.getElementById("plus-menu-shared");
+  if (menu && !menu.contains(e.target) && e.target !== _plusMenuBtn) {
     closePlusMenu();
   }
 }
+
+// ── Dispatch des actions du menu partagé ─────────────────────────────────────
+(function() {
+  document.addEventListener("click", function(e) {
+    var item = e.target.closest("[data-action]");
+    if (!item || !item.closest("#plus-menu-shared")) return;
+    var action = item.getAttribute("data-action");
+    var target = _plusMenuTarget; // capturer avant closePlusMenu
+    closePlusMenu();
+
+    switch (action) {
+      case "files":
+        // Utiliser le file input le plus proche du contexte
+        var fileInput = document.getElementById("chat-file-input")
+          || document.getElementById("pipe-smart-file-input")
+          || document.getElementById("pwd-smart-file-input");
+        if (fileInput) fileInput.click();
+        break;
+      case "screenshot":
+        nativeScreenCapture(target === "chat-input" ? null : target);
+        break;
+      case "project":
+        openChatProjects();
+        break;
+      case "github":
+        openGithubPicker();
+        break;
+      case "search":
+        openJiraChatSearch();
+        break;
+      case "web":
+        openWebSearch();
+        break;
+      case "style":
+        toggleStylePicker();
+        break;
+      case "connectors":
+        openConnectorsModal();
+        break;
+    }
+  });
+})();
 
 // ── Screenshot modal Playwright ─────────────────────────────────────────────
 var _scrEnvUrls = {
