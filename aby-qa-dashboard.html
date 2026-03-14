@@ -2043,8 +2043,8 @@
                 <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pipe-smart-file-input').click()">
                   <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, PDF, CSV, spec</span>
                 </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('pipe-smart-input')">
-                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot URL</span><span class="pm-hint">Capture Playwright</span>
+                <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('pipe-smart-input')">
+                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
                 </button>
                 <button class="plus-menu-item" onclick="closePlusMenu();opsPickTicket()">
                   <span class="pm-icon">🎫</span><span class="pm-label">Ticket Jira</span><span class="pm-hint">Référencer un ticket</span>
@@ -2955,8 +2955,8 @@
                 <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pwd-smart-file-input').click()">
                   <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, RSS</span>
                 </button>
-                <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('pwd-smart-input')">
-                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot URL</span><span class="pm-hint">Capture Playwright</span>
+                <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('pwd-smart-input')">
+                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
                 </button>
                 <button class="plus-menu-item" onclick="closePlusMenu();openEnrichedPickerPWD()">
                   <span class="pm-icon">📂</span><span class="pm-label">Tickets enrichis</span><span class="pm-hint">Choisir un enrichi</span>
@@ -4141,8 +4141,8 @@
               <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('chat-file-input').click()">
                 <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichiers ou photos</span><span class="pm-hint">IMG, PDF, CSV, JSON</span>
               </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToChat()">
-                <span class="pm-icon">📷</span><span class="pm-label">Prendre un screenshot</span><span class="pm-hint">Capture URL via Playwright</span>
+              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture()">
+                <span class="pm-icon">📷</span><span class="pm-label">Prendre un screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
               </button>
               <button class="plus-menu-item" onclick="closePlusMenu();openChatProjects()">
                 <span class="pm-icon">📁</span><span class="pm-label">Ajouter au projet</span><span class="pm-hint">Attacher au contexte ticket</span>
@@ -4436,8 +4436,8 @@
               <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('postman-prompt', 'url')">
                 <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL base</span><span class="pm-hint">URL de l'API</span>
               </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('postman-prompt')">
-                <span class="pm-icon">📷</span><span class="pm-label">Screenshot endpoint</span><span class="pm-hint">Capture Playwright</span>
+              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('postman-prompt')">
+                <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
               </button>
               <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
                 <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Specs API, OpenAPI</span>
@@ -4497,8 +4497,8 @@
               <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('appium-prompt', 'url')">
                 <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL cible</span><span class="pm-hint">Page mobile à tester</span>
               </button>
-              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('appium-prompt')">
-                <span class="pm-icon">📷</span><span class="pm-label">Screenshot page</span><span class="pm-hint">Capture Playwright</span>
+              <button class="plus-menu-item" onclick="closePlusMenu();nativeScreenCapture('appium-prompt')">
+                <span class="pm-icon">📷</span><span class="pm-label">Screenshot</span><span class="pm-hint">Onglet, fenêtre ou écran</span>
               </button>
               <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
                 <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Composants, specs</span>
@@ -14645,9 +14645,132 @@ function injectScreenshot() {
   showToast("Screenshot injecté", "📷");
 }
 
-// Alias pour les menus contextuels
-function takeScreenshotToChat() { openScreenshotModal(null); }
-function takeScreenshotToInput(targetInputId) { openScreenshotModal(targetInputId); }
+// ── Capture d'écran native (getDisplayMedia) ────────────────────────────────
+// Ouvre le dialog natif du navigateur : Onglet / Fenêtre / Écran complet
+// Puis capture un frame, convertit en base64 et injecte dans la zone IA active
+
+function nativeScreenCapture(targetInputId) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    showToast("Capture d'écran non supportée par ce navigateur", "❌");
+    return;
+  }
+
+  navigator.mediaDevices.getDisplayMedia({
+    video: { displaySurface: "browser" },
+    preferCurrentTab: false,
+    selfBrowserSurface: "include",
+    systemAudio: "exclude"
+  })
+  .then(function(stream) {
+    var track = stream.getVideoTracks()[0];
+    // Attendre un court instant pour que le frame soit stable
+    return new Promise(function(resolve) {
+      setTimeout(function() {
+        var imageCapture;
+        // Utiliser ImageCapture si disponible (meilleure qualité)
+        if (typeof ImageCapture !== "undefined") {
+          imageCapture = new ImageCapture(track);
+          imageCapture.grabFrame().then(function(bitmap) {
+            track.stop();
+            stream.getTracks().forEach(function(t) { t.stop(); });
+            resolve(bitmap);
+          }).catch(function() {
+            // Fallback via video + canvas
+            _captureViaCanvas(track, stream, resolve);
+          });
+        } else {
+          _captureViaCanvas(track, stream, resolve);
+        }
+      }, 300);
+    });
+  })
+  .then(function(bitmap) {
+    if (!bitmap) return;
+    // Convertir le bitmap en canvas → base64
+    var canvas = document.createElement("canvas");
+    canvas.width  = bitmap.width;
+    canvas.height = bitmap.height;
+    var ctx2d = canvas.getContext("2d");
+    ctx2d.drawImage(bitmap, 0, 0);
+
+    canvas.toBlob(function(blob) {
+      var reader = new FileReader();
+      reader.onloadend = function() {
+        var dataUrl = reader.result;
+        var b64 = dataUrl.split(",")[1];
+        var mediaType = "image/png";
+        var timestamp = new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        var name = "📷 Capture " + timestamp;
+
+        if (!targetInputId) {
+          // Injecter dans le chat
+          chatPendingItems.push({
+            kind: "image",
+            name: name,
+            content: dataUrl,
+            dataUrl: dataUrl,
+            base64: b64,
+            mediaType: mediaType
+          });
+          renderChatAttachChips();
+          showToast("Screenshot capturé et ajouté au chat", "📷");
+        } else {
+          // Injecter comme image attachée dans la zone concernée
+          // Stocker dans chatPendingItems avec une ref au textarea cible
+          chatPendingItems.push({
+            kind: "image",
+            name: name + " → " + targetInputId,
+            content: dataUrl,
+            dataUrl: dataUrl,
+            base64: b64,
+            mediaType: mediaType
+          });
+          renderChatAttachChips();
+          // Aussi ajouter une référence texte dans le textarea
+          var el = document.getElementById(targetInputId);
+          if (el) {
+            var ref = "[" + name + "]";
+            el.value = el.value ? el.value + "\n" + ref : ref;
+            el.dispatchEvent(new Event("input"));
+          }
+          showToast("Screenshot capturé", "📷");
+        }
+      };
+      reader.readAsDataURL(blob);
+    }, "image/png");
+  })
+  .catch(function(err) {
+    // L'utilisateur a annulé le dialog ou erreur
+    if (err.name === "NotAllowedError" || err.name === "AbortError") {
+      // Annulation silencieuse — pas de toast d'erreur
+      return;
+    }
+    showToast("Erreur capture : " + err.message, "❌");
+  });
+}
+
+function _captureViaCanvas(track, stream, resolve) {
+  var video = document.createElement("video");
+  video.srcObject = stream;
+  video.onloadedmetadata = function() {
+    video.play().then(function() {
+      setTimeout(function() {
+        var canvas = document.createElement("canvas");
+        canvas.width  = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        track.stop();
+        stream.getTracks().forEach(function(t) { t.stop(); });
+        // Créer un ImageBitmap-like depuis le canvas
+        resolve(canvas);
+      }, 200);
+    });
+  };
+}
+
+// Aliases conservés pour compatibilité
+function takeScreenshotToChat() { nativeScreenCapture(null); }
+function takeScreenshotToInput(targetInputId) { nativeScreenCapture(targetInputId); }
 
 function injectTextToPrompt(targetInputId, type) {
   var label = type === "url" ? "URL à ajouter :" : "Texte à ajouter :";
