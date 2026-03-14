@@ -3940,7 +3940,7 @@ var server = http.createServer(function(req, res) {
 
   // ── GET /api/session/status — Statut de toutes les sessions ──────────────
   if (method === "GET" && url === "/api/session/status") {
-    var authDir = path.join(__dirname, "auth");
+    var authDir = path.join(BASE_DIR, "auth");
     var sessionEnvs = ["prod", "sophie", "paulo"];
     var statuses = {};
     sessionEnvs.forEach(function(envName) {
@@ -4010,7 +4010,7 @@ var server = http.createServer(function(req, res) {
         }
 
         // Sauvegarder dans auth/[env].json
-        var authDir = path.join(__dirname, "auth");
+        var authDir = path.join(BASE_DIR, "auth");
         if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
         var authFile = path.join(authDir, envName + ".json");
         fs.writeFileSync(authFile, JSON.stringify(storageState, null, 2));
@@ -4029,7 +4029,7 @@ var server = http.createServer(function(req, res) {
   // ── GET /api/session/:env — Statut d'une session spécifique ────────────────
   if (method === "GET" && url.match(/^\/api\/session\/[a-z]+$/)) {
     var sEnvName = url.split("/").pop();
-    var sAuthFile = path.join(__dirname, "auth", sEnvName + ".json");
+    var sAuthFile = path.join(BASE_DIR, "auth", sEnvName + ".json");
     if (!fs.existsSync(sAuthFile)) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: "Aucune session pour " + sEnvName }));
@@ -4066,7 +4066,7 @@ var server = http.createServer(function(req, res) {
           res.end(JSON.stringify({ ok: false, error: "Format invalide — champ 'cookies' requis" }));
           return;
         }
-        var pAuthDir = path.join(__dirname, "auth");
+        var pAuthDir = path.join(BASE_DIR, "auth");
         if (!fs.existsSync(pAuthDir)) fs.mkdirSync(pAuthDir, { recursive: true });
         fs.writeFileSync(path.join(pAuthDir, pEnvName + ".json"), JSON.stringify(pData, null, 2));
         console.log("[SESSION] ✅ " + pEnvName + " uploadé (compat) — " + pData.cookies.length + " cookies");

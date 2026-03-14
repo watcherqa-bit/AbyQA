@@ -807,12 +807,14 @@ async function workflowBug(ticket) {
     pushSSE({ type: "test-queue-update", key: key });
 
     // 5. Lier le bug au ticket source
-    if (newBugKey && usKey) {
+    if (newBugKey && usKey && !_dryRun) {
       await jiraApiAsync("POST", "/rest/api/3/issueLink", {
         type:         { name: "Blocks" },
         inwardIssue:  { key: newBugKey },
         outwardIssue: { key: key }
       });
+    } else if (newBugKey && usKey && _dryRun) {
+      log("[DRY-RUN] linkIssues(bug " + newBugKey + " → " + key + ") skipped");
     }
 
     // 6. Commenter sur le ticket source

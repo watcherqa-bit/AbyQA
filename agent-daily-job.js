@@ -90,6 +90,7 @@ function linkIssues(sourceKey, testKey) {
 var BACKUP_DIR = path.join(__dirname, "backup");
 
 async function backupAndUpdateDescription(key, adfDoc, fallbackText) {
+  if (_dryRun) { log("[DRY-RUN] backupAndUpdateDescription(" + key + ") skipped"); return; }
   // 1. Backup
   try {
     var r = await jiraApi("GET", "/rest/api/3/issue/" + key + "?fields=description", null);
