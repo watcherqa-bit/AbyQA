@@ -116,7 +116,7 @@ async function callVision(systemPrompt, messages, model) {
       var response = await client.messages.create({
         model: model,
         max_tokens: 512,
-        system: systemPrompt,
+        system: [{ type: "text", text: systemPrompt, cache_control: { type: "ephemeral" } }],
         messages: messages
       });
       return {

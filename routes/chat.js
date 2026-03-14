@@ -51,10 +51,15 @@ module.exports = function handle(method, url, req, res, ctx) {
 
       var messages = [{ role: "user", content: prompt }];
 
+      // Niveau 3 : prompt caching Anthropic sur le system prompt
+      var systemPayload = system
+        ? [{ type: "text", text: system, cache_control: { type: "ephemeral" } }]
+        : undefined;
+
       var stream = _chatAnthropicClient.messages.stream({
         model: MODEL,
         max_tokens: 4096,
-        system: system || undefined,
+        system: systemPayload,
         messages: messages
       });
       stream.on("text", function(text) {
@@ -122,12 +127,15 @@ module.exports = function handle(method, url, req, res, ctx) {
 
       var MAX_RETRY_CHAT = 3;
       var chatAttempt = 0;
+      // Niveau 3 : prompt caching Anthropic sur CHAT_SYSTEM
+      var chatSystemPayload = [{ type: "text", text: CHAT_SYSTEM, cache_control: { type: "ephemeral" } }];
+
       function tryChatStream() {
         chatAttempt++;
         var stream = _chatAnthropicClient.messages.stream({
           model:      MODEL,
           max_tokens: 4096,
-          system:     CHAT_SYSTEM,
+          system:     chatSystemPayload,
           messages:   messages
         });
         stream.on('text', function(text) {

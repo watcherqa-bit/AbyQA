@@ -473,5 +473,225 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // BRIEFING IA — Vue d'ensemble (hybride : règles locales + 1 appel Haiku)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  if (method === "GET" && url === "/api/briefing") {
+    var BACKLOG_P = path.join(BASE_DIR, "inbox", "backlog", "pending.json");
+    var ENRICHED_DIR = path.join(BASE_DIR, "inbox", "enriched");
+    var TRACKER_PATH = path.join(BASE_DIR, "reports", "release-tracker.json");
+    var CYCLE_STATE  = path.join(BASE_DIR, "cycle-state.json");
+    var AUTH_DIR     = path.join(BASE_DIR, "auth");
+
+    // ── Collecte de données (0 token) ──
+    var alerts = [];
+    var context = {};
+
+    try {
+      // 1. Backlog
+      var pending = [];
+      try { pending = JSON.parse(fs.readFileSync(BACKLOG_P, "utf8")); } catch(e) {}
+      var stories = pending.filter(function(t) { return t.type === "Story" || t.type === "User Story"; });
+      var highPrio = pending.filter(function(t) {
+        return (t.priority === "High" || t.priority === "Highest" || t.priority === "Critical");
+      });
+      var uncovered = stories.filter(function(t) { return !t.hasTest && !t.testKey; });
+      context.totalTickets = pending.length;
+      context.totalStories = stories.length;
+      context.uncoveredUS = uncovered.length;
+
+      if (uncovered.length > 0) {
+        var uncovKeys = uncovered.slice(0, 5).map(function(t) { return t.key; }).join(", ");
+        alerts.push({
+          type: "coverage",
+          severity: uncovered.length > 3 ? "high" : "medium",
+          data: uncovered.length + " US sans couverture test" + (uncovered.length <= 5 ? " (" + uncovKeys + ")" : "")
+        });
+      }
+
+      if (highPrio.length > 0) {
+        var hpNoTest = highPrio.filter(function(t) { return !t.hasTest && !t.testKey; });
+        if (hpNoTest.length > 0) {
+          alerts.push({
+            type: "priority",
+            severity: "high",
+            data: hpNoTest.length + " tickets haute priorité sans test : " + hpNoTest.slice(0, 3).map(function(t) { return t.key; }).join(", ")
+          });
+        }
+      }
+
+      // 2. Release tracker
+      var tracker = {};
+      try { tracker = JSON.parse(fs.readFileSync(TRACKER_PATH, "utf8")); } catch(e) {}
+      var releases = Object.keys(tracker);
+      if (releases.length > 0) {
+        var latestRel = releases[releases.length - 1];
+        var rd = tracker[latestRel];
+        var pass = rd.totalPass || 0;
+        var fail = rd.totalFail || 0;
+        var tested = pass + fail;
+        var pct = tested > 0 ? Math.round(pass / tested * 100) : 0;
+        context.release = latestRel;
+        context.passPct = pct;
+        context.pass = pass;
+        context.fail = fail;
+
+        if (fail > 0) {
+          var failTickets = (rd.tickets || []).filter(function(t) { return t.status === "FAIL"; });
+          var failKeys = failTickets.slice(0, 4).map(function(t) { return t.key || t.ticketKey; }).filter(Boolean).join(", ");
+          alerts.push({
+            type: "release",
+            severity: pct < 50 ? "high" : pct < 80 ? "medium" : "low",
+            data: "Release " + latestRel + " à " + pct + "% de réussite — " + fail + " FAIL" + (failKeys ? " (" + failKeys + ")" : "")
+          });
+        }
+      }
+
+      // 3. Cycles QA
+      var cycleState = {};
+      try { cycleState = JSON.parse(fs.readFileSync(CYCLE_STATE, "utf8")); } catch(e) {}
+      var now = Date.now();
+
+      ["cycle1", "cycle2", "cycle3"].forEach(function(cKey) {
+        var c = cycleState[cKey];
+        if (!c || !c.lastRun) return;
+        var lastRunMs = new Date(c.lastRun).getTime();
+        var daysSince = Math.floor((now - lastRunMs) / (24 * 60 * 60 * 1000));
+        if (daysSince >= 3) {
+          alerts.push({
+            type: "cycle",
+            severity: daysSince >= 7 ? "high" : "medium",
+            data: cKey.replace("cycle", "Cycle ") + " non lancé depuis " + daysSince + " jours"
+          });
+        }
+        if (c.status === "error") {
+          alerts.push({
+            type: "cycle-error",
+            severity: "high",
+            data: cKey.replace("cycle", "Cycle ") + " en erreur : " + (c.lastError || "erreur inconnue").substring(0, 80)
+          });
+        }
+      });
+
+      // 4. Sessions Playwright
+      ["sophie", "paulo", "prod"].forEach(function(env) {
+        var authFile = path.join(AUTH_DIR, env + ".json");
+        if (!fs.existsSync(authFile)) {
+          alerts.push({ type: "session", severity: env === "prod" ? "medium" : "low", data: "Session " + env + " absente (auth/" + env + ".json)" });
+        } else {
+          try {
+            var stat = fs.statSync(authFile);
+            var ageDays = Math.floor((now - stat.mtimeMs) / (24 * 60 * 60 * 1000));
+            if (ageDays >= 7) {
+              alerts.push({ type: "session", severity: "medium", data: "Session " + env + " expirée (" + ageDays + " jours)" });
+            }
+          } catch(e) {}
+        }
+      });
+
+      // 5. Enrichissements en attente
+      var enrichedCount = 0;
+      try {
+        if (fs.existsSync(ENRICHED_DIR)) {
+          var eFiles = fs.readdirSync(ENRICHED_DIR).filter(function(f) { return f.endsWith(".json"); });
+          enrichedCount = eFiles.length;
+          if (enrichedCount > 0) {
+            var withStrategy = 0;
+            eFiles.slice(0, 20).forEach(function(f) {
+              try {
+                var ed = JSON.parse(fs.readFileSync(path.join(ENRICHED_DIR, f), "utf8"));
+                if (ed.strategy) withStrategy++;
+              } catch(e) {}
+            });
+            if (enrichedCount >= 5) {
+              alerts.push({
+                type: "enriched",
+                severity: enrichedCount >= 10 ? "medium" : "low",
+                data: enrichedCount + " tickets enrichis en attente de validation" + (withStrategy > 0 ? " (dont " + withStrategy + " avec stratégie IA)" : "")
+              });
+            }
+          }
+        }
+      } catch(e) {}
+      context.enrichedPending = enrichedCount;
+
+    } catch(e) {
+      console.error("[BRIEFING] Erreur collecte données :", e.message);
+    }
+
+    // ── Synthèse IA (1 seul appel Haiku, ~200 tokens output) ──
+    if (alerts.length === 0) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        bullets: ["Aucune alerte — tous les indicateurs sont au vert."],
+        alerts: [],
+        context: context,
+        source: "local",
+        cached: false
+      }));
+      return true;
+    }
+
+    // Si pas de client IA disponible → retour brut
+    if (!leadQA || !leadQA.ask) {
+      var rawBullets = alerts.map(function(a) {
+        var icon = a.severity === "high" ? "!!" : a.severity === "medium" ? "!" : "";
+        return icon + " " + a.data;
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ bullets: rawBullets, alerts: alerts, context: context, source: "local", cached: false }));
+      return true;
+    }
+
+    // Appel Haiku léger avec cache briefing (30min TTL)
+    var briefingPrompt =
+      "Tu es un QA Lead. Voici les alertes détectées automatiquement sur le projet :\n\n" +
+      alerts.map(function(a, i) { return (i+1) + ". [" + a.severity.toUpperCase() + "] " + a.data; }).join("\n") +
+      "\n\nContexte : " + JSON.stringify(context) +
+      "\n\nSynthétise en 3 à 5 bullets concis et actionnables en français. " +
+      "Chaque bullet commence par un emoji pertinent. " +
+      "Mets en avant les risques et les actions prioritaires. " +
+      "Format : un array JSON de strings. Exemple : [\"bullet1\",\"bullet2\"]";
+
+    leadQA.ask(briefingPrompt, leadQA.MODEL_FAST, "Tu es un assistant QA Senior. Réponds uniquement avec un array JSON de strings.", { cache: "briefing", maxTokens: 300 })
+      .then(function(iaText) {
+        var bullets;
+        // Détecter si l'IA a retourné une erreur (Ollama RAM, etc.)
+        if (iaText && iaText.indexOf('"error"') !== -1 && iaText.indexOf('memory') !== -1) {
+          throw new Error("LLM indisponible");
+        }
+        try {
+          iaText = iaText.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+          bullets = JSON.parse(iaText);
+          if (!Array.isArray(bullets)) throw new Error("not array");
+        } catch(e) {
+          // Fallback : découper par lignes si c'est du texte lisible
+          if (iaText && iaText.length > 10 && iaText.indexOf('"error"') === -1) {
+            bullets = iaText.split("\n").filter(function(l) { return l.trim().length > 0; }).slice(0, 5);
+          } else {
+            throw new Error("Réponse IA invalide");
+          }
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ bullets: bullets, alerts: alerts, context: context, source: "ia", cached: false }));
+      })
+      .catch(function(e) {
+        console.error("[BRIEFING] Erreur IA :", e.message, "— fallback alertes brutes");
+        var sevEmoji = { high: "🔴", medium: "🟠", low: "🔵" };
+        var rawBullets = alerts.map(function(a) { return (sevEmoji[a.severity] || "•") + " " + a.data; });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ bullets: rawBullets, alerts: alerts, context: context, source: "fallback", cached: false }));
+      });
+    return true;
+  }
+
+  // ── GET /api/ia-cache/stats — Statistiques cache IA ──
+  if (method === "GET" && url === "/api/ia-cache/stats") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(leadQA.getCacheStats ? leadQA.getCacheStats() : {}));
+    return true;
+  }
+
   return false;
 };

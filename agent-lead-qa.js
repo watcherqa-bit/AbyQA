@@ -6,6 +6,7 @@
 "use strict";
 
 const Anthropic = require("@anthropic-ai/sdk");
+const crypto    = require("crypto");
 const CFG       = require("./config");
 const fs        = require("fs");
 const path      = require("path");
@@ -17,6 +18,72 @@ const client = new Anthropic({ apiKey: CFG.anthropic.apiKey });
 // Modèles
 const MODEL_FAST    = "claude-haiku-4-5-20251001";  // Décisions rapides (routing, analyse)
 const MODEL_QUALITY = "claude-sonnet-4-6";           // Génération de contenu qualité
+
+// ── NIVEAU 2 : CACHE GLOBAL RÉPONSES IA ─────────────────────────────────────
+// Évite de refaire les mêmes appels API pour le même contenu
+const IA_CACHE_DIR = path.join(__dirname, "inbox", "ia-cache");
+const IA_CACHE_TTL = {
+  enrichment: 4 * 60 * 60 * 1000,  // 4h pour enrichissement/génération
+  diagnostic: 1 * 60 * 60 * 1000,  // 1h pour diagnostics
+  briefing:   30 * 60 * 1000       // 30min pour briefing dashboard
+};
+
+function _cacheKey(prompt, model) {
+  return crypto.createHash("md5").update(model + "|" + prompt).digest("hex");
+}
+
+function _cacheGet(prompt, model, ttlCategory) {
+  try {
+    var key  = _cacheKey(prompt, model);
+    var file = path.join(IA_CACHE_DIR, key + ".json");
+    if (!fs.existsSync(file)) return null;
+    var entry = JSON.parse(fs.readFileSync(file, "utf8"));
+    var ttl   = IA_CACHE_TTL[ttlCategory] || IA_CACHE_TTL.enrichment;
+    if (Date.now() - entry.ts > ttl) {
+      try { fs.unlinkSync(file); } catch(e) {}
+      return null;
+    }
+    return entry.response;
+  } catch(e) { return null; }
+}
+
+function _cacheSet(prompt, model, response) {
+  try {
+    if (!fs.existsSync(IA_CACHE_DIR)) fs.mkdirSync(IA_CACHE_DIR, { recursive: true });
+    var key  = _cacheKey(prompt, model);
+    var file = path.join(IA_CACHE_DIR, key + ".json");
+    fs.writeFileSync(file, JSON.stringify({ ts: Date.now(), model: model, response: response }), "utf8");
+  } catch(e) { console.warn("[IA-CACHE] Erreur écriture :", e.message); }
+}
+
+function _cachePurgeExpired() {
+  try {
+    if (!fs.existsSync(IA_CACHE_DIR)) return;
+    var maxTTL = Math.max.apply(null, Object.values(IA_CACHE_TTL));
+    var files  = fs.readdirSync(IA_CACHE_DIR).filter(function(f) { return f.endsWith(".json"); });
+    var now    = Date.now();
+    var purged = 0;
+    files.forEach(function(f) {
+      var fp = path.join(IA_CACHE_DIR, f);
+      try {
+        var entry = JSON.parse(fs.readFileSync(fp, "utf8"));
+        if (now - entry.ts > maxTTL) { fs.unlinkSync(fp); purged++; }
+      } catch(e) { try { fs.unlinkSync(fp); } catch(e2) {} }
+    });
+    if (purged > 0) console.log("[IA-CACHE] Purgé " + purged + " entrées expirées");
+  } catch(e) {}
+}
+
+// Purge auto toutes les 2h
+setInterval(_cachePurgeExpired, 2 * 60 * 60 * 1000);
+
+// Stats cache (pour monitoring)
+var _cacheStats = { hits: 0, misses: 0 };
+function getCacheStats() {
+  var files = 0;
+  try { if (fs.existsSync(IA_CACHE_DIR)) files = fs.readdirSync(IA_CACHE_DIR).filter(function(f) { return f.endsWith(".json"); }).length; } catch(e) {}
+  return { hits: _cacheStats.hits, misses: _cacheStats.misses, files: files, hitRate: (_cacheStats.hits + _cacheStats.misses) > 0 ? Math.round(_cacheStats.hits / (_cacheStats.hits + _cacheStats.misses) * 100) : 0 };
+}
 
 // ── RÈGLES ANTI-HALLUCINATION — appliquées à toutes les générations ───────────
 const ANTI_HALLU =
@@ -203,24 +270,62 @@ TYPES D'AUTOMATISATION PLAYWRIGHT
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
 
 // ── HELPER : appel LLM API (avec retry backoff sur 429, fallback Ollama) ─────
-async function ask(userPrompt, model, systemOverride) {
+// opts: { cache: "enrichment"|"diagnostic"|"briefing"|false, maxTokens: number }
+async function ask(userPrompt, model, systemOverride, opts) {
+  opts = opts || {};
+  var resolvedModel = model || MODEL_QUALITY;
+  var cacheCategory = opts.cache || false;
+
+  // ── Niveau 2 : vérifier le cache local ──
+  if (cacheCategory) {
+    var cached = _cacheGet(userPrompt, resolvedModel, cacheCategory);
+    if (cached) {
+      _cacheStats.hits++;
+      console.log("[IA-CACHE] HIT (" + cacheCategory + ") — économie d'un appel API");
+      return cached;
+    }
+    _cacheStats.misses++;
+  }
+
   var hasCredits = !!CFG.anthropic.apiKey;
 
   // Tenter Anthropic API en premier (3 essais max sur rate-limit)
   if (hasCredits) {
     var MAX_RETRY = 3;
+    var sysContent = systemOverride || SYSTEM_QA;
+
+    // ── Niveau 3 : prompt caching Anthropic ──
+    // On envoie le system prompt avec cache_control pour que le SDK Anthropic
+    // le mette en cache côté serveur (90% d'économie sur les tokens système)
+    var systemPayload = [
+      { type: "text", text: sysContent, cache_control: { type: "ephemeral" } }
+    ];
+
     for (var attempt = 1; attempt <= MAX_RETRY; attempt++) {
       try {
         var response = await client.messages.create({
-          model:      model || MODEL_QUALITY,
-          max_tokens: 4096,
-          system:     systemOverride || SYSTEM_QA,
+          model:      resolvedModel,
+          max_tokens: opts.maxTokens || 4096,
+          system:     systemPayload,
           messages:   [{ role: "user", content: userPrompt }]
         });
-        return response.content[0].text;
+        var text = response.content[0].text;
+
+        // Log usage cache Anthropic
+        if (response.usage) {
+          var cu = response.usage.cache_creation_input_tokens || 0;
+          var cr = response.usage.cache_read_input_tokens || 0;
+          if (cu > 0 || cr > 0) {
+            console.log("[PROMPT-CACHE] creation=" + cu + " read=" + cr + " tokens (économie: " + (cr > 0 ? "90% sur system" : "prochains appels") + ")");
+          }
+        }
+
+        // ── Niveau 2 : sauvegarder en cache local ──
+        if (cacheCategory) _cacheSet(userPrompt, resolvedModel, text);
+
+        return text;
       } catch(e) {
         if (e.status === 429) {
-          // Rate limit → attendre et retenter (backoff exponentiel : 5s, 15s, 30s)
           var wait = [5000, 15000, 30000][attempt - 1] || 30000;
           console.warn("[LeadQA] Rate limit 429 — tentative " + attempt + "/" + MAX_RETRY + " — attente " + (wait/1000) + "s");
           if (attempt < MAX_RETRY) { await sleep(wait); continue; }
@@ -237,7 +342,9 @@ async function ask(userPrompt, model, systemOverride) {
   }
 
   // Fallback Ollama local
-  return await askOllama(userPrompt, systemOverride || SYSTEM_QA);
+  var ollamaResult = await askOllama(userPrompt, systemOverride || SYSTEM_QA);
+  if (cacheCategory) _cacheSet(userPrompt, resolvedModel, ollamaResult);
+  return ollamaResult;
 }
 
 // Appel Ollama local (fallback)
@@ -1564,14 +1671,7 @@ async function generateAppiumScript(opts) {
   prompt += "- Inclus des assertions significatives\n";
   prompt += "- Retourne UNIQUEMENT le code JavaScript, pas de markdown\n";
 
-  var result = await client.messages.create({
-    model: MODEL_QUALITY,
-    max_tokens: 4096,
-    system: SYSTEM_QA,
-    messages: [{ role: "user", content: ANTI_HALLU + prompt }]
-  });
-
-  var code = result.content[0].text;
+  var code = await ask(ANTI_HALLU + prompt, MODEL_QUALITY);
   code = code.replace(/^```(?:javascript|js)?\n?/, "").replace(/\n?```$/, "");
   return code;
 }
@@ -1613,6 +1713,8 @@ module.exports = {
   extractUrlsFromDescription,
   // LLM bas niveau (pour routes custom du serveur)
   askJSON,
+  // Cache IA (niveau 2)
+  getCacheStats,
   // Utilitaires
   saveMarkdown,
   saveCSV,

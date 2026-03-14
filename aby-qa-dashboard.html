@@ -1541,6 +1541,25 @@
         </div>
       </div>
 
+      <!-- ══ BRIEFING IA ══ -->
+      <div id="ia-briefing-card" style="background:linear-gradient(135deg,rgba(99,102,241,.08),rgba(139,92,246,.06));border:1px solid rgba(99,102,241,.3);border-radius:12px;padding:14px 20px;margin-bottom:16px;display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:16px">🧠</span>
+            <span style="font-family:var(--mono);font-size:11px;color:var(--purple);letter-spacing:.08em;font-weight:700">BRIEFING IA</span>
+            <span id="ia-briefing-source" style="font-family:var(--mono);font-size:9px;color:var(--text3);background:var(--bg3);border-radius:4px;padding:1px 6px"></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="ia-briefing-cache-badge" style="display:none;font-family:var(--mono);font-size:9px;color:var(--green);background:rgba(0,232,122,.1);border:1px solid rgba(0,232,122,.25);border-radius:4px;padding:1px 6px">CACHE</span>
+            <button id="ia-briefing-refresh" onclick="loadBriefingIA(true)" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px" title="Rafraîchir le briefing">⟳</button>
+          </div>
+        </div>
+        <div id="ia-briefing-loading" style="display:none;text-align:center;padding:8px 0">
+          <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">Analyse en cours…</span>
+        </div>
+        <ul id="ia-briefing-list" style="margin:0;padding:0 0 0 4px;list-style:none;display:flex;flex-direction:column;gap:5px"></ul>
+      </div>
+
       <!-- ══ SANTÉ RELEASE ══ -->
       <div id="release-health-card" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap">
 
@@ -6171,6 +6190,62 @@ function loadReleaseTracker() {
     });
 }
 
+// ── BRIEFING IA — Vue d'ensemble (hybride : règles locales + 1 appel Haiku) ──
+var _briefingLoaded = false;
+function loadBriefingIA(force) {
+  var card    = document.getElementById("ia-briefing-card");
+  var listEl  = document.getElementById("ia-briefing-list");
+  var loading = document.getElementById("ia-briefing-loading");
+  var srcEl   = document.getElementById("ia-briefing-source");
+  var cacheB  = document.getElementById("ia-briefing-cache-badge");
+  if (!card || !listEl) return;
+
+  // Ne charger qu'une fois sauf si force=true
+  if (_briefingLoaded && !force) { card.style.display = ""; return; }
+
+  card.style.display = "";
+  loading.style.display = "";
+  listEl.innerHTML = "";
+
+  fetch(SERVER + "/api/briefing")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      loading.style.display = "none";
+      _briefingLoaded = true;
+
+      var bullets = data.bullets || [];
+      if (!bullets.length) {
+        listEl.innerHTML = '<li style="font-size:12px;color:var(--green)">Tous les indicateurs sont au vert.</li>';
+        if (srcEl) srcEl.textContent = "";
+        return;
+      }
+
+      // Couleur selon sévérité des alertes
+      var maxSev = "low";
+      (data.alerts || []).forEach(function(a) {
+        if (a.severity === "high") maxSev = "high";
+        else if (a.severity === "medium" && maxSev !== "high") maxSev = "medium";
+      });
+      var borderColor = maxSev === "high" ? "rgba(255,69,58,.4)" : maxSev === "medium" ? "rgba(255,149,0,.4)" : "rgba(99,102,241,.3)";
+      card.style.borderColor = borderColor;
+
+      listEl.innerHTML = bullets.map(function(b) {
+        return '<li style="font-size:12px;color:var(--text);line-height:1.5;padding:3px 0;border-bottom:1px solid var(--border)">' + escHtml(b) + '</li>';
+      }).join("");
+
+      if (srcEl) {
+        var srcLabel = data.source === "ia" ? "synthèse IA" : data.source === "local" ? "règles locales" : "fallback";
+        srcEl.textContent = srcLabel;
+      }
+      if (cacheB) cacheB.style.display = data.cached ? "" : "none";
+    })
+    .catch(function(e) {
+      loading.style.display = "none";
+      listEl.innerHTML = '<li style="font-size:11px;color:var(--text3)">Briefing indisponible — serveur hors ligne</li>';
+      card.style.display = "";
+    });
+}
+
 function updateReleaseHealthCard() {
   // Lire la release courante depuis le badge header (mis à jour par applySettings)
   var badge = document.getElementById("header-release-badge");
@@ -6792,6 +6867,7 @@ document.addEventListener("DOMContentLoaded", function() {
   loadCycleState();      // Charger l'état des 3 cycles
   setInterval(loadCycleState, 30000); // Rafraîchir toutes les 30s
   loadDailyJobStatus();  // Charger le dernier rapport du check journalier
+  loadBriefingIA();      // Briefing IA hybride (vue d'ensemble)
   initAllJiraAutocompletes(); // Autocomplete Jira sur tous les champs clés
 
   // Restaurer le panel depuis le hash URL (refresh / partage de lien)
