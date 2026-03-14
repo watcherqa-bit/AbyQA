@@ -1384,6 +1384,49 @@
     text-align:center; cursor:pointer; margin:0 16px 4px; flex-shrink:0;
   }
   #chat-drop-zone.dragover { border-color:var(--blue); background:rgba(59,111,255,.06); color:var(--blue); }
+
+  /* ── Menu "+" flottant (style Claude.ai) ── */
+  .plus-menu-btn {
+    width:38px; height:38px; border-radius:50%; border:1.5px solid var(--border2);
+    background:var(--bg3); color:var(--text2); font-size:20px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:all .2s; flex-shrink:0; line-height:1; position:relative;
+  }
+  .plus-menu-btn:hover { border-color:var(--blue); color:var(--blue); background:var(--bg); transform:rotate(45deg); }
+  .plus-menu-btn.active { border-color:var(--blue); color:var(--blue); transform:rotate(45deg); }
+  .plus-menu {
+    position:absolute; bottom:calc(100% + 8px); left:0;
+    background:var(--bg2); border:1px solid var(--border2); border-radius:12px;
+    box-shadow:0 8px 32px rgba(0,0,0,.25); min-width:280px; z-index:999;
+    padding:6px 0; opacity:0; transform:translateY(8px) scale(.96);
+    transition:opacity .18s, transform .18s; pointer-events:none;
+  }
+  .plus-menu.open { opacity:1; transform:translateY(0) scale(1); pointer-events:auto; }
+  .plus-menu-item {
+    display:flex; align-items:center; gap:10px; padding:9px 16px;
+    font-size:13px; color:var(--text); cursor:pointer; transition:background .12s;
+    border:none; background:none; width:100%; text-align:left; font-family:inherit;
+  }
+  .plus-menu-item:hover { background:var(--bg3); }
+  .plus-menu-item .pm-icon { font-size:16px; width:22px; text-align:center; flex-shrink:0; }
+  .plus-menu-item .pm-label { flex:1; }
+  .plus-menu-item .pm-hint { font-size:11px; color:var(--text3); }
+  .plus-menu-sep { height:1px; background:var(--border); margin:4px 12px; }
+
+  /* ── Style picker popover ── */
+  .style-picker {
+    position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+    background:var(--bg2); border:1px solid var(--border2); border-radius:10px;
+    box-shadow:0 6px 24px rgba(0,0,0,.2); padding:8px; z-index:1000;
+    display:none; gap:6px;
+  }
+  .style-picker.open { display:flex; }
+  .style-chip {
+    padding:6px 14px; border-radius:20px; font-size:12px; cursor:pointer;
+    border:1px solid var(--border2); background:var(--bg3); color:var(--text2);
+    transition:all .15s; white-space:nowrap;
+  }
+  .style-chip:hover, .style-chip.active { border-color:var(--blue); color:var(--blue); background:rgba(59,111,255,.08); }
 </style>
 </head>
 <body>
@@ -1993,9 +2036,31 @@
           </div>
           <div class="smart-input-footer">
             <div class="smart-input-badge" id="pipe-smart-badge" data-type="">En attente</div>
-            <button class="chat-tool-btn" onclick="document.getElementById('pipe-smart-file-input').click()" title="Fichier XML, PDF, spec">📎 Fichier</button>
-            <button class="chat-tool-btn" onclick="opsPickTicket()" title="Référencer un ticket Jira">🎫 Ticket</button>
-            <button class="chat-tool-btn" onclick="openInspectPanel()" title="Inspecter un environnement" style="border-color:rgba(0,232,122,.4);color:var(--green)">🔍 Inspecter</button>
+            <!-- Bouton + menu contextuel Pipeline -->
+            <div style="position:relative">
+              <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="togglePlusMenu('pipe-plus-menu', this)" title="Actions">+</button>
+              <div class="plus-menu" id="pipe-plus-menu" style="min-width:240px">
+                <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pipe-smart-file-input').click()">
+                  <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, PDF, CSV, spec</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('pipe-smart-input')">
+                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot URL</span><span class="pm-hint">Capture Playwright</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();opsPickTicket()">
+                  <span class="pm-icon">🎫</span><span class="pm-label">Ticket Jira</span><span class="pm-hint">Référencer un ticket</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();openInspectPanel()">
+                  <span class="pm-icon">🔍</span><span class="pm-label">Inspecter env</span><span class="pm-hint">Sophie, Paulo, Prod</span>
+                </button>
+                <div class="plus-menu-sep"></div>
+                <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
+                  <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">README, fichiers</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
+                  <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
+                </button>
+              </div>
+            </div>
             <input type="file" id="pipe-smart-file-input" accept=".xml,.rss,.pdf,.txt,.md,.docx,.csv,.html,.json" style="display:none" onchange="pipeHandleFile(this)">
             <div style="flex:1"></div>
             <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → prévisualiser</span>
@@ -2883,8 +2948,28 @@
           <div id="pwd-smart-enriched-summary" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:rgba(0,232,122,.03)"></div>
           <div class="smart-input-footer">
             <div class="smart-input-badge" id="pwd-smart-badge" data-type="">En attente</div>
-            <button class="chat-tool-btn" onclick="document.getElementById('pwd-smart-file-input').click()" title="Fichier XML">📎 Fichier</button>
-            <button class="chat-tool-btn" onclick="openEnrichedPickerPWD()" title="Choisir un ticket enrichi">📂 Enrichis</button>
+            <!-- Bouton + menu contextuel Playwright -->
+            <div style="position:relative">
+              <button class="plus-menu-btn" style="width:28px;height:28px;font-size:16px" onclick="togglePlusMenu('pwd-plus-menu', this)" title="Actions">+</button>
+              <div class="plus-menu" id="pwd-plus-menu" style="min-width:240px">
+                <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('pwd-smart-file-input').click()">
+                  <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichier</span><span class="pm-hint">XML, RSS</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('pwd-smart-input')">
+                  <span class="pm-icon">📷</span><span class="pm-label">Screenshot URL</span><span class="pm-hint">Capture Playwright</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();openEnrichedPickerPWD()">
+                  <span class="pm-icon">📂</span><span class="pm-label">Tickets enrichis</span><span class="pm-hint">Choisir un enrichi</span>
+                </button>
+                <div class="plus-menu-sep"></div>
+                <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
+                  <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">README, fichiers</span>
+                </button>
+                <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
+                  <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
+                </button>
+              </div>
+            </div>
             <input type="file" id="pwd-smart-file-input" accept=".xml,.rss" style="display:none" onchange="pwdHandleFile(this)">
             <div style="flex:1"></div>
             <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">Ctrl+Entrée → lancer</span>
@@ -4046,24 +4131,52 @@
       </div>
       <input type="file" id="chat-file-input" multiple style="display:none" onchange="chatAttachFiles(this.files)">
 
-      <!-- Barre d'outils contextuelle -->
-      <div class="chat-toolbar">
-        <button class="chat-tool-btn" onclick="document.getElementById('chat-file-input').click()" title="Joindre un fichier">📎 Fichier</button>
-        <button class="chat-tool-btn" onclick="openChatProjects()" title="Projets de conversation">📁 Projets</button>
-        <button class="chat-tool-btn" onclick="openGithubPicker()" title="Importer depuis GitHub">🐙 GitHub</button>
-        <button class="chat-tool-btn" onclick="openJiraChatSearch()" title="Chercher un ticket Jira">🎫 Jira</button>
-        <button class="chat-tool-btn" onclick="openWebSearch()" title="Recherche web DuckDuckGo">🔍 Web</button>
-        <button class="chat-tool-btn" onclick="openClaudeCodeDialog()" title="Envoyer à Claude Code CLI" style="border-color:rgba(255,165,0,.4);color:var(--orange)">🤖 Code</button>
-      </div>
-
-      <!-- Zone input -->
+      <!-- Zone input avec menu + -->
       <div id="chat-input-area">
         <div style="display:flex;gap:8px;align-items:flex-end">
+          <!-- Bouton + menu flottant -->
+          <div style="position:relative;flex-shrink:0">
+            <button class="plus-menu-btn" id="chat-plus-btn" onclick="togglePlusMenu('chat-plus-menu', this)" title="Actions">+</button>
+            <div class="plus-menu" id="chat-plus-menu">
+              <button class="plus-menu-item" onclick="closePlusMenu();document.getElementById('chat-file-input').click()">
+                <span class="pm-icon">📎</span><span class="pm-label">Ajouter fichiers ou photos</span><span class="pm-hint">IMG, PDF, CSV, JSON</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToChat()">
+                <span class="pm-icon">📷</span><span class="pm-label">Prendre un screenshot</span><span class="pm-hint">Capture URL via Playwright</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openChatProjects()">
+                <span class="pm-icon">📁</span><span class="pm-label">Ajouter au projet</span><span class="pm-hint">Attacher au contexte ticket</span>
+              </button>
+              <div class="plus-menu-sep"></div>
+              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
+                <span class="pm-icon">🐙</span><span class="pm-label">Ajouter depuis GitHub</span><span class="pm-hint">README, fichiers d'un repo</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openJiraChatSearch()">
+                <span class="pm-icon">🔍</span><span class="pm-label">Rechercher</span><span class="pm-hint">Tickets, tests, enrichis</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
+                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span><span class="pm-hint">DuckDuckGo → injecter dans le chat</span>
+              </button>
+              <div class="plus-menu-sep"></div>
+              <button class="plus-menu-item" onclick="closePlusMenu();toggleStylePicker()">
+                <span class="pm-icon">🎨</span><span class="pm-label">Style de réponse</span><span class="pm-hint" id="style-hint-label">Concis</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openConnectorsModal()">
+                <span class="pm-icon">🔌</span><span class="pm-label">Connecteurs</span><span class="pm-hint">Jira, Xray, GitHub, SMTP</span>
+              </button>
+            </div>
+          </div>
           <textarea id="chat-input" rows="3"
             placeholder="Posez votre question… (Entrée pour envoyer, Shift+Entrée pour saut de ligne)"
             onkeydown="chatInputKeydown(event)"></textarea>
           <button id="chat-send-btn" class="btn btn-primary" onclick="sendChatMessage()"
             style="padding:10px 18px;font-size:13px;white-space:nowrap">➤ Envoyer</button>
+        </div>
+        <!-- Style picker inline -->
+        <div class="style-picker" id="chat-style-picker">
+          <span class="style-chip active" onclick="setChatStyle('concis')">Concis</span>
+          <span class="style-chip" onclick="setChatStyle('formel')">Formel</span>
+          <span class="style-chip" onclick="setChatStyle('detaille')">Détaillé</span>
         </div>
       </div>
     </div>
@@ -4265,7 +4378,26 @@
       <!-- Generer -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UNE COLLECTION</div>
-        <textarea id="postman-prompt" rows="3" placeholder="Decris les endpoints a tester (ex: tester l'API /api/settings GET et PUT, verifier les codes retour 200/400/401...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="position:relative;flex-shrink:0">
+            <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px" onclick="togglePlusMenu('postman-plus-menu', this)" title="Actions">+</button>
+            <div class="plus-menu" id="postman-plus-menu" style="min-width:240px">
+              <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('postman-prompt', 'url')">
+                <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL base</span><span class="pm-hint">URL de l'API</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('postman-prompt')">
+                <span class="pm-icon">📷</span><span class="pm-label">Screenshot endpoint</span><span class="pm-hint">Capture Playwright</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
+                <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Specs API, OpenAPI</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
+                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
+              </button>
+            </div>
+          </div>
+          <textarea id="postman-prompt" rows="3" placeholder="Decris les endpoints a tester (ex: tester l'API /api/settings GET et PUT, verifier les codes retour 200/400/401...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center">
           <select id="postman-env" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;font-family:var(--mono)">
             <option value="sophie">Sophie</option>
@@ -4307,7 +4439,26 @@
       <!-- Generer -->
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px">
         <div style="font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;margin-bottom:12px">GENERER UN SCRIPT</div>
-        <textarea id="appium-prompt" rows="3" placeholder="Decris le test mobile (ex: ouvrir la page d'accueil sur Chrome Android, verifier le menu hamburger, tester le scroll...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <div style="position:relative;flex-shrink:0">
+            <button class="plus-menu-btn" style="width:32px;height:32px;font-size:17px" onclick="togglePlusMenu('appium-plus-menu', this)" title="Actions">+</button>
+            <div class="plus-menu" id="appium-plus-menu" style="min-width:240px">
+              <button class="plus-menu-item" onclick="closePlusMenu();injectTextToPrompt('appium-prompt', 'url')">
+                <span class="pm-icon">🌐</span><span class="pm-label">Ajouter URL cible</span><span class="pm-hint">Page mobile à tester</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();takeScreenshotToInput('appium-prompt')">
+                <span class="pm-icon">📷</span><span class="pm-label">Screenshot page</span><span class="pm-hint">Capture Playwright</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openGithubPicker()">
+                <span class="pm-icon">🐙</span><span class="pm-label">GitHub</span><span class="pm-hint">Composants, specs</span>
+              </button>
+              <button class="plus-menu-item" onclick="closePlusMenu();openWebSearch()">
+                <span class="pm-icon">🌐</span><span class="pm-label">Recherche web</span>
+              </button>
+            </div>
+          </div>
+          <textarea id="appium-prompt" rows="3" placeholder="Decris le test mobile (ex: ouvrir la page d'accueil sur Chrome Android, verifier le menu hamburger, tester le scroll...)" style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:10px 12px;font-size:13px;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
+        </div>
         <div style="display:flex;gap:10px;margin-top:10px;align-items:center;flex-wrap:wrap">
           <select id="appium-platform" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:8px;padding:7px 12px;font-size:12px;font-family:var(--mono)">
             <option value="android-chrome">Android Chrome</option>
@@ -14295,6 +14446,119 @@ function chatRemoveAttach(i) {
   renderChatAttachChips();
 }
 
+// ── Menu "+" flottant ────────────────────────────────────────────────────────
+var _activePlusMenu = null;
+var _activePlusBtn  = null;
+
+function togglePlusMenu(menuId, btn) {
+  var menu = document.getElementById(menuId);
+  if (!menu) return;
+  var isOpen = menu.classList.contains("open");
+  closePlusMenu();
+  if (!isOpen) {
+    menu.classList.add("open");
+    btn.classList.add("active");
+    _activePlusMenu = menu;
+    _activePlusBtn  = btn;
+    setTimeout(function() { document.addEventListener("click", _closePlusOnOutside, true); }, 0);
+  }
+}
+
+function closePlusMenu() {
+  if (_activePlusMenu) { _activePlusMenu.classList.remove("open"); }
+  if (_activePlusBtn)  { _activePlusBtn.classList.remove("active"); }
+  _activePlusMenu = null;
+  _activePlusBtn  = null;
+  document.removeEventListener("click", _closePlusOnOutside, true);
+}
+
+function _closePlusOnOutside(e) {
+  if (_activePlusMenu && !_activePlusMenu.contains(e.target) && _activePlusBtn !== e.target) {
+    closePlusMenu();
+  }
+}
+
+// ── Helpers pour menus "+" contextuels ───────────────────────────────────────
+function takeScreenshotToInput(targetInputId) {
+  var url = prompt("URL à capturer :", (typeof CFG_ENVS !== "undefined" && CFG_ENVS.sophie) || "https://sophie.safran-group.com");
+  if (!url) return;
+  showToast("Capture en cours…", "📷");
+  apiPost("/api/screenshot", { url: url })
+    .then(function(d) {
+      if (d.error) { showToast("Erreur : " + d.error, "❌"); return; }
+      var el = document.getElementById(targetInputId);
+      if (el) {
+        var info = "[Screenshot: " + url + " → " + (d.path || "capture") + "]";
+        el.value = el.value ? el.value + "\n" + info : info;
+        el.dispatchEvent(new Event("input"));
+      }
+      showToast("Screenshot capturé : " + (d.path || "ok"), "📷");
+    })
+    .catch(function(err) { showToast("Erreur capture : " + err.message, "❌"); });
+}
+
+function injectTextToPrompt(targetInputId, type) {
+  var label = type === "url" ? "URL à ajouter :" : "Texte à ajouter :";
+  var val = prompt(label);
+  if (!val) return;
+  var el = document.getElementById(targetInputId);
+  if (el) {
+    el.value = el.value ? el.value + "\n" + val : val;
+    el.dispatchEvent(new Event("input"));
+    el.focus();
+  }
+}
+
+// ── Screenshot via Playwright (pour le chat) ────────────────────────────────
+function takeScreenshotToChat() {
+  var url = prompt("URL à capturer :", (typeof CFG_ENVS !== "undefined" && CFG_ENVS.sophie) || "https://sophie.safran-group.com");
+  if (!url) return;
+  showToast("Capture en cours…", "📷");
+  apiPost("/api/screenshot", { url: url })
+    .then(function(d) {
+      if (d.error) { showToast("Erreur : " + d.error, "❌"); return; }
+      if (d.dataUrl) {
+        chatPendingItems.push({ kind: "image", name: "📷 " + url.replace(/https?:\/\//, "").slice(0, 40), content: d.dataUrl, dataUrl: d.dataUrl });
+        renderChatAttachChips();
+        showToast("Screenshot capturé", "📷");
+      } else if (d.path) {
+        chatPendingItems.push({ kind: "file", name: "📷 screenshot.png", content: "[Screenshot: " + d.path + "]" });
+        renderChatAttachChips();
+        showToast("Screenshot sauvegardé : " + d.path, "📷");
+      }
+    })
+    .catch(function(err) { showToast("Erreur capture : " + err.message, "❌"); });
+}
+
+// ── Style picker ─────────────────────────────────────────────────────────────
+var _chatStyle = "concis";
+
+function toggleStylePicker() {
+  var picker = document.getElementById("chat-style-picker");
+  if (picker) picker.classList.toggle("open");
+}
+
+function setChatStyle(style) {
+  _chatStyle = style;
+  var picker = document.getElementById("chat-style-picker");
+  if (picker) {
+    picker.querySelectorAll(".style-chip").forEach(function(chip) {
+      chip.classList.toggle("active", chip.textContent.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "") === style);
+    });
+    picker.classList.remove("open");
+  }
+  var hint = document.getElementById("style-hint-label");
+  if (hint) hint.textContent = { concis: "Concis", formel: "Formel", detaille: "Détaillé" }[style] || style;
+  showToast("Style : " + ({ concis: "Concis", formel: "Formel", detaille: "Détaillé" }[style] || style), "🎨");
+}
+
+// ── Modal connecteurs ────────────────────────────────────────────────────────
+function openConnectorsModal() {
+  // Réutiliser le panel settings existant en naviguant vers l'onglet settings
+  showPanel("settings");
+  showToast("Panel Settings ouvert — configurez vos connecteurs", "🔌");
+}
+
 // ── Input ────────────────────────────────────────────────────────────────────
 function chatInputKeydown(e) {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
@@ -14316,6 +14580,11 @@ function sendChatMessage() {
       content.push({ type: "text", text: "[" + item.name + "]\n" + item.content });
     }
   });
+  // Ajouter instruction de style si non-défaut
+  if (_chatStyle && _chatStyle !== "concis" && text) {
+    var styleInstr = { formel: "\n\n[Style: formel, professionnel, structuré]", detaille: "\n\n[Style: détaillé, exhaustif, avec exemples]" };
+    text += (styleInstr[_chatStyle] || "");
+  }
   if (text) content.push({ type: "text", text: text });
   if (content.length === 1 && content[0].type === "text") content = text;
 

@@ -497,5 +497,68 @@ module.exports = function handle(method, url, req, res, ctx) {
     return true;
   }
 
+  // ── POST /api/screenshot — Capture Playwright d'une URL ──────────────────
+  if (method === "POST" && url === "/api/screenshot") {
+    var scrChunks = [];
+    req.on("data", function(c) { scrChunks.push(c); });
+    req.on("end", function() {
+      var body = {};
+      try { body = JSON.parse(Buffer.concat(scrChunks).toString()); } catch(e) {}
+      var scrUrl = body.url;
+      if (!scrUrl) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "url requis" }));
+        return;
+      }
+
+      var chromium;
+      try { chromium = require("playwright").chromium; } catch(e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Playwright non disponible" }));
+        return;
+      }
+
+      (async function() {
+        var browser = null;
+        try {
+          var envName = "sophie";
+          if (scrUrl.indexOf("paulo") !== -1) envName = "paulo";
+          else if (scrUrl.indexOf("www.safran-group") !== -1 || scrUrl.indexOf("safran-group.com") !== -1 && scrUrl.indexOf("sophie") === -1) envName = "prod";
+
+          var authFile = path.join(BASE_DIR, "auth", envName + ".json");
+          var launchOpts = { headless: true };
+          var ctxOpts = { viewport: { width: 1920, height: 1080 } };
+          if (fs.existsSync(authFile)) {
+            ctxOpts.storageState = authFile;
+          }
+
+          browser = await chromium.launch(launchOpts);
+          var context = await browser.newContext(ctxOpts);
+          var page = await context.newPage();
+          await page.goto(scrUrl, { waitUntil: "networkidle", timeout: 30000 });
+          await page.waitForTimeout(1500);
+
+          var screenshotBuf = await page.screenshot({ fullPage: false });
+          var dataUrl = "data:image/png;base64," + screenshotBuf.toString("base64");
+
+          // Sauvegarder aussi le fichier
+          var screenshotsDir = CFG.paths.screenshots || path.join(BASE_DIR, "screenshots");
+          if (!fs.existsSync(screenshotsDir)) fs.mkdirSync(screenshotsDir, { recursive: true });
+          var fname = "capture-" + Date.now() + ".png";
+          fs.writeFileSync(path.join(screenshotsDir, fname), screenshotBuf);
+
+          await browser.close();
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, dataUrl: dataUrl, path: fname }));
+        } catch(err) {
+          if (browser) try { await browser.close(); } catch(e) {}
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      })();
+    });
+    return true;
+  }
+
   return false;
 };
