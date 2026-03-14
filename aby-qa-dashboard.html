@@ -4270,6 +4270,57 @@
   </div>
 </div>
 
+<!-- Modal : Screenshot Playwright -->
+<div id="modal-screenshot" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:min(580px,96vw);display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:14px;font-weight:700;color:var(--text)">📷 Capture d'écran Playwright</div>
+      <button onclick="closeScreenshotModal()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer">✕</button>
+    </div>
+
+    <!-- Environnement -->
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);letter-spacing:.06em">ENVIRONNEMENT</div>
+    <div style="display:flex;gap:8px" id="scr-env-btns">
+      <button class="btn scr-env-btn active" data-env="sophie" onclick="scrSelectEnv('sophie')" style="flex:1">🟢 Sophie</button>
+      <button class="btn scr-env-btn" data-env="paulo" onclick="scrSelectEnv('paulo')" style="flex:1">🟡 Paulo</button>
+      <button class="btn scr-env-btn" data-env="prod" onclick="scrSelectEnv('prod')" style="flex:1">🔴 Prod</button>
+    </div>
+
+    <!-- Chemin -->
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);letter-spacing:.06em">CHEMIN (optionnel)</div>
+    <input id="scr-path-input" type="text" placeholder="/fr/group/finance  ou  laisser vide pour la page d'accueil"
+      style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:9px 12px;font-size:13px;font-family:var(--mono)"
+      onkeydown="if(event.key==='Enter')doScreenshotCapture()">
+
+    <!-- Pages fréquentes -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="chat-tool-btn" onclick="document.getElementById('scr-path-input').value='/fr'" style="font-size:10px;padding:3px 8px">/fr</button>
+      <button class="chat-tool-btn" onclick="document.getElementById('scr-path-input').value='/fr/group'" style="font-size:10px;padding:3px 8px">/fr/group</button>
+      <button class="chat-tool-btn" onclick="document.getElementById('scr-path-input').value='/fr/group/finance'" style="font-size:10px;padding:3px 8px">/fr/group/finance</button>
+      <button class="chat-tool-btn" onclick="document.getElementById('scr-path-input').value='/en'" style="font-size:10px;padding:3px 8px">/en</button>
+      <button class="chat-tool-btn" onclick="document.getElementById('scr-path-input').value='/careers'" style="font-size:10px;padding:3px 8px">/careers</button>
+    </div>
+
+    <!-- URL finale -->
+    <div id="scr-url-preview" style="font-size:11px;color:var(--blue);font-family:var(--mono);padding:6px 10px;background:var(--bg3);border-radius:6px;word-break:break-all"></div>
+
+    <!-- Zone aperçu -->
+    <div id="scr-preview" style="display:none;border:1px solid var(--border2);border-radius:8px;overflow:hidden;max-height:300px">
+      <img id="scr-preview-img" style="width:100%;display:block" alt="Aperçu">
+    </div>
+
+    <!-- Status -->
+    <div id="scr-status" style="font-size:12px;color:var(--text3);min-height:16px;text-align:center"></div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn" onclick="closeScreenshotModal()">Annuler</button>
+      <button class="btn btn-primary" id="scr-capture-btn" onclick="doScreenshotCapture()">📷 Capturer</button>
+      <button class="btn btn-primary" id="scr-inject-btn" onclick="injectScreenshot()" style="display:none">✚ Injecter dans le chat</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal : Claude Code CLI -->
 <div id="modal-claude-code" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:24px;width:min(640px,96vw);display:flex;flex-direction:column;gap:14px">
@@ -14478,24 +14529,125 @@ function _closePlusOnOutside(e) {
   }
 }
 
-// ── Helpers pour menus "+" contextuels ───────────────────────────────────────
-function takeScreenshotToInput(targetInputId) {
-  var url = prompt("URL à capturer :", (typeof CFG_ENVS !== "undefined" && CFG_ENVS.sophie) || "https://sophie.safran-group.com");
-  if (!url) return;
-  showToast("Capture en cours…", "📷");
+// ── Screenshot modal Playwright ─────────────────────────────────────────────
+var _scrEnvUrls = {
+  sophie: "https://sophie.safran-group.com",
+  paulo:  "https://paulo.safran-group.com",
+  prod:   "https://www.safran-group.com"
+};
+var _scrSelectedEnv = "sophie";
+var _scrLastResult  = null;   // { dataUrl, path, url }
+var _scrTargetInput = null;   // null = chat, sinon ID du textarea cible
+
+function openScreenshotModal(targetInputId) {
+  _scrTargetInput = targetInputId || null;
+  _scrLastResult  = null;
+  modalMgr.open("modal-screenshot", { onOpen: function() {
+    scrSelectEnv("sophie");
+    var pathEl = document.getElementById("scr-path-input");
+    if (pathEl) { pathEl.value = ""; }
+    document.getElementById("scr-preview").style.display = "none";
+    document.getElementById("scr-inject-btn").style.display = "none";
+    document.getElementById("scr-capture-btn").style.display = "";
+    document.getElementById("scr-status").textContent = "";
+    scrUpdatePreviewUrl();
+    setTimeout(function() { if (pathEl) pathEl.focus(); }, 50);
+  }});
+}
+function closeScreenshotModal() { modalMgr.close("modal-screenshot"); }
+
+function scrSelectEnv(env) {
+  _scrSelectedEnv = env;
+  document.querySelectorAll(".scr-env-btn").forEach(function(btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-env") === env);
+    btn.style.borderColor = btn.getAttribute("data-env") === env ? "var(--blue)" : "var(--border2)";
+    btn.style.color = btn.getAttribute("data-env") === env ? "var(--blue)" : "var(--text2)";
+  });
+  scrUpdatePreviewUrl();
+}
+
+function scrUpdatePreviewUrl() {
+  var base = _scrEnvUrls[_scrSelectedEnv] || _scrEnvUrls.sophie;
+  var p = (document.getElementById("scr-path-input") || {}).value || "";
+  p = p.trim();
+  if (p && !p.startsWith("/")) p = "/" + p;
+  var full = base + p;
+  var el = document.getElementById("scr-url-preview");
+  if (el) el.textContent = "→ " + full;
+  return full;
+}
+
+// Mettre à jour l'URL live pendant la saisie
+(function() {
+  var _scrPathTimer = null;
+  document.addEventListener("input", function(e) {
+    if (e.target && e.target.id === "scr-path-input") {
+      clearTimeout(_scrPathTimer);
+      _scrPathTimer = setTimeout(scrUpdatePreviewUrl, 150);
+    }
+  });
+})();
+
+function doScreenshotCapture() {
+  var url = scrUpdatePreviewUrl();
+  var statusEl = document.getElementById("scr-status");
+  var captureBtn = document.getElementById("scr-capture-btn");
+  if (statusEl) statusEl.innerHTML = '<span style="color:var(--orange)">⏳ Capture en cours sur ' + _scrSelectedEnv + '…</span>';
+  if (captureBtn) { captureBtn.disabled = true; captureBtn.textContent = "⏳ Capture…"; }
+
   apiPost("/api/screenshot", { url: url })
     .then(function(d) {
-      if (d.error) { showToast("Erreur : " + d.error, "❌"); return; }
-      var el = document.getElementById(targetInputId);
-      if (el) {
-        var info = "[Screenshot: " + url + " → " + (d.path || "capture") + "]";
-        el.value = el.value ? el.value + "\n" + info : info;
-        el.dispatchEvent(new Event("input"));
+      if (captureBtn) { captureBtn.disabled = false; captureBtn.textContent = "📷 Capturer"; }
+      if (d.error) {
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + d.error + '</span>';
+        return;
       }
-      showToast("Screenshot capturé : " + (d.path || "ok"), "📷");
+      _scrLastResult = { dataUrl: d.dataUrl, path: d.path, url: url };
+      // Afficher l'aperçu
+      var preview = document.getElementById("scr-preview");
+      var img = document.getElementById("scr-preview-img");
+      if (preview && img && d.dataUrl) {
+        img.src = d.dataUrl;
+        preview.style.display = "block";
+      }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--green)">✅ Capturé — ' + (d.path || "ok") + '</span>';
+      document.getElementById("scr-inject-btn").style.display = "";
     })
-    .catch(function(err) { showToast("Erreur capture : " + err.message, "❌"); });
+    .catch(function(err) {
+      if (captureBtn) { captureBtn.disabled = false; captureBtn.textContent = "📷 Capturer"; }
+      if (statusEl) statusEl.innerHTML = '<span style="color:var(--red)">❌ ' + err.message + '</span>';
+    });
 }
+
+function injectScreenshot() {
+  if (!_scrLastResult) return;
+  var r = _scrLastResult;
+  var shortUrl = r.url.replace(/https?:\/\//, "").slice(0, 45);
+
+  if (!_scrTargetInput) {
+    // Injecter dans le chat
+    if (r.dataUrl) {
+      chatPendingItems.push({ kind: "image", name: "📷 " + shortUrl, content: r.dataUrl, dataUrl: r.dataUrl });
+    } else {
+      chatPendingItems.push({ kind: "file", name: "📷 " + shortUrl, content: "[Screenshot: " + r.url + " → " + r.path + "]" });
+    }
+    renderChatAttachChips();
+  } else {
+    // Injecter comme référence dans un textarea
+    var el = document.getElementById(_scrTargetInput);
+    if (el) {
+      var info = "[Screenshot: " + r.url + " → " + (r.path || "capture") + "]";
+      el.value = el.value ? el.value + "\n" + info : info;
+      el.dispatchEvent(new Event("input"));
+    }
+  }
+  closeScreenshotModal();
+  showToast("Screenshot injecté", "📷");
+}
+
+// Alias pour les menus contextuels
+function takeScreenshotToChat() { openScreenshotModal(null); }
+function takeScreenshotToInput(targetInputId) { openScreenshotModal(targetInputId); }
 
 function injectTextToPrompt(targetInputId, type) {
   var label = type === "url" ? "URL à ajouter :" : "Texte à ajouter :";
@@ -14507,27 +14659,6 @@ function injectTextToPrompt(targetInputId, type) {
     el.dispatchEvent(new Event("input"));
     el.focus();
   }
-}
-
-// ── Screenshot via Playwright (pour le chat) ────────────────────────────────
-function takeScreenshotToChat() {
-  var url = prompt("URL à capturer :", (typeof CFG_ENVS !== "undefined" && CFG_ENVS.sophie) || "https://sophie.safran-group.com");
-  if (!url) return;
-  showToast("Capture en cours…", "📷");
-  apiPost("/api/screenshot", { url: url })
-    .then(function(d) {
-      if (d.error) { showToast("Erreur : " + d.error, "❌"); return; }
-      if (d.dataUrl) {
-        chatPendingItems.push({ kind: "image", name: "📷 " + url.replace(/https?:\/\//, "").slice(0, 40), content: d.dataUrl, dataUrl: d.dataUrl });
-        renderChatAttachChips();
-        showToast("Screenshot capturé", "📷");
-      } else if (d.path) {
-        chatPendingItems.push({ kind: "file", name: "📷 screenshot.png", content: "[Screenshot: " + d.path + "]" });
-        renderChatAttachChips();
-        showToast("Screenshot sauvegardé : " + d.path, "📷");
-      }
-    })
-    .catch(function(err) { showToast("Erreur capture : " + err.message, "❌"); });
 }
 
 // ── Style picker ─────────────────────────────────────────────────────────────
