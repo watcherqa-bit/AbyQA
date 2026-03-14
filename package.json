@@ -4,8 +4,12 @@
   "description": "",
   "main": "agent-server.js",
   "scripts": {
+    "start": "node agent-server.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=./.playwright npx playwright install chromium || true"
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=${PLAYWRIGHT_BROWSERS_PATH:-./.playwright} npx playwright install chromium || true"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [],
   "author": "",

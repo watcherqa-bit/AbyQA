@@ -21,7 +21,7 @@ const MODEL_QUALITY = "claude-sonnet-4-6";           // Génération de contenu 
 
 // ── NIVEAU 2 : CACHE GLOBAL RÉPONSES IA ─────────────────────────────────────
 // Évite de refaire les mêmes appels API pour le même contenu
-const IA_CACHE_DIR = path.join(__dirname, "inbox", "ia-cache");
+const IA_CACHE_DIR = path.join(CFG.dataDir || __dirname, "inbox", "ia-cache");
 const IA_CACHE_TTL = {
   enrichment: 4 * 60 * 60 * 1000,  // 4h pour enrichissement/génération
   diagnostic: 1 * 60 * 60 * 1000,  // 1h pour diagnostics
@@ -341,10 +341,17 @@ async function ask(userPrompt, model, systemOverride, opts) {
     }
   }
 
-  // Fallback Ollama local
-  var ollamaResult = await askOllama(userPrompt, systemOverride || SYSTEM_QA);
-  if (cacheCategory) _cacheSet(userPrompt, resolvedModel, ollamaResult);
-  return ollamaResult;
+  // Fallback Ollama local (skip en mode cloud — Ollama inaccessible)
+  if (CFG.isCloud) {
+    throw new Error("[LeadQA] API Anthropic indisponible et Ollama absent (mode cloud). Vérifiez ANTHROPIC_API_KEY.");
+  }
+  try {
+    var ollamaResult = await askOllama(userPrompt, systemOverride || SYSTEM_QA);
+    if (cacheCategory) _cacheSet(userPrompt, resolvedModel, ollamaResult);
+    return ollamaResult;
+  } catch(e) {
+    throw new Error("LLM indisponible (Anthropic + Ollama). " + e.message);
+  }
 }
 
 // Appel Ollama local (fallback)

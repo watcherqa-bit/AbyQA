@@ -35,6 +35,13 @@ function loadEnv() {
 
 var E = loadEnv();
 
+// ── DATA_DIR : répertoire de données persistantes ────────────────────────────
+// Local : même répertoire que le code (__dirname)
+// Render : /data/ (persistent disk monté séparément)
+var DATA_DIR = process.env.DATA_DIR || __dirname;
+var IS_CLOUD = !!process.env.DATA_DIR || process.env.NODE_ENV === "production";
+if (IS_CLOUD) console.log("[CONFIG] Mode cloud — DATA_DIR = " + DATA_DIR);
+
 // ── HELPER : valeur obligatoire ───────────────────────────────────────────────
 function required(key) {
   var val = E[key];
@@ -136,11 +143,18 @@ module.exports = {
     enabled:  function() { return !!get("SMTP_HOST", ""); }
   },
 
-  // Chemins
+  // Répertoire de données persistantes (local = __dirname, Render = /data/)
+  dataDir: DATA_DIR,
+  isCloud: IS_CLOUD,
+
+  // Chemins — données persistantes sur DATA_DIR, assets statiques sur __dirname
   paths: {
-    reports:     path.join(__dirname, get("REPORTS_DIR",     "reports")),
-    screenshots: path.join(__dirname, get("SCREENSHOTS_DIR", "screenshots")),
-    uploads:     path.join(__dirname, get("UPLOADS_DIR",     "uploads")),
+    reports:     path.join(DATA_DIR,  get("REPORTS_DIR",     "reports")),
+    screenshots: path.join(DATA_DIR,  get("SCREENSHOTS_DIR", "screenshots")),
+    uploads:     path.join(DATA_DIR,  get("UPLOADS_DIR",     "uploads")),
+    errors:      path.join(DATA_DIR,  "errors"),
+    inbox:       path.join(DATA_DIR,  "inbox"),
+    auth:        path.join(DATA_DIR,  "auth"),
     assets:      path.join(__dirname, get("ASSETS_DIR",      "assets")),
     collections: path.join(__dirname, get("COLLECTIONS_DIR", "collections")),
     // Cree les dossiers si absents
@@ -149,6 +163,9 @@ module.exports = {
         module.exports.paths.reports,
         module.exports.paths.screenshots,
         module.exports.paths.uploads,
+        module.exports.paths.errors,
+        module.exports.paths.inbox,
+        module.exports.paths.auth,
         module.exports.paths.assets,
         module.exports.paths.collections
       ];

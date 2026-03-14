@@ -2,10 +2,24 @@ services:
   - type: web
     name: abyqa
     runtime: node
+    plan: starter
     buildCommand: npm install && PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.playwright npx playwright install chromium
     startCommand: node agent-server.js
+    disk:
+      name: abyqa-data
+      mountPath: /data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DATA_DIR
+        value: /data
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright
+      # Secrets — à configurer dans le dashboard Render (pas en clair ici)
+      # - key: ANTHROPIC_API_KEY
+      # - key: JIRA_HOST
+      # - key: JIRA_EMAIL
+      # - key: JIRA_TOKEN
+      # - key: DRUPAL_USER
+      # - key: DRUPAL_PASS

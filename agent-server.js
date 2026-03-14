@@ -112,7 +112,7 @@ const CHAT_SYSTEM = ISTQB.forChat + "\n\n" + `Tu es l'assistant QA — assistant
 - Sois concis et orienté action — propose du code ou des étapes concrètes quand c'est utile
 - Si une question concerne directement l'app ou Safran, contextualise ta réponse en conséquence`;
 const PORT        = CFG.server.port;
-const BASE_DIR    = __dirname;
+const BASE_DIR    = CFG.dataDir || __dirname;
 const REPORTS_DIR = CFG.paths.reports;
 const UPLOADS_DIR = CFG.paths.uploads;
 
