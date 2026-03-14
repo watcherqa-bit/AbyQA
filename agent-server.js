@@ -567,14 +567,14 @@ var server = http.createServer(function(req, res) {
   }
 
   if (method === "GET" && (url === "/" || url === "/dashboard")) {
-    var p = path.join(BASE_DIR, "aby-qa-dashboard.html");
+    var p = path.join(__dirname, "aby-qa-dashboard.html");
     if (fs.existsSync(p)) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(fs.readFileSync(p)); }
-    else { res.writeHead(404); res.end("aby-qa-dashboard.html introuvable"); }
+    else { res.writeHead(404); res.end("aby-qa-dashboard.html introuvable (" + p + ")"); }
     return;
   }
 
   if (method === "GET" && url === "/form") {
-    var p2 = path.join(BASE_DIR, "aby-qa-form.html");
+    var p2 = path.join(__dirname, "aby-qa-form.html");
     if (fs.existsSync(p2)) { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(fs.readFileSync(p2)); }
     else { res.writeHead(404); res.end("Form introuvable"); }
     return;
