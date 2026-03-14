@@ -7,13 +7,13 @@ services:
     startCommand: node agent-server.js
     disk:
       name: abyqa-data
-      mountPath: /data
+      mountPath: /opt/render/data
       sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
-        value: /data
+        value: /opt/render/data
       - key: PLAYWRIGHT_BROWSERS_PATH
         value: /opt/render/project/src/.playwright
       # Secrets — à configurer dans le dashboard Render (pas en clair ici)
