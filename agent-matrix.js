@@ -68,7 +68,7 @@ async function fetchReleaseTickets(version) {
   while (startAt < total) {
     var jql = encodeURIComponent(
       "project = " + CFG.jira.project +
-      ' AND labels = "' + version + '"' +
+      ' AND fixVersion = "' + version + '"' +
       " ORDER BY issuetype ASC, status ASC"
     );
     var url = "/rest/api/2/search?jql=" + jql +

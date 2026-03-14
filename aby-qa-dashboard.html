@@ -1114,7 +1114,7 @@
     border: 1px solid var(--border);
   }
 
-  /* ── RELEASE BADGE ── */
+  /* ── RELEASE SWITCHER ── */
   .release-badge {
     display: inline-flex;
     align-items: center;
@@ -1126,7 +1126,65 @@
     font-size: 11px;
     padding: 4px 12px;
     border-radius: 20px;
+    cursor: pointer;
+    position: relative;
+    user-select: none;
+    transition: background .2s;
   }
+  .release-badge:hover { background: rgba(168,85,247,.2); }
+  .release-badge .chevron { font-size: 8px; opacity: .6; transition: transform .2s; }
+  .release-badge.open .chevron { transform: rotate(180deg); }
+
+  .release-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    max-height: 320px;
+    overflow-y: auto;
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+    z-index: 9999;
+    padding: 6px 0;
+  }
+  .release-dropdown.show { display: block; }
+  .release-dropdown .rd-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .release-dropdown .rd-item:hover { background: var(--bg3); }
+  .release-dropdown .rd-item.active { color: var(--purple); font-weight: 700; }
+  .release-dropdown .rd-item .rd-status {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: auto;
+  }
+  .release-dropdown .rd-item .rd-status.released { background: rgba(34,197,94,.15); color: var(--green); }
+  .release-dropdown .rd-item .rd-status.unreleased { background: rgba(59,111,255,.1); color: var(--blue); }
+  .release-dropdown .rd-sync {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--blue);
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .release-dropdown .rd-sync:hover { background: var(--bg3); }
 
   /* ── WORKFLOW STEPS ── */
   .workflow {
@@ -1445,7 +1503,14 @@
     </div>
   </div>
   <div class="header-right">
-    <div class="release-badge" id="header-release-badge" title="Version courante — modifiable dans Paramètres">🚀 v1.25.0</div>
+    <div class="release-badge" id="header-release-badge" onclick="toggleReleaseSwitcher()" title="Cliquer pour changer de release">
+      <span id="release-badge-text">🚀 v1.25.0</span>
+      <span class="chevron">▼</span>
+      <div class="release-dropdown" id="release-dropdown" onclick="event.stopPropagation()">
+        <div id="release-dropdown-list" style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Chargement...</div>
+        <div class="rd-sync" onclick="syncCurrentRelease()">🔄 Synchroniser avec Jira</div>
+      </div>
+    </div>
 
     <!-- Indicateur polling Jira -->
     <div id="poll-indicator" onclick="showPanel('dashboard')" title="Polling Jira — cliquer pour voir les notifications"
@@ -6374,8 +6439,8 @@ function loadBriefingIA(force) {
 
 function updateReleaseHealthCard() {
   // Lire la release courante depuis le badge header (mis à jour par applySettings)
-  var badge = document.getElementById("header-release-badge");
-  var rel   = badge ? badge.textContent.replace("🚀 ", "").trim() : "";
+  var badgeText = document.getElementById("release-badge-text");
+  var rel   = badgeText ? badgeText.textContent.replace("🚀 ", "").trim() : "";
   if (!rel) rel = (document.getElementById("cfg-latest-release") || {}).value || "v1.25.0";
 
   var nameEl   = document.getElementById("rh-release-name");
@@ -6424,6 +6489,109 @@ function updateReleaseHealthCard() {
     statusEl.style.background  = bg;
     statusEl.style.borderColor = bc;
   }
+}
+
+// ── RELEASE SWITCHER (header dropdown) ───────────────────────────────────────
+var _jiraReleases = null; // cache
+
+function toggleReleaseSwitcher() {
+  var badge = document.getElementById("header-release-badge");
+  var dd = document.getElementById("release-dropdown");
+  if (!badge || !dd) return;
+  var isOpen = dd.classList.contains("show");
+  if (isOpen) {
+    dd.classList.remove("show");
+    badge.classList.remove("open");
+  } else {
+    dd.classList.add("show");
+    badge.classList.add("open");
+    loadJiraReleases();
+  }
+}
+
+// Fermer le dropdown si on clique ailleurs
+document.addEventListener("click", function(e) {
+  var badge = document.getElementById("header-release-badge");
+  if (badge && !badge.contains(e.target)) {
+    var dd = document.getElementById("release-dropdown");
+    if (dd) dd.classList.remove("show");
+    badge.classList.remove("open");
+  }
+});
+
+function loadJiraReleases() {
+  var listEl = document.getElementById("release-dropdown-list");
+  if (!listEl) return;
+  listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Chargement...</div>';
+
+  fetch("/api/jira/releases").then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok || !data.releases || !data.releases.length) {
+      listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Aucune release trouvée</div>';
+      return;
+    }
+    _jiraReleases = data.releases;
+    var currentBadge = document.getElementById("release-badge-text");
+    var current = currentBadge ? currentBadge.textContent.replace("🚀 ", "").trim() : "";
+    var html = "";
+    for (var i = 0; i < data.releases.length; i++) {
+      var r = data.releases[i];
+      var isActive = r.name === current;
+      var statusClass = r.released ? "released" : "unreleased";
+      var statusLabel = r.released ? "Released" : "En cours";
+      html += '<div class="rd-item' + (isActive ? " active" : "") + '" onclick="switchRelease(\'' + r.name.replace(/'/g, "\\'") + '\')">'
+        + (isActive ? "● " : "") + r.name
+        + '<span class="rd-status ' + statusClass + '">' + statusLabel + '</span>'
+        + '</div>';
+    }
+    listEl.innerHTML = html;
+  }).catch(function(e) {
+    listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px">Erreur : ' + e.message + '</div>';
+  });
+}
+
+function switchRelease(version) {
+  // Fermer le dropdown
+  var dd = document.getElementById("release-dropdown");
+  var badge = document.getElementById("header-release-badge");
+  if (dd) dd.classList.remove("show");
+  if (badge) badge.classList.remove("open");
+
+  // Mettre à jour le badge immédiatement
+  var badgeText = document.getElementById("release-badge-text");
+  if (badgeText) badgeText.textContent = "🚀 " + version;
+
+  // Mettre à jour le champ settings
+  var cfgRel = document.getElementById("cfg-latest-release");
+  if (cfgRel) cfgRel.value = version;
+
+  // Mettre à jour la description panel
+  var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
+  if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + version;
+
+  // Appeler POST /api/release/sync pour persister + lancer sync matrice
+  fetch("/api/release/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version: version })
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    if (data.ok) {
+      addNotification("Release changée → " + version, "success");
+      // Recharger les données release
+      updateReleaseHealthCard();
+      if (typeof loadReleaseTracker === "function") loadReleaseTracker();
+    } else {
+      addNotification("Erreur sync release : " + (data.error || "?"), "error");
+    }
+  }).catch(function(e) {
+    addNotification("Erreur sync release : " + e.message, "error");
+  });
+}
+
+function syncCurrentRelease() {
+  var badgeText = document.getElementById("release-badge-text");
+  var current = badgeText ? badgeText.textContent.replace("🚀 ", "").trim() : "";
+  if (!current) { addNotification("Aucune release sélectionnée", "warning"); return; }
+  switchRelease(current);
 }
 
 function showRelease(release) {
@@ -9885,10 +10053,13 @@ function syncSidebarFromSettings(s) {
 
   // Badge release
   if (s.currentRelease) {
-    var rb = document.getElementById("header-release-badge");
+    var rb = document.getElementById("release-badge-text");
     if (rb) rb.textContent = "🚀 " + s.currentRelease;
     var rb2 = document.getElementById("c2-release-input");
     if (rb2 && !rb2.dataset.userEdited) rb2.value = s.currentRelease;
+    // Mettre à jour le champ settings
+    var cfgRel2 = document.getElementById("cfg-latest-release");
+    if (cfgRel2) cfgRel2.value = s.currentRelease;
     // Mettre à jour les occurrences panel dashboard
     var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
     if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + s.currentRelease;

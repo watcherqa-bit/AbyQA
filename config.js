@@ -129,7 +129,10 @@ module.exports = {
 
   // Xray
   xray: {
-    fixVersion: get("XRAY_FIX_VERSION", "v1.25.0")
+    fixVersion: get("XRAY_FIX_VERSION", "") || (function() {
+      try { return JSON.parse(require("fs").readFileSync(require("path").join(DATA_DIR, "settings.json"), "utf8")).currentRelease || "v1.25.0"; }
+      catch(e) { return "v1.25.0"; }
+    })()
   },
 
   // Email (SMTP via nodemailer)

@@ -3415,6 +3415,76 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/jira/releases — Liste des fixVersions du projet Jira ──────────
+  if (method === "GET" && url === "/api/jira/releases") {
+    var httpsRel = require("https");
+    var authRel = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var relReq = httpsRel.request({
+      hostname: CFG.jira.host,
+      path: "/rest/api/3/project/" + (CFG.jira.project || "SAFWBST") + "/versions",
+      method: "GET",
+      headers: { "Authorization": "Basic " + authRel, "Accept": "application/json" }
+    }, function(relRes) {
+      var relData = "";
+      relRes.on("data", function(c) { relData += c; });
+      relRes.on("end", function() {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        try {
+          var versions = JSON.parse(relData);
+          var mapped = (versions || []).map(function(v) {
+            return { id: v.id, name: v.name, released: !!v.released, archived: !!v.archived, releaseDate: v.releaseDate || null };
+          }).filter(function(v) { return !v.archived; })
+            .sort(function(a, b) { return (b.name || "").localeCompare(a.name || ""); });
+          res.end(JSON.stringify({ ok: true, releases: mapped }));
+        } catch(e) { res.end(JSON.stringify({ ok: false, error: "Parse error", raw: relData.substring(0, 300) })); }
+      });
+    });
+    relReq.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); });
+    relReq.end();
+    return;
+  }
+
+  // ── POST /api/release/sync — Changer la release courante + sync settings ───
+  if (method === "POST" && url === "/api/release/sync") {
+    var syncBody = "";
+    req.on("data", function(c) { syncBody += c; });
+    req.on("end", function() {
+      try {
+        var syncData = JSON.parse(syncBody);
+        var newRelease = (syncData.version || "").trim();
+        if (!newRelease) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "version manquante" })); return; }
+
+        // 1. Mettre à jour settings.json
+        var settingsPath = path.join(BASE_DIR, "settings.json");
+        var settings = {};
+        try { settings = JSON.parse(fs.readFileSync(settingsPath, "utf8")); } catch(e) { /* new file */ }
+        settings.currentRelease = newRelease;
+        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf8");
+
+        // 2. Lancer la synchro matrice en arrière-plan (si agent-matrix dispo)
+        var matrixOk = false;
+        try {
+          var matrix = require("./agent-matrix");
+          if (matrix.generate) {
+            matrix.generate(newRelease).then(function(result) {
+              console.log("[RELEASE-SYNC] Matrice générée pour " + newRelease);
+              bus.publish("matrix:generated", { version: newRelease, file: result });
+            }).catch(function(e) {
+              console.error("[RELEASE-SYNC] Erreur matrice :", e.message);
+            });
+            matrixOk = true;
+          }
+        } catch(e) { console.warn("[RELEASE-SYNC] agent-matrix non disponible :", e.message); }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, version: newRelease, matrixSync: matrixOk }));
+      } catch(e) {
+        res.writeHead(400); res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (method === "GET" && url === "/api/daily-job/status") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ running: dailyJob.isRunning(), mode: DAILY_JOB_MODE ? "daily" : "polling" }));
