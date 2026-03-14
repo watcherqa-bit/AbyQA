@@ -435,6 +435,17 @@
   .bl-kanban-card { background:var(--bg3); border:1px solid var(--border2); border-left:3px solid; border-radius:8px; padding:12px; cursor:pointer; transition:all .15s; }
   .bl-kanban-card:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
 
+  /* ── TRIAGE IA ── */
+  .bl-triage { display:flex; gap:8px; align-items:center; padding:4px 16px 8px 40px; font-size:10px; font-family:var(--mono); color:var(--text3); flex-wrap:wrap; }
+  .bl-triage-badge { padding:1px 7px; border-radius:8px; font-weight:700; font-size:9px; letter-spacing:.03em; }
+  .bl-triage-risk-high   { background:rgba(255,59,92,.15); color:#ff3b5c; }
+  .bl-triage-risk-medium { background:rgba(255,149,0,.15); color:#ff9500; }
+  .bl-triage-risk-low    { background:rgba(0,232,118,.15); color:var(--green); }
+  .bl-triage-hint { color:var(--text3); opacity:.8; }
+  .bl-triage-stale { color:#ff9500; font-weight:600; }
+  .bl-triage-dup { color:var(--purple); font-weight:600; }
+  .bl-triage-action { color:var(--cyan); font-weight:600; }
+
   /* Xray step row */
   .xray-step-row { background: var(--bg3); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
   .xray-step-row textarea { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 11px; padding: 6px 8px; width: 100%; resize: vertical; font-family: var(--mono); }
@@ -14810,6 +14821,88 @@ function populateBacklogDropdowns() {
   }
 }
 
+// ── TRIAGE IA ─────────────────────────────────────────────────────────────────
+var _blTriageCache = {};  // key → { risk, strategy, action, score, stale, dup, fetched }
+
+function blComputeTriage(t) {
+  // Client-side lightweight triage from ticket metadata
+  var risk = "low";
+  var strategy = "";
+  var action = "";
+  var stale = false;
+  var dup = null;
+
+  // Risk from priority + type
+  if (t.priority === "Highest" || t.priority === "High") risk = "high";
+  else if (t.priority === "Medium") risk = "medium";
+
+  // Bugs are inherently higher risk
+  if (t.type === "Bug") { risk = risk === "low" ? "medium" : "high"; }
+
+  // Strategy suggestion from type
+  if (t.type === "Bug") strategy = "Fix + regression test";
+  else if (t.type === "Story" || t.type === "User Story") strategy = "E2E + validation fonctionnelle";
+  else if (t.type === "Test Case" || t.type === "Test") strategy = "Exécution directe";
+  else strategy = "Analyse requise";
+
+  // Action based on phase
+  if (t.phase === "entrant") action = "Enrichir";
+  else if (t.phase === "enrichissement") action = "Valider enrichissement";
+  else if (t.phase === "pret") action = "Lancer tests";
+  else if (t.phase === "en-test") action = "Vérifier résultats";
+
+  // Stale detection: check created date vs current phase
+  if (t.created) {
+    var age = Math.floor((Date.now() - new Date(t.created).getTime()) / 86400000);
+    if (t.phase === "entrant" && age > 7) stale = age + "j en Entrant";
+    else if (t.phase === "enrichissement" && age > 14) stale = age + "j en Enrichissement";
+    else if (t.phase === "pret" && age > 21) stale = age + "j en Prêt";
+  }
+
+  // Duplicate hint: check if summary is very similar to another ticket
+  var sumLow = (t.summary || "").toLowerCase();
+  _backlogPending.forEach(function(other) {
+    if (other.key === t.key) return;
+    var otherLow = (other.summary || "").toLowerCase();
+    if (sumLow.length > 20 && otherLow.length > 20) {
+      // Simple word overlap ratio
+      var words1 = sumLow.split(/\s+/).filter(function(w){ return w.length > 3; });
+      var words2 = otherLow.split(/\s+/).filter(function(w){ return w.length > 3; });
+      if (words1.length > 2 && words2.length > 2) {
+        var common = words1.filter(function(w){ return words2.indexOf(w) >= 0; }).length;
+        var ratio = common / Math.min(words1.length, words2.length);
+        if (ratio > 0.6) dup = other.key;
+      }
+    }
+  });
+
+  return { risk: risk, strategy: strategy, action: action, stale: stale, dup: dup, score: null };
+}
+
+function blEnrichTriage(key) {
+  // Lazy-load enriched data from server for richer AI insights
+  if (_blTriageCache[key] && _blTriageCache[key].fetched) return;
+  _blTriageCache[key] = _blTriageCache[key] || {};
+  _blTriageCache[key].fetched = true;
+  fetch("/api/enriched/" + key).then(function(r) {
+    if (!r.ok) return null;
+    return r.json();
+  }).then(function(data) {
+    if (!data || !data.strategy) return;
+    var el = document.getElementById("bl-triage-" + key);
+    if (!el) return;
+    // Update with AI enriched data
+    var score = data.score || data.analysis && data.analysis.score;
+    var strat = data.strategy && data.strategy.type ? data.strategy.type : "";
+    var conf  = data.strategy && data.strategy.confidence ? data.strategy.confidence : 0;
+    var riskFromScore = score >= 70 ? "low" : score >= 40 ? "medium" : "high";
+    var html = '<span class="bl-triage-badge bl-triage-risk-' + riskFromScore + '">🤖 ' + riskFromScore.toUpperCase() + '</span>';
+    if (strat) html += '<span class="bl-triage-hint">' + escHtml(strat) + (conf ? ' (' + conf + '%)' : '') + '</span>';
+    if (score) html += '<span class="bl-triage-hint">Score: ' + score + '/100</span>';
+    el.innerHTML = html;
+  }).catch(function() {});
+}
+
 function blAvatarColor(name) {
   var palette = ["#00d4ff","#00e676","#ff9800","#ff4757","#a855f7","#ffd600","#3b6fff","#10b981"];
   var h = 0;
@@ -14850,6 +14943,20 @@ function blRenderRow(t) {
     : "background:transparent;border-color:var(--border);color:var(--text3)";
   var linkBtn = '<button onclick="blToggleLinks(\'' + safeKey + '\')" class="bl-action-btn" style="' + linkStyle + '" title="Voir les dépendances Jira">' + linkLabel + '</button>';
   var isChecked = _blSelected.indexOf(safeKey) >= 0;
+
+  // Triage IA
+  var triage = _blTriageCache[safeKey] || blComputeTriage(t);
+  _blTriageCache[safeKey] = _blTriageCache[safeKey] || triage;
+  var triageHtml = '<div class="bl-triage" id="bl-triage-' + safeKey + '">' +
+    '<span class="bl-triage-badge bl-triage-risk-' + triage.risk + '">' + triage.risk.toUpperCase() + '</span>' +
+    '<span class="bl-triage-hint">' + escHtml(triage.strategy) + '</span>' +
+    '<span class="bl-triage-action">→ ' + escHtml(triage.action) + '</span>' +
+    (triage.stale ? '<span class="bl-triage-stale">⏰ ' + escHtml(triage.stale) + '</span>' : '') +
+    (triage.dup ? '<span class="bl-triage-dup">⚠ Doublon possible : ' + escHtml(triage.dup) + '</span>' : '') +
+  '</div>';
+  // Lazy-load enriched data for AI-enhanced triage
+  setTimeout(function() { blEnrichTriage(safeKey); }, 200);
+
   return '<div id="bl-wrap-' + safeKey + '" style="display:flex;flex-direction:column">' +
     '<div class="bl-row" style="border-left-color:' + prioColor + (isChecked ? ';background:rgba(59,111,255,.08);border-left-color:var(--blue);border-left-width:3px' : '') + '">' +
       '<label style="display:flex;align-items:center;padding:0 6px 0 2px;cursor:pointer;flex-shrink:0" title="Sélectionner">' +
@@ -14873,6 +14980,7 @@ function blRenderRow(t) {
         '</div>' +
       '</div>' +
     '</div>' +
+    triageHtml +
     '<div id="bl-links-' + safeKey + '" style="display:none"></div>' +
   '</div>';
 }
