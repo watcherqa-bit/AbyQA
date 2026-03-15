@@ -71,7 +71,7 @@ async function fetchReleaseTickets(version) {
       ' AND labels = "' + version + '"' +
       " ORDER BY issuetype ASC, status ASC"
     );
-    var url = "/rest/api/2/search?jql=" + jql +
+    var url = "/rest/api/3/search/jql?jql=" + jql +
       "&startAt=" + startAt + "&maxResults=50" +
       "&fields=summary,issuetype,status,priority,assignee,labels,issuelinks,comment,customfield_10077";
 

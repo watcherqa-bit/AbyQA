@@ -172,7 +172,7 @@ async function findExistingTest(ticket) {
   // Cherche un ticket Test déjà lié à la US source via l'API Jira
   try {
     var jql  = encodeURIComponent('project = ' + CONFIG.jira.project + ' AND issuetype = Test AND issueFunction in linkedIssuesOf("key = ' + ticket.key + '") ORDER BY created DESC');
-    var res  = await jiraRequest("GET", "/rest/api/2/search?jql=" + jql + "&fields=summary,status,key&maxResults=5");
+    var res  = await jiraRequest("GET", "/rest/api/3/search/jql?jql=" + jql + "&fields=summary,status,key&maxResults=5");
     if (res.issues && res.issues.length > 0) {
       var found = res.issues[0];
       console.log("  [TROUVE] Ticket Test existant : " + found.key + " — " + found.fields.summary);
@@ -346,7 +346,7 @@ async function createTestPlan(ticket, testKeys) {
   // Chercher le Test Plan existant de la release
   try {
     var jql = encodeURIComponent('project = ' + CONFIG.jira.project + ' AND issuetype = "Test Plan" AND labels = "' + CFG.xray.fixVersion + '" ORDER BY created DESC');
-    var res  = await jiraRequest("GET", "/rest/api/2/search?jql=" + jql + "&fields=summary,status,key&maxResults=5");
+    var res  = await jiraRequest("GET", "/rest/api/3/search/jql?jql=" + jql + "&fields=summary,status,key&maxResults=5");
     if (res.issues && res.issues.length > 0) {
       var existingPlan = res.issues[0];
       console.log("  [TROUVE] Test Plan existant : " + existingPlan.key + " — " + existingPlan.fields.summary);
