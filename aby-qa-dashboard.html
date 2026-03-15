@@ -6713,6 +6713,45 @@ function loadJiraReleases() {
   });
 }
 
+// ── Propagation globale de la release à tous les composants ──────────────────
+function propagateReleaseToAll(version) {
+  // 1. Badge header
+  var badgeText = document.getElementById("release-badge-text");
+  if (badgeText) badgeText.textContent = "🚀 " + version;
+
+  // 2. localStorage (source de vérité côté client)
+  localStorage.setItem("abyqa_current_release", version);
+
+  // 3. Panel Release QA — releaseSelector
+  var relSel = document.getElementById("releaseSelector");
+  if (relSel) relSel.value = version;
+
+  // 4. Panel Settings — cfg-latest-release
+  var cfgRel = document.getElementById("cfg-latest-release");
+  if (cfgRel) cfgRel.value = version;
+
+  // 5. Cycle 2 TNR Release — c2-release-input
+  var c2Input = document.getElementById("c2-release-input");
+  if (c2Input) c2Input.value = version;
+
+  // 6. Backlog — bl-filter-release (sélectionner si l'option existe, sinon "all")
+  var blFilter = document.getElementById("bl-filter-release");
+  if (blFilter) {
+    var hasOption = Array.prototype.slice.call(blFilter.options).some(function(o) { return o.value === version; });
+    blFilter.value = hasOption ? version : "all";
+    if (typeof filterBacklogRelease === "function") filterBacklogRelease(blFilter.value);
+  }
+
+  // 7. Dashboard Home — description panel
+  var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
+  if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + version;
+}
+
+// ── Lire la release globale courante ─────────────────────────────────────────
+function getGlobalRelease() {
+  return localStorage.getItem("abyqa_current_release") || "v1.25.0";
+}
+
 function switchRelease(version) {
   // Fermer le dropdown
   var dd = document.getElementById("release-dropdown");
@@ -6720,20 +6759,8 @@ function switchRelease(version) {
   if (dd) dd.classList.remove("show");
   if (badge) badge.classList.remove("open");
 
-  // Mettre à jour le badge immédiatement
-  var badgeText = document.getElementById("release-badge-text");
-  if (badgeText) badgeText.textContent = "🚀 " + version;
-
-  // Sauvegarder dans localStorage
-  localStorage.setItem("abyqa_current_release", version);
-
-  // Mettre à jour le champ settings
-  var cfgRel = document.getElementById("cfg-latest-release");
-  if (cfgRel) cfgRel.value = version;
-
-  // Mettre à jour la description panel
-  var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
-  if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + version;
+  // Propager à tous les composants
+  propagateReleaseToAll(version);
 
   // Charger le Kanban pour cette release
   loadKanbanTickets(version);
@@ -6893,10 +6920,8 @@ function escapeHtml(str) {
 function showRelease(release) {
   if (!release) return;
 
-  // Sauvegarder la sélection
-  localStorage.setItem("abyqa_current_release", release);
-  var badgeText = document.getElementById("release-badge-text");
-  if (badgeText) badgeText.textContent = "🚀 " + release;
+  // Propager la release à tous les composants (badge, localStorage, sélecteurs)
+  propagateReleaseToAll(release);
 
   // Charger le Kanban Jira
   loadKanbanTickets(release);
