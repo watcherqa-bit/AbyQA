@@ -3425,7 +3425,7 @@ var server = http.createServer(function(req, res) {
     var testAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var testJqlRaw = 'project = ' + testProject + ' AND labels != "" ORDER BY created DESC';
     var testJql = encodeURIComponent(testJqlRaw);
-    var testPath = "/rest/api/3/search?jql=" + testJql + "&fields=labels,summary&maxResults=10";
+    var testPath = "/rest/api/3/search/jql?jql=" + testJql + "&fields=labels,summary&maxResults=10";
     var testUrl = "https://" + testHost + testPath;
 
     console.log("[TEST-JIRA] JQL: " + testJqlRaw);
@@ -3500,7 +3500,7 @@ var server = http.createServer(function(req, res) {
     // Chercher tous les tickets avec labels non vides pour extraire les labels vX.Y.Z
     var relJqlRaw = 'project = ' + project + ' AND labels != "" ORDER BY created DESC';
     var relJql = encodeURIComponent(relJqlRaw);
-    var relPath = "/rest/api/3/search?jql=" + relJql + "&fields=labels,summary&maxResults=100";
+    var relPath = "/rest/api/3/search/jql?jql=" + relJql + "&fields=labels,summary&maxResults=100";
 
     console.log("[JIRA-RELEASES] JQL: " + relJqlRaw);
     console.log("[JIRA-RELEASES] Fetching: https://" + CFG.jira.host + relPath);
@@ -3519,7 +3519,8 @@ var server = http.createServer(function(req, res) {
           console.error("[JIRA-RELEASES] ERROR HTTP " + relRes.statusCode + " | JQL: " + relJqlRaw);
           console.error("[JIRA-RELEASES] Full error body: " + relData);
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: false, error: "Jira HTTP " + relRes.statusCode, httpStatus: relRes.statusCode, detail: relData.substring(0, 500) }));
+          var relFullUrl = "https://" + CFG.jira.host + relPath;
+          res.end(JSON.stringify({ ok: false, error: "Jira HTTP " + relRes.statusCode, httpStatus: relRes.statusCode, jqlUsed: relJqlRaw, urlCalled: relFullUrl, jiraStatus: relRes.statusCode, jiraError: relData }));
           return;
         }
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -3576,7 +3577,7 @@ var server = http.createServer(function(req, res) {
     var authRT = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var rtProject = CFG.jira.project || "SAFWBST";
     var rtJql = encodeURIComponent('project = ' + rtProject + ' AND labels = "' + rtVersion + '" ORDER BY status ASC, priority DESC');
-    var rtPath = "/rest/api/3/search?jql=" + rtJql + "&maxResults=200&fields=key,summary,status,priority,issuetype,assignee,labels";
+    var rtPath = "/rest/api/3/search/jql?jql=" + rtJql + "&maxResults=200&fields=key,summary,status,priority,issuetype,assignee,labels";
 
     var rtReq = httpsRT.request({
       hostname: CFG.jira.host,
