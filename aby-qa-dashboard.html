@@ -6486,7 +6486,7 @@ function loadReleaseTracker() {
       }).catch(function() {});
     });
 
-  // 2. Peupler le releaseSelector depuis Jira live (source de vérité)
+  // 2. Peupler le releaseSelector depuis Jira live (labels vX.Y.Z)
   var sel = document.getElementById("releaseSelector");
   if (sel) sel.innerHTML = "<option value=''>Chargement Jira...</option>";
 
@@ -6500,39 +6500,22 @@ function loadReleaseTracker() {
       showToast("Erreur sync Jira : " + errDetail, "❌");
       return;
     }
-    var unreleased = data.unreleased || [];
-    var released = data.released || [];
+    var releases = data.releases || [];
     var current = data.currentRelease || localStorage.getItem("abyqa_current_release") || "";
     var html = "";
 
-    // Unreleased en premier
-    if (unreleased.length > 0) {
-      html += "<optgroup label='En cours'>";
-      for (var i = 0; i < unreleased.length; i++) {
-        var u = unreleased[i];
-        var sel1 = u.name === current ? " selected" : "";
-        html += "<option value='" + u.name + "'" + sel1 + ">" + u.name + " (En cours)</option>";
-      }
-      html += "</optgroup>";
-    }
-
-    // Released (5 dernières)
-    if (released.length > 0) {
-      html += "<optgroup label='Livrées'>";
-      var maxR = Math.min(released.length, 5);
-      for (var j = 0; j < maxR; j++) {
-        var r = released[j];
-        var sel2 = r.name === current ? " selected" : "";
-        html += "<option value='" + r.name + "'" + sel2 + ">" + r.name + " (Livrée)</option>";
-      }
-      html += "</optgroup>";
+    // Liste plate de labels triés desc (plus récent en premier)
+    for (var i = 0; i < releases.length; i++) {
+      var r = releases[i];
+      var selAttr = r.name === current ? " selected" : "";
+      html += "<option value='" + r.name + "'" + selAttr + ">" + r.name + "</option>";
     }
 
     if (!html) html = "<option value=''>Aucune release</option>";
     if (sel) sel.innerHTML = html;
 
-    // Auto-sélectionner la plus récente unreleased si aucun choix
-    var autoSelect = current || (unreleased.length > 0 ? unreleased[0].name : (released.length > 0 ? released[0].name : ""));
+    // Auto-sélectionner la plus récente si aucun choix
+    var autoSelect = current || (releases.length > 0 ? releases[0].name : "");
     if (autoSelect && sel) {
       sel.value = autoSelect;
       showRelease(autoSelect);
@@ -6696,42 +6679,26 @@ function loadJiraReleases() {
       listEl.innerHTML = '<div style="padding:10px;color:var(--red);font-size:11px;text-align:center">Erreur sync Jira<br><span style="font-size:9px;color:var(--text3)">' + errMsg + '</span></div>';
       return;
     }
-    var unreleased = data.unreleased || [];
-    var released = data.released || [];
-    _jiraReleases = unreleased.concat(released);
+    var releases = data.releases || [];
+    _jiraReleases = releases;
     var currentBadge = document.getElementById("release-badge-text");
     var current = currentBadge ? currentBadge.textContent.replace("🚀 ", "").trim() : "";
 
     var html = "";
 
-    // Section En cours
-    if (unreleased.length > 0) {
-      html += '<div class="rd-section-title">En cours</div>';
-      for (var i = 0; i < unreleased.length; i++) {
-        var u = unreleased[i];
-        var isActive = u.name === current;
-        html += '<div class="rd-item' + (isActive ? " active" : "") + '" onclick="switchRelease(\'' + u.name.replace(/'/g, "\\'") + '\')">'
-          + (isActive ? "● " : "") + u.name
-          + '<span class="rd-status unreleased">En cours</span>'
+    // Liste plate de labels triés desc
+    if (releases.length > 0) {
+      html += '<div class="rd-section-title">Releases (labels)</div>';
+      for (var i = 0; i < releases.length; i++) {
+        var r = releases[i];
+        var isActive = r.name === current;
+        html += '<div class="rd-item' + (isActive ? " active" : "") + '" onclick="switchRelease(\'' + r.name.replace(/'/g, "\\'") + '\')">'
+          + (isActive ? "● " : "") + r.name
           + '</div>';
       }
     }
 
-    // Section Livrées (max 5 dernières)
-    if (released.length > 0) {
-      html += '<div class="rd-section-title">Livrées</div>';
-      var maxR = Math.min(released.length, 5);
-      for (var j = 0; j < maxR; j++) {
-        var r = released[j];
-        var isActiveR = r.name === current;
-        html += '<div class="rd-item' + (isActiveR ? " active" : "") + '" onclick="switchRelease(\'' + r.name.replace(/'/g, "\\'") + '\')">'
-          + (isActiveR ? "● " : "") + r.name
-          + '<span class="rd-status released">Livrée</span>'
-          + '</div>';
-      }
-    }
-
-    if (!unreleased.length && !released.length) {
+    if (!releases.length) {
       html = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Aucune release trouvée</div>';
     }
 

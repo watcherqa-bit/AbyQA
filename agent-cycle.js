@@ -136,7 +136,7 @@ function jiraGet(apiPath) {
 // ── FETCH TICKETS D'UNE RELEASE ─────────────────────────────────────────────
 async function fetchReleaseTickets(release) {
   var jql = "project = " + CFG.jira.project +
-    " AND fixVersion = \"" + release + "\"" +
+    " AND labels = \"" + release + "\"" +
     " AND issuetype in (Story, Bug)" +
     " ORDER BY priority DESC, updated DESC";
   var searchPath = "/rest/api/3/search/jql?jql=" + encodeURIComponent(jql) +

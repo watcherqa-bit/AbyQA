@@ -3423,7 +3423,8 @@ var server = http.createServer(function(req, res) {
     var testEmail = CFG.jira.email || "(non configuré)";
     var testHasToken = CFG.jira.token ? "oui (" + CFG.jira.token.length + " chars)" : "NON";
     var testAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
-    var testPath = "/rest/api/3/project/" + testProject + "/versions";
+    var testJql = encodeURIComponent("project=" + testProject + " AND labels is not EMPTY");
+    var testPath = "/rest/api/3/search?jql=" + testJql + "&fields=labels&maxResults=10";
     var testUrl = "https://" + testHost + testPath;
 
     console.log("[TEST-JIRA] URL: " + testUrl);
@@ -3455,12 +3456,18 @@ var server = http.createServer(function(req, res) {
         try {
           var parsed = JSON.parse(testData);
           diag.parsed = true;
-          diag.isArray = Array.isArray(parsed);
-          diag.count = Array.isArray(parsed) ? parsed.length : null;
-          if (Array.isArray(parsed)) {
-            diag.versions = parsed.map(function(v) { return { id: v.id, name: v.name, released: !!v.released, archived: !!v.archived }; });
-          } else {
-            diag.errorMessages = parsed.errorMessages || parsed.message || null;
+          var issues = parsed.issues || [];
+          diag.issueCount = issues.length;
+          // Extraire les labels vX.Y.Z uniques
+          var labelSet = {};
+          var vPat = /^v\d+\.\d+\.\d+$/;
+          issues.forEach(function(i) {
+            ((i.fields || {}).labels || []).forEach(function(l) { if (vPat.test(l)) labelSet[l] = true; });
+          });
+          diag.releaseLabels = Object.keys(labelSet).sort().reverse();
+          diag.labelCount = diag.releaseLabels.length;
+          if (parsed.errorMessages || parsed.message) {
+            diag.errorMessages = parsed.errorMessages || parsed.message;
           }
         } catch(e) {
           diag.parsed = false;
@@ -3482,17 +3489,18 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // ── GET /api/jira/releases — fixVersions + boards du projet Jira ────────────
+  // ── GET /api/jira/releases — labels vX.Y.Z du projet Jira (pas fixVersions) ──
   if (method === "GET" && url === "/api/jira/releases") {
     var httpsRel = require("https");
     var authRel = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var jiraHeaders = { "Authorization": "Basic " + authRel, "Accept": "application/json" };
     var project = CFG.jira.project || "SAFWBST";
-    var relPath = "/rest/api/3/project/" + project + "/versions";
+    // Chercher tous les tickets avec labels non vides pour extraire les labels vX.Y.Z
+    var relJql = encodeURIComponent("project=" + project + " AND labels is not EMPTY");
+    var relPath = "/rest/api/3/search?jql=" + relJql + "&fields=labels&maxResults=100";
 
-    console.log("[JIRA-RELEASES] Fetching: https://" + CFG.jira.host + relPath);
+    console.log("[JIRA-RELEASES] Fetching labels via search: https://" + CFG.jira.host + relPath);
 
-    // Fetch versions
     var relReq = httpsRel.request({
       hostname: CFG.jira.host,
       path: relPath,
@@ -3511,31 +3519,34 @@ var server = http.createServer(function(req, res) {
         }
         res.writeHead(200, { "Content-Type": "application/json" });
         try {
-          var versions = JSON.parse(relData);
-          if (!Array.isArray(versions)) {
-            console.error("[JIRA-RELEASES] Response is not an array:", relData.substring(0, 300));
-            res.end(JSON.stringify({ ok: false, error: "Jira response is not an array", raw: relData.substring(0, 500) }));
-            return;
-          }
-          console.log("[JIRA-RELEASES] Found " + versions.length + " versions");
-          var unreleased = [];
-          var released = [];
-          versions.forEach(function(v) {
-            if (v.archived) return;
-            var item = { id: v.id, name: v.name, released: !!v.released, archived: false, releaseDate: v.releaseDate || null, startDate: v.startDate || null, description: v.description || "" };
-            if (v.released) released.push(item);
-            else unreleased.push(item);
+          var result = JSON.parse(relData);
+          var issues = result.issues || [];
+          // Extraire tous les labels uniques au format vX.Y.Z
+          var labelSet = {};
+          var versionPattern = /^v\d+\.\d+\.\d+$/;
+          issues.forEach(function(i) {
+            var labels = (i.fields || {}).labels || [];
+            labels.forEach(function(l) {
+              if (versionPattern.test(l)) labelSet[l] = true;
+            });
           });
-          // Tri : unreleased desc, released desc
-          var cmp = function(a, b) { return (b.name || "").localeCompare(a.name || ""); };
-          unreleased.sort(cmp);
-          released.sort(cmp);
-          console.log("[JIRA-RELEASES] Unreleased: " + unreleased.map(function(v){return v.name}).join(", "));
-          console.log("[JIRA-RELEASES] Released: " + released.slice(0,5).map(function(v){return v.name}).join(", "));
+          var allLabels = Object.keys(labelSet);
+          // Tri sémantique descendant (v1.26.0 > v1.25.0)
+          allLabels.sort(function(a, b) {
+            var pa = a.replace("v","").split(".").map(Number);
+            var pb = b.replace("v","").split(".").map(Number);
+            for (var k = 0; k < 3; k++) {
+              if ((pb[k]||0) !== (pa[k]||0)) return (pb[k]||0) - (pa[k]||0);
+            }
+            return 0;
+          });
+          console.log("[JIRA-RELEASES] Found " + allLabels.length + " release labels: " + allLabels.join(", "));
           // Lire currentRelease depuis settings
           var currentRelease = "";
           try { currentRelease = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).currentRelease || ""; } catch(e) {}
-          res.end(JSON.stringify({ ok: true, unreleased: unreleased, released: released, currentRelease: currentRelease }));
+          // Retour compatible : releases = liste plate de labels triés desc
+          var releases = allLabels.map(function(l) { return { name: l }; });
+          res.end(JSON.stringify({ ok: true, releases: releases, currentRelease: currentRelease }));
         } catch(e) {
           console.error("[JIRA-RELEASES] Parse error:", e.message);
           res.end(JSON.stringify({ ok: false, error: "Parse error: " + e.message, raw: relData.substring(0, 500) }));
@@ -3559,7 +3570,7 @@ var server = http.createServer(function(req, res) {
     var httpsRT = require("https");
     var authRT = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var rtProject = CFG.jira.project || "SAFWBST";
-    var rtJql = encodeURIComponent('project = ' + rtProject + ' AND fixVersion = "' + rtVersion + '" ORDER BY status ASC, priority DESC');
+    var rtJql = encodeURIComponent('project = ' + rtProject + ' AND labels = "' + rtVersion + '" ORDER BY status ASC, priority DESC');
     var rtPath = "/rest/api/3/search?jql=" + rtJql + "&maxResults=200&fields=key,summary,status,priority,issuetype,assignee,labels";
 
     var rtReq = httpsRT.request({
