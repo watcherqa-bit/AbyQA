@@ -6492,8 +6492,12 @@ function loadReleaseTracker() {
 
   fetch("/api/jira/releases").then(function(r) { return r.json(); }).then(function(data) {
     if (!data.ok) {
-      if (sel) sel.innerHTML = "<option value=''>Erreur Jira</option>";
-      showToast("Erreur chargement releases Jira", "⚠️");
+      var errDetail = data.error || "inconnue";
+      if (data.httpStatus) errDetail += " (HTTP " + data.httpStatus + ")";
+      if (data.detail) errDetail += " — " + data.detail.substring(0, 100);
+      console.error("[RELEASES] Erreur Jira:", errDetail, data);
+      if (sel) sel.innerHTML = "<option value=''>Erreur sync Jira: " + (data.error || "?") + "</option>";
+      showToast("Erreur sync Jira : " + errDetail, "❌");
       return;
     }
     var unreleased = data.unreleased || [];
@@ -6686,7 +6690,10 @@ function loadJiraReleases() {
 
   fetch("/api/jira/releases").then(function(r) { return r.json(); }).then(function(data) {
     if (!data.ok) {
-      listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Erreur Jira</div>';
+      var errMsg = data.error || "inconnue";
+      if (data.httpStatus) errMsg += " (HTTP " + data.httpStatus + ")";
+      console.error("[DROPDOWN] Erreur Jira:", errMsg, data);
+      listEl.innerHTML = '<div style="padding:10px;color:var(--red);font-size:11px;text-align:center">Erreur sync Jira<br><span style="font-size:9px;color:var(--text3)">' + errMsg + '</span></div>';
       return;
     }
     var unreleased = data.unreleased || [];

@@ -3415,29 +3415,112 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
+  // ── GET /api/test-jira — Diagnostic connexion Jira ─────────────────────────
+  if (method === "GET" && url === "/api/test-jira") {
+    var httpsTest = require("https");
+    var testProject = CFG.jira.project || "SAFWBST";
+    var testHost = CFG.jira.host || "(non configuré)";
+    var testEmail = CFG.jira.email || "(non configuré)";
+    var testHasToken = CFG.jira.token ? "oui (" + CFG.jira.token.length + " chars)" : "NON";
+    var testAuth = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var testPath = "/rest/api/3/project/" + testProject + "/versions";
+    var testUrl = "https://" + testHost + testPath;
+
+    console.log("[TEST-JIRA] URL: " + testUrl);
+    console.log("[TEST-JIRA] Email: " + testEmail);
+    console.log("[TEST-JIRA] Token present: " + testHasToken);
+
+    var testReq = httpsTest.request({
+      hostname: testHost,
+      path: testPath,
+      method: "GET",
+      headers: { "Authorization": "Basic " + testAuth, "Accept": "application/json" }
+    }, function(testRes) {
+      var testData = "";
+      testRes.on("data", function(c) { testData += c; });
+      testRes.on("end", function() {
+        console.log("[TEST-JIRA] Status: " + testRes.statusCode);
+        console.log("[TEST-JIRA] Response (500 chars): " + testData.substring(0, 500));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        var diag = {
+          url: testUrl,
+          host: testHost,
+          project: testProject,
+          email: testEmail,
+          tokenPresent: testHasToken,
+          httpStatus: testRes.statusCode,
+          httpHeaders: testRes.headers,
+          rawBody: testData.substring(0, 1000)
+        };
+        try {
+          var parsed = JSON.parse(testData);
+          diag.parsed = true;
+          diag.isArray = Array.isArray(parsed);
+          diag.count = Array.isArray(parsed) ? parsed.length : null;
+          if (Array.isArray(parsed)) {
+            diag.versions = parsed.map(function(v) { return { id: v.id, name: v.name, released: !!v.released, archived: !!v.archived }; });
+          } else {
+            diag.errorMessages = parsed.errorMessages || parsed.message || null;
+          }
+        } catch(e) {
+          diag.parsed = false;
+          diag.parseError = e.message;
+        }
+        res.end(JSON.stringify(diag, null, 2));
+      });
+    });
+    testReq.on("error", function(e) {
+      console.error("[TEST-JIRA] Connection error:", e.message);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        url: testUrl, host: testHost, project: testProject,
+        email: testEmail, tokenPresent: testHasToken,
+        connectionError: e.message, stack: e.stack
+      }, null, 2));
+    });
+    testReq.end();
+    return;
+  }
+
   // ── GET /api/jira/releases — fixVersions + boards du projet Jira ────────────
   if (method === "GET" && url === "/api/jira/releases") {
     var httpsRel = require("https");
     var authRel = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
     var jiraHeaders = { "Authorization": "Basic " + authRel, "Accept": "application/json" };
     var project = CFG.jira.project || "SAFWBST";
+    var relPath = "/rest/api/3/project/" + project + "/versions";
+
+    console.log("[JIRA-RELEASES] Fetching: https://" + CFG.jira.host + relPath);
 
     // Fetch versions
     var relReq = httpsRel.request({
       hostname: CFG.jira.host,
-      path: "/rest/api/3/project/" + project + "/versions",
+      path: relPath,
       method: "GET",
       headers: jiraHeaders
     }, function(relRes) {
       var relData = "";
       relRes.on("data", function(c) { relData += c; });
       relRes.on("end", function() {
+        console.log("[JIRA-RELEASES] Status: " + relRes.statusCode + " | Body length: " + relData.length);
+        if (relRes.statusCode !== 200) {
+          console.error("[JIRA-RELEASES] ERROR response: " + relData.substring(0, 500));
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: "Jira HTTP " + relRes.statusCode, httpStatus: relRes.statusCode, detail: relData.substring(0, 500) }));
+          return;
+        }
         res.writeHead(200, { "Content-Type": "application/json" });
         try {
           var versions = JSON.parse(relData);
+          if (!Array.isArray(versions)) {
+            console.error("[JIRA-RELEASES] Response is not an array:", relData.substring(0, 300));
+            res.end(JSON.stringify({ ok: false, error: "Jira response is not an array", raw: relData.substring(0, 500) }));
+            return;
+          }
+          console.log("[JIRA-RELEASES] Found " + versions.length + " versions");
           var unreleased = [];
           var released = [];
-          (versions || []).forEach(function(v) {
+          versions.forEach(function(v) {
             if (v.archived) return;
             var item = { id: v.id, name: v.name, released: !!v.released, archived: false, releaseDate: v.releaseDate || null, startDate: v.startDate || null, description: v.description || "" };
             if (v.released) released.push(item);
@@ -3447,14 +3530,23 @@ var server = http.createServer(function(req, res) {
           var cmp = function(a, b) { return (b.name || "").localeCompare(a.name || ""); };
           unreleased.sort(cmp);
           released.sort(cmp);
+          console.log("[JIRA-RELEASES] Unreleased: " + unreleased.map(function(v){return v.name}).join(", "));
+          console.log("[JIRA-RELEASES] Released: " + released.slice(0,5).map(function(v){return v.name}).join(", "));
           // Lire currentRelease depuis settings
           var currentRelease = "";
           try { currentRelease = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).currentRelease || ""; } catch(e) {}
           res.end(JSON.stringify({ ok: true, unreleased: unreleased, released: released, currentRelease: currentRelease }));
-        } catch(e) { res.end(JSON.stringify({ ok: false, error: "Parse error", raw: relData.substring(0, 300) })); }
+        } catch(e) {
+          console.error("[JIRA-RELEASES] Parse error:", e.message);
+          res.end(JSON.stringify({ ok: false, error: "Parse error: " + e.message, raw: relData.substring(0, 500) }));
+        }
       });
     });
-    relReq.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); });
+    relReq.on("error", function(e) {
+      console.error("[JIRA-RELEASES] Connection error:", e.message, e.stack);
+      res.writeHead(500);
+      res.end(JSON.stringify({ ok: false, error: "Connection error: " + e.message }));
+    });
     relReq.end();
     return;
   }
