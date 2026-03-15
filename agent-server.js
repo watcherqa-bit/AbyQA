@@ -3415,15 +3415,19 @@ var server = http.createServer(function(req, res) {
     return;
   }
 
-  // ── GET /api/jira/releases — Liste des fixVersions du projet Jira ──────────
+  // ── GET /api/jira/releases — fixVersions + boards du projet Jira ────────────
   if (method === "GET" && url === "/api/jira/releases") {
     var httpsRel = require("https");
     var authRel = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var jiraHeaders = { "Authorization": "Basic " + authRel, "Accept": "application/json" };
+    var project = CFG.jira.project || "SAFWBST";
+
+    // Fetch versions
     var relReq = httpsRel.request({
       hostname: CFG.jira.host,
-      path: "/rest/api/3/project/" + (CFG.jira.project || "SAFWBST") + "/versions",
+      path: "/rest/api/3/project/" + project + "/versions",
       method: "GET",
-      headers: { "Authorization": "Basic " + authRel, "Accept": "application/json" }
+      headers: jiraHeaders
     }, function(relRes) {
       var relData = "";
       relRes.on("data", function(c) { relData += c; });
@@ -3431,16 +3435,82 @@ var server = http.createServer(function(req, res) {
         res.writeHead(200, { "Content-Type": "application/json" });
         try {
           var versions = JSON.parse(relData);
-          var mapped = (versions || []).map(function(v) {
-            return { id: v.id, name: v.name, released: !!v.released, archived: !!v.archived, releaseDate: v.releaseDate || null };
-          }).filter(function(v) { return !v.archived; })
-            .sort(function(a, b) { return (b.name || "").localeCompare(a.name || ""); });
-          res.end(JSON.stringify({ ok: true, releases: mapped }));
+          var unreleased = [];
+          var released = [];
+          (versions || []).forEach(function(v) {
+            if (v.archived) return;
+            var item = { id: v.id, name: v.name, released: !!v.released, archived: false, releaseDate: v.releaseDate || null, startDate: v.startDate || null, description: v.description || "" };
+            if (v.released) released.push(item);
+            else unreleased.push(item);
+          });
+          // Tri : unreleased desc, released desc
+          var cmp = function(a, b) { return (b.name || "").localeCompare(a.name || ""); };
+          unreleased.sort(cmp);
+          released.sort(cmp);
+          // Lire currentRelease depuis settings
+          var currentRelease = "";
+          try { currentRelease = JSON.parse(fs.readFileSync(path.join(BASE_DIR, "settings.json"), "utf8")).currentRelease || ""; } catch(e) {}
+          res.end(JSON.stringify({ ok: true, unreleased: unreleased, released: released, currentRelease: currentRelease }));
         } catch(e) { res.end(JSON.stringify({ ok: false, error: "Parse error", raw: relData.substring(0, 300) })); }
       });
     });
     relReq.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); });
     relReq.end();
+    return;
+  }
+
+  // ── GET /api/jira/release-tickets/:version — Tickets d'une release groupés par statut ──
+  if (method === "GET" && url.indexOf("/api/jira/release-tickets/") === 0) {
+    var rtVersion = decodeURIComponent(url.replace("/api/jira/release-tickets/", "").split("?")[0]);
+    if (!rtVersion) { res.writeHead(400); res.end(JSON.stringify({ ok: false, error: "version manquante" })); return; }
+
+    var httpsRT = require("https");
+    var authRT = Buffer.from(CFG.jira.email + ":" + CFG.jira.token).toString("base64");
+    var rtProject = CFG.jira.project || "SAFWBST";
+    var rtJql = encodeURIComponent('project = ' + rtProject + ' AND fixVersion = "' + rtVersion + '" ORDER BY status ASC, priority DESC');
+    var rtPath = "/rest/api/3/search?jql=" + rtJql + "&maxResults=200&fields=key,summary,status,priority,issuetype,assignee,labels";
+
+    var rtReq = httpsRT.request({
+      hostname: CFG.jira.host,
+      path: rtPath,
+      method: "GET",
+      headers: { "Authorization": "Basic " + authRT, "Accept": "application/json" }
+    }, function(rtRes) {
+      var rtData = "";
+      rtRes.on("data", function(c) { rtData += c; });
+      rtRes.on("end", function() {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        try {
+          var result = JSON.parse(rtData);
+          var issues = (result.issues || []).map(function(i) {
+            var f = i.fields || {};
+            return {
+              key: i.key,
+              summary: f.summary || "",
+              status: (f.status || {}).name || "",
+              statusCategory: ((f.status || {}).statusCategory || {}).name || "",
+              priority: (f.priority || {}).name || "",
+              priorityIcon: (f.priority || {}).iconUrl || "",
+              type: (f.issuetype || {}).name || "",
+              typeIcon: (f.issuetype || {}).iconUrl || "",
+              assignee: (f.assignee || {}).displayName || "Non assigné",
+              assigneeAvatar: ((f.assignee || {}).avatarUrls || {})["24x24"] || "",
+              labels: f.labels || []
+            };
+          });
+          // Grouper par statut
+          var columns = {};
+          var columnOrder = [];
+          issues.forEach(function(t) {
+            if (!columns[t.status]) { columns[t.status] = []; columnOrder.push(t.status); }
+            columns[t.status].push(t);
+          });
+          res.end(JSON.stringify({ ok: true, version: rtVersion, total: issues.length, columns: columns, columnOrder: columnOrder }));
+        } catch(e) { res.end(JSON.stringify({ ok: false, error: "Parse error", raw: rtData.substring(0, 300) })); }
+      });
+    });
+    rtReq.on("error", function(e) { res.writeHead(500); res.end(JSON.stringify({ ok: false, error: e.message })); });
+    rtReq.end();
     return;
   }
 

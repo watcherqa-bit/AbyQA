@@ -1172,6 +1172,15 @@
   }
   .release-dropdown .rd-item .rd-status.released { background: rgba(34,197,94,.15); color: var(--green); }
   .release-dropdown .rd-item .rd-status.unreleased { background: rgba(59,111,255,.1); color: var(--blue); }
+  .release-dropdown .rd-section-title {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--text3);
+    padding: 8px 14px 4px;
+    font-family: var(--mono);
+  }
   .release-dropdown .rd-sync {
     display: flex;
     align-items: center;
@@ -1185,6 +1194,106 @@
     transition: background .15s;
   }
   .release-dropdown .rd-sync:hover { background: var(--bg3); }
+  .release-dropdown .rd-sync-ts {
+    font-size: 9px;
+    color: var(--text3);
+    padding: 2px 14px 4px;
+    font-family: var(--mono);
+  }
+
+  /* ── KANBAN MINI ── */
+  .kanban-board {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 10px 0;
+    min-height: 200px;
+  }
+  .kanban-col {
+    min-width: 200px;
+    max-width: 260px;
+    flex: 1 0 200px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+  }
+  .kanban-col-header {
+    padding: 10px 12px 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .kanban-col-header .kc-count {
+    background: var(--bg3);
+    color: var(--text2);
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    min-width: 18px;
+    text-align: center;
+  }
+  .kanban-col-body {
+    padding: 6px;
+    overflow-y: auto;
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .kanban-card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .kanban-card:hover {
+    border-color: var(--purple);
+    box-shadow: 0 0 0 1px rgba(168,85,247,.2);
+  }
+  .kanban-card .kc-key {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--blue);
+  }
+  .kanban-card .kc-summary {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 3px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .kanban-card .kc-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 9px;
+    color: var(--text3);
+  }
+  .kanban-card .kc-meta img {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+  }
+  .kanban-card .kc-type-icon {
+    width: 12px;
+    height: 12px;
+  }
 
   /* ── WORKFLOW STEPS ── */
   .workflow {
@@ -1504,7 +1613,7 @@
   </div>
   <div class="header-right">
     <div class="release-badge" id="header-release-badge" onclick="toggleReleaseSwitcher()" title="Cliquer pour changer de release">
-      <span id="release-badge-text">🚀 v1.25.0</span>
+      <span id="release-badge-text">🚀 ---</span>
       <span class="chevron">▼</span>
       <div class="release-dropdown" id="release-dropdown" onclick="event.stopPropagation()">
         <div id="release-dropdown-list" style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Chargement...</div>
@@ -1646,7 +1755,7 @@
       <div class="panel-header">
         <div>
           <div class="panel-title">Dashboard</div>
-          <div class="panel-desc">Vue globale de l'équipe d'agents — Release v1.25.0</div>
+          <div class="panel-desc">Vue globale de l'équipe d'agents</div>
         </div>
       </div>
 
@@ -2833,14 +2942,26 @@
 
       <!-- Onglets internes : Tickets · Test Plan · Historique · Bibliothèque -->
       <div class="rqa-tabs">
-        <button onclick="switchRQATab('tickets')" class="rqa-tab active" id="rqa-tab-tickets">🎫 Tickets</button>
+        <button onclick="switchRQATab('kanban')" class="rqa-tab active" id="rqa-tab-kanban">📊 Kanban Jira</button>
+        <button onclick="switchRQATab('tickets')" class="rqa-tab" id="rqa-tab-tickets">🎫 Tickets</button>
         <button onclick="switchRQATab('testplan')" class="rqa-tab" id="rqa-tab-testplan">📋 Test Plan</button>
         <button onclick="switchRQATab('execution')" class="rqa-tab" id="rqa-tab-execution">🧪 Exécutions</button>
         <button onclick="switchRQATab('library')" class="rqa-tab" id="rqa-tab-library">📚 Bibliothèque</button>
       </div>
 
+      <!-- Tab: Kanban Jira -->
+      <div class="form-card" id="rqa-pane-kanban" style="padding:10px;overflow:hidden;border-radius:0 0 10px 10px;margin-top:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding:0 4px">
+          <span id="kanban-title" style="font-family:var(--mono);font-size:11px;color:var(--text3)">Sélectionne une release</span>
+          <span id="kanban-total" style="font-family:var(--mono);font-size:10px;color:var(--text3)"></span>
+        </div>
+        <div id="kanban-board" class="kanban-board">
+          <div style="padding:32px;text-align:center;color:var(--text3);font-size:13px;width:100%">Sélectionne une release pour afficher le Kanban</div>
+        </div>
+      </div>
+
       <!-- Tab: Tickets -->
-      <div class="form-card" id="rqa-pane-tickets" style="padding:0;overflow:hidden;border-radius:0 0 10px 10px;margin-top:0">
+      <div class="form-card" id="rqa-pane-tickets" style="padding:0;overflow:hidden;border-radius:0 0 10px 10px;margin-top:0;display:none">
         <div id="releaseTicketsTable" style="overflow-x:auto">
           <div style="padding:32px;text-align:center;color:var(--text3);font-size:13px">Sélectionne une release</div>
         </div>
@@ -5272,7 +5393,11 @@ function _triggerRefresh(id) {
   if (id === "diagnostics")       loadDiagnostics();
   if (id === "settings")          loadSettingsPanel();
   if (id === "backlog")           loadBacklog(true); // skipSync=true → juste recharger local
-  if (id === "release-qa")        loadReleaseTracker();
+  if (id === "release-qa") {
+    loadReleaseTracker();
+    var curRel = localStorage.getItem("abyqa_current_release") || "";
+    if (curRel) loadKanbanTickets(curRel);
+  }
   if (id === "releases" && typeof loadReleaseTracker === "function") loadReleaseTracker();
   if (id === "postman")           postmanLoadCollections();
   if (id === "appium")            appiumLoadScripts();
@@ -6525,24 +6650,54 @@ function loadJiraReleases() {
   listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Chargement...</div>';
 
   fetch("/api/jira/releases").then(function(r) { return r.json(); }).then(function(data) {
-    if (!data.ok || !data.releases || !data.releases.length) {
-      listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Aucune release trouvée</div>';
+    if (!data.ok) {
+      listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Erreur Jira</div>';
       return;
     }
-    _jiraReleases = data.releases;
+    var unreleased = data.unreleased || [];
+    var released = data.released || [];
+    _jiraReleases = unreleased.concat(released);
     var currentBadge = document.getElementById("release-badge-text");
     var current = currentBadge ? currentBadge.textContent.replace("🚀 ", "").trim() : "";
+
     var html = "";
-    for (var i = 0; i < data.releases.length; i++) {
-      var r = data.releases[i];
-      var isActive = r.name === current;
-      var statusClass = r.released ? "released" : "unreleased";
-      var statusLabel = r.released ? "Released" : "En cours";
-      html += '<div class="rd-item' + (isActive ? " active" : "") + '" onclick="switchRelease(\'' + r.name.replace(/'/g, "\\'") + '\')">'
-        + (isActive ? "● " : "") + r.name
-        + '<span class="rd-status ' + statusClass + '">' + statusLabel + '</span>'
-        + '</div>';
+
+    // Section En cours
+    if (unreleased.length > 0) {
+      html += '<div class="rd-section-title">En cours</div>';
+      for (var i = 0; i < unreleased.length; i++) {
+        var u = unreleased[i];
+        var isActive = u.name === current;
+        html += '<div class="rd-item' + (isActive ? " active" : "") + '" onclick="switchRelease(\'' + u.name.replace(/'/g, "\\'") + '\')">'
+          + (isActive ? "● " : "") + u.name
+          + '<span class="rd-status unreleased">En cours</span>'
+          + '</div>';
+      }
     }
+
+    // Section Livrées (max 5 dernières)
+    if (released.length > 0) {
+      html += '<div class="rd-section-title">Livrées</div>';
+      var maxR = Math.min(released.length, 5);
+      for (var j = 0; j < maxR; j++) {
+        var r = released[j];
+        var isActiveR = r.name === current;
+        html += '<div class="rd-item' + (isActiveR ? " active" : "") + '" onclick="switchRelease(\'' + r.name.replace(/'/g, "\\'") + '\')">'
+          + (isActiveR ? "● " : "") + r.name
+          + '<span class="rd-status released">Livrée</span>'
+          + '</div>';
+      }
+    }
+
+    if (!unreleased.length && !released.length) {
+      html = '<div style="padding:10px;color:var(--text3);font-size:11px;text-align:center">Aucune release trouvée</div>';
+    }
+
+    // Timestamp dernière sync
+    var tsStr = new Date().toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" });
+    localStorage.setItem("abyqa_last_sync", tsStr);
+    html += '<div class="rd-sync-ts">Sync : ' + tsStr + '</div>';
+
     listEl.innerHTML = html;
   }).catch(function(e) {
     listEl.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:11px">Erreur : ' + e.message + '</div>';
@@ -6560,6 +6715,9 @@ function switchRelease(version) {
   var badgeText = document.getElementById("release-badge-text");
   if (badgeText) badgeText.textContent = "🚀 " + version;
 
+  // Sauvegarder dans localStorage
+  localStorage.setItem("abyqa_current_release", version);
+
   // Mettre à jour le champ settings
   var cfgRel = document.getElementById("cfg-latest-release");
   if (cfgRel) cfgRel.value = version;
@@ -6567,6 +6725,9 @@ function switchRelease(version) {
   // Mettre à jour la description panel
   var panelDesc = document.querySelector("#panel-dashboard-home .panel-desc");
   if (panelDesc) panelDesc.textContent = "Vue globale de l'équipe d'agents — Release " + version;
+
+  // Charger le Kanban pour cette release
+  loadKanbanTickets(version);
 
   // Appeler POST /api/release/sync pour persister + lancer sync matrice
   fetch("/api/release/sync", {
@@ -6591,7 +6752,133 @@ function syncCurrentRelease() {
   var badgeText = document.getElementById("release-badge-text");
   var current = badgeText ? badgeText.textContent.replace("🚀 ", "").trim() : "";
   if (!current) { addNotification("Aucune release sélectionnée", "warning"); return; }
+  addNotification("Synchronisation Jira en cours...", "info");
   switchRelease(current);
+}
+
+// ── KANBAN — tickets Jira groupés par statut ───────────────────────────────
+var _kanbanData = null;
+
+// Couleurs par catégorie de statut
+var KANBAN_STATUS_COLORS = {
+  "To Do": "var(--text3)", "A Faire": "var(--text3)", "Prepare": "var(--text3)", "Backlog": "var(--text3)",
+  "In Progress": "var(--blue)", "En Cours": "var(--blue)", "In Development": "var(--blue)",
+  "Reopened": "var(--orange)", "Rouvert": "var(--orange)", "Blocked": "var(--red)", "Bloqué": "var(--red)",
+  "To Test": "var(--cyan)", "A Tester": "var(--cyan)", "In Test": "var(--cyan)", "En Test": "var(--cyan)",
+  "To Deliver": "var(--purple)", "A Livrer": "var(--purple)", "Sur Sophie": "var(--green)",
+  "Done": "var(--green)", "Terminé": "var(--green)", "Released": "var(--green)"
+};
+
+function getStatusColor(status) {
+  if (KANBAN_STATUS_COLORS[status]) return KANBAN_STATUS_COLORS[status];
+  // Fallback par catégorie
+  var s = status.toLowerCase();
+  if (s.indexOf("test") !== -1) return "var(--cyan)";
+  if (s.indexOf("progress") !== -1 || s.indexOf("cours") !== -1 || s.indexOf("dev") !== -1) return "var(--blue)";
+  if (s.indexOf("done") !== -1 || s.indexOf("livr") !== -1 || s.indexOf("sophie") !== -1) return "var(--green)";
+  if (s.indexOf("block") !== -1 || s.indexOf("bloqu") !== -1) return "var(--red)";
+  if (s.indexOf("reopen") !== -1 || s.indexOf("rouvert") !== -1) return "var(--orange)";
+  return "var(--text3)";
+}
+
+function loadKanbanTickets(version) {
+  var board = document.getElementById("kanban-board");
+  var titleEl = document.getElementById("kanban-title");
+  var totalEl = document.getElementById("kanban-total");
+  if (!board) return;
+
+  board.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text3);font-size:12px;width:100%">Chargement des tickets Jira...</div>';
+  if (titleEl) titleEl.textContent = "Release " + version;
+
+  fetch("/api/jira/release-tickets/" + encodeURIComponent(version))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) {
+        board.innerHTML = '<div style="padding:32px;text-align:center;color:var(--red);font-size:12px;width:100%">Erreur : ' + (data.error || "?") + '</div>';
+        return;
+      }
+      _kanbanData = data;
+      if (totalEl) totalEl.textContent = data.total + " ticket" + (data.total > 1 ? "s" : "");
+
+      if (!data.columnOrder || data.columnOrder.length === 0) {
+        board.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text3);font-size:12px;width:100%">Aucun ticket pour cette release</div>';
+        // Mettre à jour les stats à 0
+        updateKanbanStats(data);
+        return;
+      }
+
+      var html = "";
+      for (var c = 0; c < data.columnOrder.length; c++) {
+        var colName = data.columnOrder[c];
+        var tickets = data.columns[colName] || [];
+        var colColor = getStatusColor(colName);
+
+        html += '<div class="kanban-col">';
+        html += '<div class="kanban-col-header" style="border-bottom-color:' + colColor + '">';
+        html += '<span>' + colName + '</span>';
+        html += '<span class="kc-count">' + tickets.length + '</span>';
+        html += '</div>';
+        html += '<div class="kanban-col-body">';
+
+        for (var t = 0; t < tickets.length; t++) {
+          var tk = tickets[t];
+          var jiraUrl = "https://" + (window.CFG_JIRA_HOST || "eurelis.atlassian.net") + "/browse/" + tk.key;
+          html += '<div class="kanban-card" onclick="window.open(\'' + jiraUrl + '\', \'_blank\')" title="Ouvrir dans Jira">';
+          html += '<div style="display:flex;align-items:center;gap:6px">';
+          if (tk.typeIcon) html += '<img class="kc-type-icon" src="' + tk.typeIcon + '" alt="">';
+          html += '<span class="kc-key">' + tk.key + '</span>';
+          if (tk.priorityIcon) html += '<img src="' + tk.priorityIcon + '" style="width:12px;height:12px;margin-left:auto" title="' + tk.priority + '">';
+          html += '</div>';
+          html += '<div class="kc-summary">' + escapeHtml(tk.summary) + '</div>';
+          html += '<div class="kc-meta">';
+          if (tk.assigneeAvatar) html += '<img src="' + tk.assigneeAvatar + '" title="' + escapeHtml(tk.assignee) + '">';
+          else html += '<span>' + escapeHtml(tk.assignee) + '</span>';
+          html += '</div>';
+          html += '</div>';
+        }
+
+        html += '</div></div>';
+      }
+
+      board.innerHTML = html;
+      updateKanbanStats(data);
+    })
+    .catch(function(e) {
+      board.innerHTML = '<div style="padding:32px;text-align:center;color:var(--red);font-size:12px;width:100%">Erreur : ' + e.message + '</div>';
+    });
+}
+
+function updateKanbanStats(data) {
+  // Mettre à jour les stat cards avec les données du Kanban Jira
+  var ticketsEl = document.getElementById("stat-tickets-num");
+  if (ticketsEl) ticketsEl.textContent = data.total || 0;
+
+  // Compter par catégorie de statut
+  var cols = data.columns || {};
+  var doneCount = 0;
+  var inTestCount = 0;
+  var blockedCount = 0;
+  Object.keys(cols).forEach(function(colName) {
+    var s = colName.toLowerCase();
+    var count = cols[colName].length;
+    if (s.indexOf("done") !== -1 || s.indexOf("livr") !== -1 || s.indexOf("released") !== -1 || s.indexOf("sophie") !== -1) doneCount += count;
+    if (s.indexOf("test") !== -1) inTestCount += count;
+    if (s.indexOf("block") !== -1 || s.indexOf("bloqu") !== -1 || s.indexOf("reopen") !== -1 || s.indexOf("rouvert") !== -1) blockedCount += count;
+  });
+
+  // Coverage = tickets done ou en test / total
+  var covEl = document.getElementById("stat-coverage-num");
+  if (covEl && data.total > 0) {
+    var covPct = Math.round((doneCount + inTestCount) / data.total * 100);
+    covEl.textContent = covPct + "%";
+  } else if (covEl) {
+    covEl.textContent = "--";
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function showRelease(release) {
@@ -11542,6 +11829,15 @@ document.addEventListener("DOMContentLoaded", function() {
   setInterval(function() { loadBacklog(false, "mine"); }, 120000);
   setInterval(blUpdateSyncStamp, 60000); // rafraîchit le label "il y a X min"
   initKeyboardShortcuts();
+
+  // ── INIT RELEASE depuis localStorage ou settings serveur ─────────────────
+  var savedRelease = localStorage.getItem("abyqa_current_release");
+  if (savedRelease) {
+    var rb = document.getElementById("release-badge-text");
+    if (rb) rb.textContent = "🚀 " + savedRelease;
+    // Charger le Kanban automatiquement
+    setTimeout(function() { loadKanbanTickets(savedRelease); }, 500);
+  }
 });
 
 // ── TIMESTAMP BACKLOG ─────────────────────────────────────────────────────────
@@ -14083,7 +14379,7 @@ function emailReleaseReport() {
 }
 
 function switchRQATab(tab) {
-  ["tickets", "testplan", "execution", "library"].forEach(function(t) {
+  ["kanban", "tickets", "testplan", "execution", "library"].forEach(function(t) {
     var pane = document.getElementById("rqa-pane-" + t);
     var btn  = document.getElementById("rqa-tab-" + t);
     if (pane) pane.style.display = t === tab ? "block" : "none";
