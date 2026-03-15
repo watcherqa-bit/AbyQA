@@ -6765,6 +6765,11 @@ function switchRelease(version) {
   // Charger le Kanban pour cette release
   loadKanbanTickets(version);
 
+  // Rafraîchir les widgets dashboard filtrés par release
+  if (typeof updateDashBacklog === "function") updateDashBacklog();
+  if (typeof updateDashCoverage === "function") updateDashCoverage();
+  if (typeof updateReleaseHealthCard === "function") updateReleaseHealthCard();
+
   // Appeler POST /api/release/sync pour persister + lancer sync matrice
   fetch("/api/release/sync", {
     method: "POST",
@@ -6925,6 +6930,10 @@ function showRelease(release) {
 
   // Charger le Kanban Jira
   loadKanbanTickets(release);
+
+  // Rafraîchir les widgets dashboard filtrés par release
+  if (typeof updateDashBacklog === "function") updateDashBacklog();
+  if (typeof updateDashCoverage === "function") updateDashCoverage();
 
   // Si pas de données tracker, afficher des stats vides
   var data = releaseTracker[release] || { totalTickets: 0, totalPass: 0, totalFail: 0, totalBugs: 0, globalStatus: "—", tickets: [] };
@@ -12628,7 +12637,15 @@ function updateDashBacklog() {
   var list   = document.getElementById("dash-backlog-list");
   if (!funnel && !list) return;
 
-  var mine = _backlogPending.filter(function(t) { return t.mine !== false; });
+  var currentRel = getGlobalRelease();
+  var mine = _backlogPending.filter(function(t) {
+    if (t.mine === false) return false;
+    // Filtrer par label release si disponible
+    if (currentRel && t.labels && t.labels.length) {
+      return t.labels.indexOf(currentRel) !== -1;
+    }
+    return true; // tickets sans labels = toujours visibles
+  });
 
   if (!mine.length) {
     if (funnel) funnel.innerHTML = "";
@@ -12694,9 +12711,14 @@ function updateDashCoverage() {
   var stEl   = document.getElementById("cov-status");
   if (!pctEl) return;
 
-  // Filtrer les User Stories uniquement
+  // Filtrer les User Stories par release courante
+  var currentRelCov = getGlobalRelease();
   var stories = _backlogPending.filter(function(t) {
-    return t.type === "Story" || t.type === "User Story";
+    if (t.type !== "Story" && t.type !== "User Story") return false;
+    if (currentRelCov && t.labels && t.labels.length) {
+      return t.labels.indexOf(currentRelCov) !== -1;
+    }
+    return true;
   });
   var total   = stories.length;
   if (!total) {

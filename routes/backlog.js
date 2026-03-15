@@ -129,7 +129,7 @@ module.exports = function handle(method, url, req, res, ctx) {
     var jql8 = syncMine
       ? "project = " + CFG.jira.project + " AND assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC"
       : "project = " + CFG.jira.project + " AND issuetype in (Story, Bug, \"Test Case\", Task) AND status in (" + qaStatuses8.map(function(s) { return '"' + s + '"'; }).join(",") + ") ORDER BY updated DESC";
-    var sp8Body = JSON.stringify({ jql: jql8, fields: ["summary","status","issuetype","priority","updated","assignee"], maxResults: 50 });
+    var sp8Body = JSON.stringify({ jql: jql8, fields: ["summary","status","issuetype","priority","updated","assignee","labels"], maxResults: 50 });
 
     var sr8 = https8.request({
       hostname: CFG.jira.host, path: "/rest/api/3/search/jql", method: "POST",
@@ -162,6 +162,7 @@ module.exports = function handle(method, url, req, res, ctx) {
                 jiraStatus: status8,
                 assignee:   i.fields.assignee  ? i.fields.assignee.displayName : "",
                 priority:   i.fields.priority  ? i.fields.priority.name  : "Medium",
+                labels:     i.fields.labels || [],
                 phase:      autoPhase8,
                 mine:       syncMine,
                 addedAt:    new Date().toISOString(),
@@ -171,6 +172,7 @@ module.exports = function handle(method, url, req, res, ctx) {
               added8++;
             } else {
               existing8.jiraStatus = status8;
+              existing8.labels     = i.fields.labels || existing8.labels || [];
               existing8.phase      = existing8.phase === "entrant" ? autoPhase8 : existing8.phase;
               existing8.mine       = existing8.mine || syncMine;
               existing8.updatedAt  = new Date().toISOString();
