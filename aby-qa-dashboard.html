@@ -6470,40 +6470,75 @@ function buildOllamaPrompt(ticket, payload) {
 var releaseTracker = {};
 
 function loadReleaseTracker() {
+  // 1. Charger les stats locales (release-tracker.json) en background
   api("/api/release-tracker")
     .then(function(data) {
-      releaseTracker = data;
-      var releases = Object.keys(data).sort().reverse();
-      var sel = document.getElementById("releaseSelector");
-      sel.innerHTML = releases.length === 0
-        ? "<option value=''>Aucune release</option>"
-        : releases.map(function(r) { return "<option value='"+r+"'>"+r+" ("+data[r].globalStatus+")</option>"; }).join("");
-      if (releases.length > 0) showRelease(releases[0]);
-      updateReleaseHealthCard();
-      showToast("Tracker chargé — " + releases.length + " release(s)", "📊");
+      if (data && typeof data === "object") releaseTracker = data;
     })
     .catch(function() {
-      // Fallback : essayer de lire depuis reports/
-      api("/api/reports")
-        .then(function(files) {
-          var tracker = files.find(function(f) { return f.name === "release-tracker.json"; });
-          if (tracker) {
-            return api("/api/download/" + tracker.name);
-          }
-          return {};
-        })
-        .then(function(data) {
-          if (data && Object.keys(data).length > 0) {
-            releaseTracker = data;
-            var releases = Object.keys(data).sort().reverse();
-            var sel = document.getElementById("releaseSelector");
-            sel.innerHTML = releases.map(function(r) { return "<option value='"+r+"'>"+r+"</option>"; }).join("");
-            if (releases.length > 0) showRelease(releases[0]);
-            updateReleaseHealthCard();
-          }
-        })
-        .catch(function() { showToast("Impossible de charger le tracker", "⚠️"); });
+      // Fallback fichier
+      api("/api/reports").then(function(files) {
+        var tracker = files.find(function(f) { return f.name === "release-tracker.json"; });
+        if (tracker) return api("/api/download/" + tracker.name);
+        return {};
+      }).then(function(data) {
+        if (data && Object.keys(data).length > 0) releaseTracker = data;
+      }).catch(function() {});
     });
+
+  // 2. Peupler le releaseSelector depuis Jira live (source de vérité)
+  var sel = document.getElementById("releaseSelector");
+  if (sel) sel.innerHTML = "<option value=''>Chargement Jira...</option>";
+
+  fetch("/api/jira/releases").then(function(r) { return r.json(); }).then(function(data) {
+    if (!data.ok) {
+      if (sel) sel.innerHTML = "<option value=''>Erreur Jira</option>";
+      showToast("Erreur chargement releases Jira", "⚠️");
+      return;
+    }
+    var unreleased = data.unreleased || [];
+    var released = data.released || [];
+    var current = data.currentRelease || localStorage.getItem("abyqa_current_release") || "";
+    var html = "";
+
+    // Unreleased en premier
+    if (unreleased.length > 0) {
+      html += "<optgroup label='En cours'>";
+      for (var i = 0; i < unreleased.length; i++) {
+        var u = unreleased[i];
+        var sel1 = u.name === current ? " selected" : "";
+        html += "<option value='" + u.name + "'" + sel1 + ">" + u.name + " (En cours)</option>";
+      }
+      html += "</optgroup>";
+    }
+
+    // Released (5 dernières)
+    if (released.length > 0) {
+      html += "<optgroup label='Livrées'>";
+      var maxR = Math.min(released.length, 5);
+      for (var j = 0; j < maxR; j++) {
+        var r = released[j];
+        var sel2 = r.name === current ? " selected" : "";
+        html += "<option value='" + r.name + "'" + sel2 + ">" + r.name + " (Livrée)</option>";
+      }
+      html += "</optgroup>";
+    }
+
+    if (!html) html = "<option value=''>Aucune release</option>";
+    if (sel) sel.innerHTML = html;
+
+    // Auto-sélectionner la plus récente unreleased si aucun choix
+    var autoSelect = current || (unreleased.length > 0 ? unreleased[0].name : (released.length > 0 ? released[0].name : ""));
+    if (autoSelect && sel) {
+      sel.value = autoSelect;
+      showRelease(autoSelect);
+    }
+    updateReleaseHealthCard();
+    showToast("Releases Jira chargées — " + (unreleased.length + released.length) + " version(s)", "📊");
+  }).catch(function(e) {
+    if (sel) sel.innerHTML = "<option value=''>Erreur : " + e.message + "</option>";
+    showToast("Impossible de charger les releases Jira", "⚠️");
+  });
 }
 
 // ── BRIEFING IA — Vue d'ensemble (hybride : règles locales + 1 appel Haiku) ──
@@ -6882,8 +6917,18 @@ function escapeHtml(str) {
 }
 
 function showRelease(release) {
-  if (!release || !releaseTracker[release]) return;
-  var data = releaseTracker[release];
+  if (!release) return;
+
+  // Sauvegarder la sélection
+  localStorage.setItem("abyqa_current_release", release);
+  var badgeText = document.getElementById("release-badge-text");
+  if (badgeText) badgeText.textContent = "🚀 " + release;
+
+  // Charger le Kanban Jira
+  loadKanbanTickets(release);
+
+  // Si pas de données tracker, afficher des stats vides
+  var data = releaseTracker[release] || { totalTickets: 0, totalPass: 0, totalFail: 0, totalBugs: 0, globalStatus: "—", tickets: [] };
 
   // Stats
   document.getElementById("stat-tickets-num").textContent = data.totalTickets || 0;
